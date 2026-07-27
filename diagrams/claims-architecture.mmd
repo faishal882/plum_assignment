@@ -1,0 +1,21 @@
+graph LR
+    U["Member / Operations UI"] --> API["Claims API"]
+    API --> OBJ["Encrypted Object Store"]
+    API --> DB[("PostgreSQL<br/>system of record")]
+    API --> Q["Work Queue"]
+    Q --> ORCH["LangGraph Claim Orchestrator"]
+    ORCH --> TRIAGE["Document Triage Agent"]
+    ORCH --> EXTRACT["Document Extraction Agents"]
+    ORCH --> RECON["Evidence Reconciliation Agent"]
+    TRIAGE --> OCR["OCR + Vision Model Gateway"]
+    EXTRACT --> OCR
+    RECON --> RULES["Deterministic Policy Engine"]
+    RULES --> REVIEW["Human Review Queue"]
+    RULES --> DECISION["Decision + Explanation"]
+    REVIEW --> DECISION
+    ORCH --> DB
+    RULES --> DB
+    DECISION --> DB
+    ORCH --> OBS["OpenTelemetry + LLM Observability"]
+    RULES --> AUDIT["Append-only Audit Ledger"]
+    DECISION --> AUDIT
