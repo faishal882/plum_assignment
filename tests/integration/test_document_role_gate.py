@@ -23,6 +23,7 @@ from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkf
 from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
 from claims_backend.infrastructure.postgres.models import (
     CasefileRow,
+    ClaimWorkItemRow,
     DecisionRecordRow,
     DocumentTriageResultRow,
     ProcessingFixtureRow,
@@ -346,6 +347,54 @@ async def test_assignment_tc003_identity_conflict_requires_correction_without_fi
     }
     async with app.state.session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_unrecorded_local_document_fails_closed_without_leaving_work_leased(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "unrecorded-local-document",
+            },
+            data={"metadata": json.dumps(_metadata())},
+            files=[
+                ("files", ("unknown.jpg", _assignment_document_image("UNKNOWN"), "image/jpeg")),
+                (
+                    "files",
+                    ("known.jpg", _assignment_document_image("PRESCRIPTION\n{}"), "image/jpeg"),
+                ),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+    assert projection.status_code == 200
+    assert projection.json()["lifecycle_status"] == "PROCESSING_FAILED"
+    assert projection.json()["processing_failure"] == {
+        "code": "RECORDED_INPUT_UNAVAILABLE",
+        "retry_guidance": "Please try again later. If the problem continues, contact support.",
+    }
+    async with app.state.session_factory() as session:
+        work_item = (await session.scalars(select(ClaimWorkItemRow))).one()
+        assert work_item.status == "FAILED"
+        assert work_item.last_failure_code == "RECORDED_INPUT_UNAVAILABLE"
     await app.state.engine.dispose()
 
 

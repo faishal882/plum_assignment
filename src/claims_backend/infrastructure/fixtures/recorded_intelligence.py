@@ -16,6 +16,7 @@ from claims_backend.application.intelligence import RenderedPage
 from claims_backend.domain.evidence import DocumentRole, NormalizedRegion
 from claims_backend.domain.extraction import ModelRoute
 from claims_backend.domain.ocr import (
+    OcrError,
     OcrObservation,
     OcrObservationKind,
     OcrPageResult,
@@ -25,8 +26,15 @@ from claims_backend.model.routing import ModelRouteConfig
 from claims_backend.model.transport import ModelInvocation
 
 
-class RecordedInputUnavailableError(RuntimeError):
-    """Raised when a local recorded profile has no approved input recording."""
+class RecordedInputUnavailableError(OcrError):
+    """Raised when a local recorded profile has no approved input recording.
+
+    The recorded profile is intentionally closed over its synthetic corpus. An
+    unrecorded document is therefore a terminal local-processing limitation,
+    not an unhandled worker error or an invitation to retry indefinitely.
+    """
+
+    code = "RECORDED_INPUT_UNAVAILABLE"
 
 
 @dataclass(frozen=True, slots=True)
