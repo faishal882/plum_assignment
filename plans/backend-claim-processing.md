@@ -73,19 +73,21 @@ Put identity and authorization in front of the Phase 1 path. Development request
 
 **User stories**: 2, 8, 9
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Replace placeholder document handling with bounded streaming ingestion into the local content-addressed store. Validate actual media, seal immutable originals, and make all storage behavior independent of untrusted filenames.
 
 ### Acceptance criteria
 
-- [ ] PDF, JPEG, and PNG uploads are accepted after signature and structural validation.
-- [ ] Files are streamed, hashed, synchronized, and atomically sealed without buffering the complete claim in application memory.
-- [ ] Claims enforce at most 10 documents, 20 MiB per document, 50 MiB aggregate, and 10 pages per document.
-- [ ] Corrupt, encrypted, unsupported, oversized, and over-page-limit uploads return actionable structured errors.
-- [ ] Client filenames are stored only as labels and never form storage paths.
-- [ ] Traversal, symlink, collision, partial-write, and interrupted-write tests cannot escape or corrupt the configured data root.
-- [ ] A failed upload leaves no claim, work item, sealed document metadata, or unreferenced final artifact.
+- [x] PDF, JPEG, and PNG uploads are accepted after signature and structural validation.
+- [x] Files are streamed, hashed, synchronized, and atomically sealed without buffering the complete claim in application memory.
+- [x] Claims enforce at most 10 documents, 20 MiB per document, 50 MiB aggregate, and 10 pages per document.
+- [x] Corrupt, encrypted, unsupported, oversized, and over-page-limit uploads return actionable structured errors.
+- [x] Client filenames are stored only as labels and never form storage paths.
+- [x] Traversal, symlink, collision, partial-write, and interrupted-write tests cannot escape or corrupt the configured data root.
+- [x] A failed upload leaves no claim, work item, sealed document metadata, or unreferenced final artifact.
 
 ---
 
