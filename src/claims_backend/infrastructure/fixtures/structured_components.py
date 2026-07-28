@@ -198,6 +198,49 @@ class StructuredComponentFixtureAdapter:
             ),
         )
 
+    async def seed_tc011(self, claim_id: UUID, claim_version: int) -> None:
+        await self._seed_structured(
+            claim_id,
+            claim_version,
+            StructuredEvidencePayload(
+                documents=(
+                    StructuredDocumentEvidence(
+                        evidence_id="F021",
+                        client_document_id="F021",
+                        role=DocumentRole.PRESCRIPTION,
+                        readability=Readability.READABLE,
+                        identity_observations=(
+                            IdentityObservation(
+                                kind="PATIENT_NAME",
+                                value="Kavita Nair",
+                            ),
+                        ),
+                        treatment_date="2024-10-28",
+                        clinical_condition="Chronic Joint Pain",
+                        clinical_treatment="Panchakarma Therapy",
+                    ),
+                    StructuredDocumentEvidence(
+                        evidence_id="F022",
+                        client_document_id="F022",
+                        role=DocumentRole.HOSPITAL_BILL,
+                        readability=Readability.READABLE,
+                        identity_observations=(
+                            IdentityObservation(
+                                kind="PATIENT_NAME",
+                                value="Kavita Nair",
+                            ),
+                        ),
+                        billed_paise=400_000,
+                        provider_name="Ayur Wellness Centre",
+                        line_items_paise={
+                            "panchakarma_therapy": 300_000,
+                            "consultation": 100_000,
+                        },
+                    ),
+                )
+            ),
+        )
+
     async def seed_tc009(self, claim_id: UUID, claim_version: int) -> None:
         await self._seed_structured(
             claim_id,

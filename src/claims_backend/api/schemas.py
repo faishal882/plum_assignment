@@ -68,6 +68,7 @@ class ClaimResponse(BaseModel):
     explanation: "MemberExplanationResponse | None" = None
     action: "MemberActionResponse | None" = None
     handling_status: str | None = None
+    processing_quality: "ProcessingQualityResponse | None" = None
     created_at: datetime
     updated_at: datetime
 
@@ -84,6 +85,21 @@ class MemberAdjudicationResponse(BaseModel):
     @field_serializer("approved_amount")
     def serialize_approved_amount(self, amount: Decimal) -> str:
         return f"{amount:.2f}"
+
+
+class DegradedComponentResponse(BaseModel):
+    component: str
+    criticality: str
+    attempts: int
+    failure_code: str
+    retryable: bool
+    effect_on_handling: str
+
+
+class ProcessingQualityResponse(BaseModel):
+    completeness: float
+    confidence: float
+    degraded_components: list[DegradedComponentResponse]
 
 
 class MemberDeductionResponse(BaseModel):

@@ -75,6 +75,23 @@ class MemberAction:
 
 
 @dataclass(frozen=True, slots=True)
+class DegradedComponent:
+    component: str
+    criticality: str
+    attempts: int
+    failure_code: str
+    retryable: bool
+    effect_on_handling: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessingQuality:
+    completeness: float
+    confidence: float
+    degraded_components: tuple[DegradedComponent, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DocumentManifestItem:
     upload_index: int
     client_document_id: str
@@ -108,6 +125,7 @@ class Claim:
     explanation: MemberExplanation | None
     action: MemberAction | None
     handling_status: str | None
+    processing_quality: ProcessingQuality | None
     review_task_id: UUID | None
     created_at: datetime
     updated_at: datetime

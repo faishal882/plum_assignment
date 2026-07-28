@@ -70,3 +70,20 @@ class ModelSemanticValidationError(ModelValidationError):
 
 class ModelGroundingValidationError(ModelValidationError):
     code = "MODEL_GROUNDING_VALIDATION_FAILED"
+
+
+class ModelProviderError(Exception):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        retryable: bool,
+        provider_code: str | None = None,
+        provider_request_id: str | None = None,
+    ) -> None:
+        self.code = code
+        self.retryable = retryable
+        self.provider_code = provider_code
+        self.provider_request_id = provider_request_id
+        super().__init__(message)

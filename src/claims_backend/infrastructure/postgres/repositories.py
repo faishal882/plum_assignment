@@ -22,6 +22,7 @@ from claims_backend.domain.claims import (
     Claim,
     ClaimCategory,
     ClaimLifecycle,
+    DegradedComponent,
     DocumentReplacementResult,
     MemberAction,
     MemberActionDocument,
@@ -30,6 +31,7 @@ from claims_backend.domain.claims import (
     MemberExplanation,
     MemberIdentityConflict,
     MemberLineItemExplanation,
+    ProcessingQuality,
     ReplaceDocument,
     SubmitClaim,
 )
@@ -63,8 +65,11 @@ class _PinnedSnapshots:
 
 
 class PostgresClaimsRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, max_work_attempts: int = 3) -> None:
+        if not 0 < max_work_attempts <= 3:
+            raise ValueError("max_work_attempts must be between one and three")
         self._session = session
+        self._max_work_attempts = max_work_attempts
 
     async def create(
         self,
@@ -220,7 +225,7 @@ class PostgresClaimsRepository:
                     status="AVAILABLE",
                     available_at=now,
                     attempt_count=0,
-                    max_attempts=3,
+                    max_attempts=self._max_work_attempts,
                     created_at=now,
                     updated_at=now,
                 )
@@ -458,7 +463,7 @@ class PostgresClaimsRepository:
                     status="AVAILABLE",
                     available_at=now,
                     attempt_count=0,
-                    max_attempts=3,
+                    max_attempts=self._max_work_attempts,
                     created_at=now,
                     updated_at=now,
                 )
@@ -641,6 +646,28 @@ def _to_domain(row: ClaimRow) -> Claim:
     required_roles = None if action is None else action.get("required_document_roles")
     action_documents = None if action is None else action.get("affected_documents")
     identity_conflict = None if action is None else action.get("identity_conflict")
+    quality = row.processing_quality
+    degraded = quality.get("degraded_components") if isinstance(quality, dict) else None
+    processing_quality = (
+        ProcessingQuality(
+            completeness=_quality_ratio(quality.get("completeness")),
+            confidence=_quality_ratio(quality.get("confidence")),
+            degraded_components=tuple(
+                DegradedComponent(
+                    component=str(item["component"]),
+                    criticality=str(item["criticality"]),
+                    attempts=int(item["attempts"]),
+                    failure_code=str(item["failure_code"]),
+                    retryable=bool(item["retryable"]),
+                    effect_on_handling=str(item["effect_on_handling"]),
+                )
+                for item in degraded
+                if isinstance(item, dict)
+            ),
+        )
+        if isinstance(quality, dict) and isinstance(degraded, list)
+        else None
+    )
     return Claim(
         id=row.id,
         owner_user_id=row.owner_user_id,
@@ -709,7 +736,17 @@ def _to_domain(row: ClaimRow) -> Claim:
             else None
         ),
         handling_status=row.handling_status,
+        processing_quality=processing_quality,
         review_task_id=row.review_task_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _quality_ratio(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("Stored processing quality ratio is invalid.")
+    ratio = float(value)
+    if not 0 <= ratio <= 1:
+        raise ValueError("Stored processing quality ratio is outside zero and one.")
+    return ratio

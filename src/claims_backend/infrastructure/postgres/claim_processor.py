@@ -13,6 +13,10 @@ from claims_backend.application.casefiles import (
     ProvenancedEvidenceRepository,
     build_casefile,
 )
+from claims_backend.application.failure_policy import (
+    FailureComponent,
+    FailureCriticality,
+)
 from claims_backend.application.intelligence import (
     OcrApplication,
     OcrRepository,
@@ -64,6 +68,7 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimRow,
     ClaimVersionRow,
     ClaimWorkItemRow,
+    ComponentFailureRow,
     DecisionRecordRow,
     DocumentRow,
     DocumentTriageResultRow,
@@ -78,6 +83,13 @@ from claims_backend.infrastructure.postgres.models import (
     UtilizationSnapshotRow,
     WorkflowEffectRow,
     WorkflowRunRow,
+)
+from claims_backend.infrastructure.processing_failures import (
+    AnomalyEnricher,
+    EngineeringEventSink,
+    ExpectedNoncriticalComponentFailure,
+    NoOpAnomalyEnricher,
+    NoOpEngineeringEventSink,
 )
 from claims_backend.model.application import StructuredModelApplication
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
@@ -99,6 +111,8 @@ class PostgresClaimProcessor:
         ocr_repository: OcrRepository | None = None,
         structured_model: StructuredModelApplication | None = None,
         evidence_repository: ProvenancedEvidenceRepository | None = None,
+        anomaly_enricher: AnomalyEnricher | None = None,
+        engineering_events: EngineeringEventSink | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._adjudicator = DeterministicPolicyAdjudicator()
@@ -108,6 +122,8 @@ class PostgresClaimProcessor:
         self._ocr_repository = ocr_repository
         self._structured_model = structured_model
         self._evidence_repository = evidence_repository
+        self._anomaly_enricher = anomaly_enricher or NoOpAnomalyEnricher()
+        self._engineering_events = engineering_events or NoOpEngineeringEventSink()
 
     async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
         async with self._session_factory() as session:
@@ -711,6 +727,36 @@ class PostgresClaimProcessor:
             casefile, proposal = await self._evaluate(session, casefile_id)
             if claim.policy_version_id != casefile.policy_version_id:
                 raise ProcessingInvariantError("Pinned policy changed.")
+            component_failure: ExpectedNoncriticalComponentFailure | None = None
+            try:
+                await self._anomaly_enricher.enrich(
+                    ClaimCasefile.model_validate(casefile.content),
+                    proposal,
+                )
+            except ExpectedNoncriticalComponentFailure as error:
+                if error.component is not FailureComponent.ANOMALY_ENRICHMENT:
+                    raise ProcessingInvariantError(
+                        "Only anomaly enrichment may degrade a terminal decision."
+                    ) from error
+                component_failure = error
+            processing_quality = (
+                None
+                if component_failure is None
+                else {
+                    "completeness": 0.8,
+                    "confidence": 0.8,
+                    "degraded_components": [
+                        {
+                            "component": component_failure.component.value,
+                            "criticality": FailureCriticality.NONCRITICAL.value,
+                            "attempts": component_failure.attempts,
+                            "failure_code": component_failure.failure_code,
+                            "retryable": False,
+                            "effect_on_handling": "MANUAL_REVIEW_RECOMMENDED",
+                        }
+                    ],
+                }
+            )
 
             anomaly_signals = tuple(
                 result.reason_code
@@ -754,6 +800,24 @@ class PostgresClaimProcessor:
                     for result in proposal.rule_results
                 ]
             )
+            if component_failure is not None:
+                session.add(
+                    ComponentFailureRow(
+                        id=uuid4(),
+                        claim_id=claim.id,
+                        claim_version=workflow_run.claim_version,
+                        decision_record_id=decision.id,
+                        component=component_failure.component.value,
+                        criticality=FailureCriticality.NONCRITICAL.value,
+                        attempts=component_failure.attempts,
+                        failure_code=component_failure.failure_code,
+                        retryable=False,
+                        completeness=0.8,
+                        confidence=0.8,
+                        effect_on_handling="MANUAL_REVIEW_RECOMMENDED",
+                        created_at=now,
+                    )
+                )
             review_task_id: UUID | None = None
             if anomaly_signals:
                 review_task_id = uuid4()
@@ -815,7 +879,16 @@ class PostgresClaimProcessor:
                     ],
                 }
             )
-            claim.handling_status = "MANUAL_REVIEW" if anomaly_signals else None
+            claim.handling_status = (
+                "MANUAL_REVIEW"
+                if anomaly_signals
+                else (
+                    "MANUAL_REVIEW_RECOMMENDED"
+                    if component_failure is not None
+                    else None
+                )
+            )
+            claim.processing_quality = processing_quality
             claim.review_task_id = review_task_id
             claim.updated_at = now
             audit_sequence = (
@@ -842,6 +915,7 @@ class PostgresClaimProcessor:
                         "canonical_hash": proposal.canonical_hash,
                         "review_task_id": (None if review_task_id is None else str(review_task_id)),
                         "signal_codes": list(anomaly_signals),
+                        "processing_quality": processing_quality,
                     },
                     created_at=now,
                 )
@@ -868,6 +942,19 @@ class PostgresClaimProcessor:
             run.completed_at = now
             run.updated_at = now
             await session.flush()
+            engineering_event = {
+                "event_type": "claim_terminal_commit",
+                "claim_id": str(claim.id),
+                "claim_version": workflow_run.claim_version,
+                "decision_record_id": str(decision.id),
+                "lifecycle_status": lifecycle_status,
+                "degraded": component_failure is not None,
+            }
+        try:
+            await self._engineering_events.emit(engineering_event)
+        except Exception:
+            # Engineering telemetry is deliberately outside the authoritative transaction.
+            pass
 
     async def triage_documents(
         self,

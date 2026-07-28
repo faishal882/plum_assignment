@@ -42,10 +42,17 @@ def get_document_store(request: Request) -> DocumentStore:
 
 
 def get_claims_application(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     document_store: Annotated[DocumentStore, Depends(get_document_store)],
 ) -> ClaimsApplication:
-    return ClaimsApplication(PostgresClaimsRepository(session), document_store)
+    return ClaimsApplication(
+        PostgresClaimsRepository(
+            session,
+            max_work_attempts=request.app.state.settings.provider_max_attempts,
+        ),
+        document_store,
+    )
 
 
 ClaimsApplicationDependency = Annotated[ClaimsApplication, Depends(get_claims_application)]

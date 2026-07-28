@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -427,6 +428,10 @@ class ClaimRow(Base):
         nullable=True,
     )
     handling_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    processing_quality: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
     review_task_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey(
@@ -870,6 +875,50 @@ class RuleResultRow(Base):
     amount_before_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     adjustment_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_after_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ComponentFailureRow(Base):
+    __tablename__ = "component_failures"
+    __table_args__ = (
+        UniqueConstraint(
+            "decision_record_id",
+            "component",
+            name="component_failures_decision_component_uq",
+        ),
+        CheckConstraint("attempts > 0", name="component_failures_attempts_positive"),
+        CheckConstraint(
+            "completeness >= 0 AND completeness <= 1",
+            name="component_failures_completeness_ratio",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="component_failures_confidence_ratio",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision_record_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("decision_records.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    component: Mapped[str] = mapped_column(String(64), nullable=False)
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    failure_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    completeness: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    effect_on_handling: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

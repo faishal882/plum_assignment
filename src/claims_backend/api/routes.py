@@ -16,12 +16,14 @@ from claims_backend.api.schemas import (
     ClaimMetadataRequest,
     ClaimReceiptResponse,
     ClaimResponse,
+    DegradedComponentResponse,
     IdentityConflictResponse,
     MemberActionResponse,
     MemberAdjudicationResponse,
     MemberDeductionResponse,
     MemberExplanationResponse,
     MemberLineItemExplanationResponse,
+    ProcessingQualityResponse,
     ProgressResponse,
     ReplaceDocumentCommandRequest,
     ReplacementDocumentResponse,
@@ -407,6 +409,25 @@ def _to_response(claim: Claim) -> ClaimResponse:
             )
         ),
         handling_status=claim.handling_status,
+        processing_quality=(
+            None
+            if claim.processing_quality is None
+            else ProcessingQualityResponse(
+                completeness=claim.processing_quality.completeness,
+                confidence=claim.processing_quality.confidence,
+                degraded_components=[
+                    DegradedComponentResponse(
+                        component=item.component,
+                        criticality=item.criticality,
+                        attempts=item.attempts,
+                        failure_code=item.failure_code,
+                        retryable=item.retryable,
+                        effect_on_handling=item.effect_on_handling,
+                    )
+                    for item in claim.processing_quality.degraded_components
+                ],
+            )
+        ),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )
