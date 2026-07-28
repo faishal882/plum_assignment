@@ -15,6 +15,7 @@ class Settings:
     max_textract_page_bytes: int = 5 * 1024 * 1024
     page_render_dpi: int = 180
     aws_region: str = "ap-south-1"
+    bedrock_model_id: str = "us.anthropic.claude-sonnet-4-6"
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -28,6 +29,8 @@ class Settings:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
+        if not self.aws_region or not self.bedrock_model_id:
+            raise ValueError("AWS region and Bedrock model ID cannot be empty")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -57,6 +60,10 @@ class Settings:
             ),
             page_render_dpi=_environment_integer("CLAIMS_PAGE_RENDER_DPI", 180),
             aws_region=environ.get("CLAIMS_AWS_REGION", "ap-south-1"),
+            bedrock_model_id=environ.get(
+                "CLAIMS_BEDROCK_MODEL_ID",
+                "us.anthropic.claude-sonnet-4-6",
+            ),
         )
 
 
