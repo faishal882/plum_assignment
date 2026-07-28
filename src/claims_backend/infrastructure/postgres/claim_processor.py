@@ -187,9 +187,12 @@ class PostgresClaimProcessor:
                 select(UtilizationSnapshotRow)
                 .where(
                     UtilizationSnapshotRow.member_id == member_version.member_id,
-                    UtilizationSnapshotRow.setup_import_id == member_version.setup_import_id,
+                    UtilizationSnapshotRow.as_of_date <= claim.treatment_date,
                 )
-                .order_by(UtilizationSnapshotRow.as_of_date.desc())
+                .order_by(
+                    UtilizationSnapshotRow.as_of_date.desc(),
+                    UtilizationSnapshotRow.created_at.desc(),
+                )
                 .limit(1)
             )
             billed = [
@@ -316,14 +319,7 @@ class PostgresClaimProcessor:
                 )
             reconciliation = reconcile_evidence(
                 tuple(candidates),
-                material_fact_paths=(
-                    "billing.total",
-                    "claim.claimed_amount",
-                    "clinical.condition",
-                    "member.join_date",
-                    "patient.name",
-                    "treatment.date",
-                ),
+                material_fact_paths=_material_fact_paths(claim.category),
             )
             casefile = build_casefile(
                 CasefileBuildRequest(
@@ -417,9 +413,12 @@ class PostgresClaimProcessor:
                 select(UtilizationSnapshotRow)
                 .where(
                     UtilizationSnapshotRow.member_id == member_version.member_id,
-                    UtilizationSnapshotRow.setup_import_id == member_version.setup_import_id,
+                    UtilizationSnapshotRow.as_of_date <= claim.treatment_date,
                 )
-                .order_by(UtilizationSnapshotRow.as_of_date.desc())
+                .order_by(
+                    UtilizationSnapshotRow.as_of_date.desc(),
+                    UtilizationSnapshotRow.created_at.desc(),
+                )
                 .limit(1)
             )
         if not triage_rows:
@@ -502,16 +501,27 @@ class PostgresClaimProcessor:
                 source_sha256=member_snapshot_sha256,
             ),
         )
+        all_candidates = tuple(document_candidates) + trusted_candidates
+        if claim.category == "DENTAL" and not any(
+            candidate.fact_path.startswith("billing.line_items.")
+            for candidate in all_candidates
+        ):
+            return CasefilePreparationResult(
+                reference=None,
+                action=EarlyGateResult(
+                    action_required=True,
+                    code="DENTAL_PROCEDURE_EVIDENCE_REQUIRED",
+                    message=(
+                        "The dental bill does not identify each procedure. "
+                        "Please upload a detailed itemized bill or a dental report."
+                    ),
+                    observed_roles=tuple(triage.role for triage in triage_rows),
+                    required_roles=("DENTAL_REPORT",),
+                ),
+            )
         reconciliation = reconcile_evidence(
-            tuple(document_candidates) + trusted_candidates,
-            material_fact_paths=(
-                "billing.total",
-                "claim.claimed_amount",
-                "clinical.condition",
-                "member.join_date",
-                "patient.name",
-                "treatment.date",
-            ),
+            all_candidates,
+            material_fact_paths=_material_fact_paths(claim.category),
         )
         observed_roles = tuple(triage.role for triage in triage_rows)
         if not reconciliation.sufficiency.sufficient:
@@ -672,6 +682,17 @@ class PostgresClaimProcessor:
                         "amount_paise": deduction.amount_paise,
                     }
                     for deduction in explanation.deductions
+                ],
+                "line_items": [
+                    {
+                        "concept": item.concept,
+                        "label": item.label,
+                        "claimed_paise": item.claimed_paise,
+                        "approved_paise": item.approved_paise,
+                        "status": item.status,
+                        "reason_code": item.reason_code,
+                    }
+                    for item in explanation.line_items
                 ],
             }
             claim.updated_at = now
@@ -1380,3 +1401,14 @@ def _canonical_sha256(value: object) -> str:
             ensure_ascii=False,
         ).encode()
     ).hexdigest()
+
+
+def _material_fact_paths(category: str) -> tuple[str, ...]:
+    common = (
+        "billing.total",
+        "claim.claimed_amount",
+        "member.join_date",
+        "patient.name",
+        "treatment.date",
+    )
+    return common if category == "DENTAL" else (*common, "clinical.condition")

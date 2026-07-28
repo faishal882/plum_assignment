@@ -88,7 +88,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         treatment_date=_evidence_fact(_required_fact(facts, "treatment.date")),
         member_join_date=_evidence_fact(_required_fact(facts, "member.join_date")),
         patient_identity=_evidence_fact(_required_fact(facts, "patient.name")),
-        clinical_condition=_evidence_fact(_required_fact(facts, "clinical.condition")),
+        clinical_condition=_optional_evidence_fact(facts.get("clinical.condition")),
         line_items=EvidenceFact(
             state=FactState.KNOWN if line_item_facts else FactState.UNKNOWN,
             value=[f"{fact.fact_path}={fact.value}" for fact in line_item_facts],
@@ -134,6 +134,12 @@ def _evidence_fact(fact: ReconciledFact) -> EvidenceFact:
             "evidence_refs": fact.candidate_ids,
         }
     )
+
+
+def _optional_evidence_fact(fact: ReconciledFact | None) -> EvidenceFact | None:
+    if fact is None or fact.state is not ReconciledFactState.KNOWN:
+        return None
+    return _evidence_fact(fact)
 
 
 def _integer_fact_value(fact: ReconciledFact) -> int:

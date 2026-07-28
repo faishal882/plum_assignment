@@ -90,6 +90,14 @@ class DeterministicPolicyAdjudicator:
                     policy,
                     results,
                 )
+        excluded_line_items = False
+        if casefile.category == "DENTAL":
+            amount, excluded_line_items = _evaluate_dental_line_items(
+                casefile=casefile,
+                policy=policy,
+                amount=amount,
+                results=results,
+            )
         if amount > category.limit_paise:
             raise UnsafeCasefileError("Category limit outcome is not implemented for this slice.")
         results.append(
@@ -103,6 +111,8 @@ class DeterministicPolicyAdjudicator:
                 {
                     "eligible_paise": amount,
                     "limit_paise": category.limit_paise,
+                    "general_limit_paise": policy.general_per_claim_limit_paise,
+                    "precedence": policy.limit_precedence.value,
                 },
                 amount,
                 0,
@@ -149,13 +159,67 @@ class DeterministicPolicyAdjudicator:
         approved = amount - deduction
         if not 0 <= approved <= casefile.claimed_paise:
             raise UnsafeCasefileError("Approved amount violates money invariants.")
+        recommendation = (
+            AdjudicationRecommendation.PARTIAL
+            if excluded_line_items and approved > 0
+            else AdjudicationRecommendation.REJECTED
+            if approved == 0
+            else AdjudicationRecommendation.APPROVED
+        )
         return _proposal(
-            AdjudicationRecommendation.APPROVED,
+            recommendation,
             approved,
             casefile,
             policy,
             results,
         )
+
+
+def _evaluate_dental_line_items(
+    *,
+    casefile: ClaimCasefile,
+    policy: PolicyIR,
+    amount: int,
+    results: list[RuleResult],
+) -> tuple[int, bool]:
+    if not casefile.line_item_facts:
+        raise UnsafeCasefileError("Dental procedure evidence is required.")
+    if sum(item.amount_paise for item in casefile.line_item_facts) != amount:
+        raise UnsafeCasefileError("Dental line items do not reconcile to the claimed amount.")
+    excluded = False
+    for item in casefile.line_item_facts:
+        rule = policy.dental_procedure_rules.get(item.concept)
+        if rule is None:
+            raise UnsafeCasefileError(
+                f"Dental procedure has no deterministic policy rule: {item.concept}."
+            )
+        adjustment = 0 if rule.covered else -item.amount_paise
+        reason_code = (
+            "DENTAL_LINE_ITEM_COVERED"
+            if rule.covered
+            else "DENTAL_LINE_ITEM_EXCLUDED"
+        )
+        results.append(
+            _result(
+                len(results) + 1,
+                rule.rule_id,
+                RuleStatus.PASS if rule.covered else RuleStatus.APPLIED,
+                reason_code,
+                rule.source_pointer,
+                item.evidence_refs,
+                {
+                    "concept": item.concept,
+                    "label": rule.label,
+                    "line_item_paise": item.amount_paise,
+                    "covered": rule.covered,
+                },
+                amount,
+                adjustment,
+            )
+        )
+        amount += adjustment
+        excluded = excluded or not rule.covered
+    return amount, excluded
 
 
 def _waiting_period_result(
@@ -167,10 +231,14 @@ def _waiting_period_result(
 ) -> RuleResult:
     join_fact = _known_fact(casefile.member_join_date, "member join date")
     treatment_fact = _known_fact(casefile.treatment_date, "treatment date")
-    condition_fact = _known_fact(casefile.clinical_condition, "clinical condition")
     join_date = _iso_date(join_fact.value, "member join date")
     treatment_date = _iso_date(treatment_fact.value, "treatment date")
-    condition = _string(condition_fact.value).casefold()
+    condition_fact = casefile.clinical_condition
+    condition = (
+        ""
+        if condition_fact is None or condition_fact.state is not FactState.KNOWN
+        else _string(condition_fact.value).casefold()
+    )
     rule = policy.waiting_period_rules.specific_conditions.get(
         condition,
         policy.waiting_period_rules.initial,
@@ -186,7 +254,7 @@ def _waiting_period_result(
         (
             *join_fact.evidence_refs,
             *treatment_fact.evidence_refs,
-            *condition_fact.evidence_refs,
+            *(() if condition_fact is None else condition_fact.evidence_refs),
         ),
         {
             "condition": condition,
