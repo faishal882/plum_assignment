@@ -10,7 +10,9 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -20,6 +22,192 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     pass
+
+
+class PolicySourceRow(Base):
+    __tablename__ = "policy_sources"
+    __table_args__ = (
+        CheckConstraint("octet_length(source_bytes) > 0", name="policy_sources_bytes_nonempty"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    source_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SetupImportRow(Base):
+    __tablename__ = "setup_imports"
+    __table_args__ = (
+        CheckConstraint(
+            "(member_data_bytes IS NULL) = (member_data_sha256 IS NULL)",
+            name="setup_imports_member_data_hash_pair",
+        ),
+        CheckConstraint(
+            "(member_data_bytes IS NULL) = (member_data_source_name IS NULL)",
+            name="setup_imports_member_data_name_pair",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    policy_source_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    member_data_source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    member_data_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    member_data_bytes: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemberRow(Base):
+    __tablename__ = "members"
+    __table_args__ = (
+        UniqueConstraint(
+            "policy_id",
+            "external_member_id",
+            name="members_policy_external_id_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    external_member_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemberVersionRow(Base):
+    __tablename__ = "member_versions"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="member_versions_version_positive"),
+        UniqueConstraint("member_id", "version", name="member_versions_member_version_uq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    member_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    setup_import_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("setup_imports.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    primary_member_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
+    gender: Mapped[str] = mapped_column(String(32), nullable=False)
+    relationship: Mapped[str] = mapped_column(String(32), nullable=False)
+    join_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    dependent_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    source_pointer: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ImportFindingRow(Base):
+    __tablename__ = "import_findings"
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    setup_import_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("setup_imports.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_pointer: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ClaimHistoryRow(Base):
+    __tablename__ = "member_claim_history"
+    __table_args__ = (
+        CheckConstraint("amount_paise >= 0", name="member_claim_history_amount_nonnegative"),
+        UniqueConstraint(
+            "setup_import_id",
+            "history_claim_id",
+            name="member_claim_history_import_claim_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    setup_import_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("setup_imports.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    history_claim_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    treatment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_pointer: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UtilizationSnapshotRow(Base):
+    __tablename__ = "member_utilization_snapshots"
+    __table_args__ = (
+        CheckConstraint(
+            "used_paise >= 0",
+            name="member_utilization_snapshots_used_nonnegative",
+        ),
+        CheckConstraint(
+            "period_end >= period_start",
+            name="member_utilization_snapshots_period_ordered",
+        ),
+        UniqueConstraint(
+            "setup_import_id",
+            "member_id",
+            "period_start",
+            "period_end",
+            name="member_utilization_snapshots_import_member_period_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    setup_import_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("setup_imports.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    member_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("members.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    used_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source_pointer: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class UserRow(Base):
