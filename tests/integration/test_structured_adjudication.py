@@ -140,6 +140,15 @@ async def test_tc004_structured_fixture_commits_exact_member_decision(
     assert all(result.evidence_refs for result in trace.rule_results)
     assert trace.work_status == "COMPLETED"
     assert trace.workflow_status == "COMPLETED"
+
+    for table_name in ("processing_fixtures", "casefiles", "decision_records", "rule_results"):
+        with pytest.raises(DBAPIError):
+            async with factory.begin() as session:
+                await session.execute(
+                    text(f"DELETE FROM {table_name} WHERE claim_id = :claim_id"),
+                    {"claim_id": claim_id},
+                )
+
     await app.state.engine.dispose()
     await engine.dispose()
 

@@ -5,7 +5,8 @@ from uuid import UUID
 import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 
 from claims_backend.api.app import create_app
 from claims_backend.application.work import WorkerService
@@ -113,6 +114,15 @@ async def test_tc001_stops_after_two_prescriptions_and_requests_hospital_bill(
         "ADJUDICATION_PROPOSED",
         "DECISION_COMMITTED",
     } & {effect.effect_type for effect in effects}
+
+    for table_name in ("document_triage_results", "member_actions"):
+        with pytest.raises(DBAPIError):
+            async with app.state.session_factory.begin() as session:
+                await session.execute(
+                    text(f"DELETE FROM {table_name} WHERE claim_id = :claim_id"),
+                    {"claim_id": claim_id},
+                )
+
     await app.state.engine.dispose()
 
 
