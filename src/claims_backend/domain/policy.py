@@ -1,0 +1,100 @@
+from enum import StrEnum
+
+from pydantic import BaseModel, ConfigDict
+
+
+class FindingCategory(StrEnum):
+    SCHEMA = "SCHEMA"
+    SEMANTIC = "SEMANTIC"
+    REFERENTIAL = "REFERENTIAL"
+    VOCABULARY = "VOCABULARY"
+    CONTRADICTION = "CONTRADICTION"
+
+
+class PolicyFindingSeverity(StrEnum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class LimitPrecedence(StrEnum):
+    CATEGORY_OVER_GENERAL = "CATEGORY_OVER_GENERAL"
+
+
+class LimitOutcome(StrEnum):
+    REJECT = "REJECT"
+    CAP = "CAP"
+    REVIEW = "REVIEW"
+
+
+class PreAuthorizationMode(StrEnum):
+    ABOVE_THRESHOLD = "ABOVE_THRESHOLD"
+    ALWAYS = "ALWAYS"
+    NEVER = "NEVER"
+
+
+class PolicyFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category: FindingCategory
+    severity: PolicyFindingSeverity
+    code: str
+    source_pointer: str
+    message: str
+    resolved_by_overlay: bool = False
+
+
+class CategoryRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    limit_paise: int
+    copay_percent: int
+    network_discount_percent: int
+    requires_prescription: bool
+    covered: bool
+
+
+class DocumentRequirementRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    required: tuple[str, ...]
+    optional: tuple[str, ...]
+    alternative_evidence: str | None = None
+
+
+class PreAuthorizationRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    mode: PreAuthorizationMode
+    threshold_paise: int | None
+    evidence_required: bool = True
+
+
+class PolicyIR(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: int
+    policy_id: str
+    source_sha256: str
+    overlay_sha256: str
+    overlay_id: str
+    overlay_version: int
+    effective_from: str
+    effective_to: str
+    currency: str
+    general_per_claim_limit_paise: int
+    annual_opd_limit_paise: int
+    limit_precedence: LimitPrecedence
+    limit_exceeded_outcome: LimitOutcome
+    category_rules: dict[str, CategoryRule]
+    document_requirements: dict[str, DocumentRequirementRule]
+    pre_authorization_rules: dict[str, PreAuthorizationRule]
+    relationship_aliases: dict[str, str]
+    rule_order: tuple[str, ...]
+    engine_contract_version: str

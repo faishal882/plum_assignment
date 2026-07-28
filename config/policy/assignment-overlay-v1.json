@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "overlay_id": "assignment-overlay",
+  "version": 1,
+  "base_policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
+  "approval": {
+    "status": "APPROVED",
+    "approved_by": "assignment-policy-owner",
+    "approved_at": "2026-07-28T00:00:00Z"
+  },
+  "clarifications": {
+    "limit_precedence": "CATEGORY_OVER_GENERAL",
+    "limit_exceeded_outcome": "REJECT",
+    "category_limits_rupees": {
+      "CONSULTATION": 5000
+    },
+    "dental_report_evidence": "DETAILED_LINE_ITEM_BILL_OR_DENTAL_REPORT",
+    "pre_authorization": {
+      "MRI": {
+        "mode": "ABOVE_THRESHOLD",
+        "threshold_rupees": 10000
+      },
+      "CT_SCAN": {
+        "mode": "ABOVE_THRESHOLD",
+        "threshold_rupees": 10000
+      },
+      "PET": {
+        "mode": "ALWAYS"
+      }
+    },
+    "relationship_aliases": {
+      "CHILDREN": "CHILD"
+    }
+  }
+}
