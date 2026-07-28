@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FindingCategory(StrEnum):
@@ -86,6 +86,22 @@ class PreAuthorizationRule(BaseModel):
     evidence_required: bool = True
 
 
+class WaitingPeriodRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    days: int = Field(ge=0)
+
+
+class WaitingPeriodRules(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    initial: WaitingPeriodRule
+    pre_existing: WaitingPeriodRule
+    specific_conditions: dict[str, WaitingPeriodRule]
+
+
 class PolicyIR(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -105,6 +121,7 @@ class PolicyIR(BaseModel):
     category_rules: dict[str, CategoryRule]
     document_requirements: dict[str, DocumentRequirementRule]
     pre_authorization_rules: dict[str, PreAuthorizationRule]
+    waiting_period_rules: WaitingPeriodRules
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str

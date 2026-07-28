@@ -36,6 +36,12 @@ def test_compiles_deterministic_assignment_policy_ir() -> None:
     assert first.ir.pre_authorization_rules["CT_SCAN"].threshold_paise == 1_000_000
     assert first.ir.pre_authorization_rules["PET"].mode is PreAuthorizationMode.ALWAYS
     assert first.ir.pre_authorization_rules["PET"].threshold_paise is None
+    assert first.ir.waiting_period_rules.initial.days == 30
+    assert first.ir.waiting_period_rules.pre_existing.days == 365
+    diabetes = first.ir.waiting_period_rules.specific_conditions["diabetes"]
+    assert diabetes.days == 90
+    assert diabetes.source_pointer == "/waiting_periods/specific_conditions/diabetes"
+    assert diabetes.rule_id == "waiting_period.specific_condition.diabetes"
     assert not first.has_errors
     assert FindingCategory.VOCABULARY in {finding.category for finding in first.findings}
 

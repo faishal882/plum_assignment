@@ -18,9 +18,11 @@ from claims_backend.domain.policy import (
     PolicyIR,
     PreAuthorizationMode,
     PreAuthorizationRule,
+    WaitingPeriodRule,
+    WaitingPeriodRules,
 )
 
-COMPILER_VERSION = "policy-compiler-v1"
+COMPILER_VERSION = "policy-compiler-v2"
 _TEST_IDENTIFIER_PATTERN = re.compile(r"\bTC\d+\b|case_id|test_case", re.IGNORECASE)
 
 
@@ -70,6 +72,14 @@ class _SubmissionRules(BaseModel):
     currency: Literal["INR"]
 
 
+class _WaitingPeriods(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    initial_waiting_period_days: int = Field(ge=0)
+    pre_existing_conditions_days: int = Field(ge=0)
+    specific_conditions: dict[str, int]
+
+
 class _PolicySource(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -79,6 +89,7 @@ class _PolicySource(BaseModel):
     opd_categories: dict[str, _CategorySource]
     document_requirements: dict[str, _DocumentSource]
     submission_rules: _SubmissionRules
+    waiting_periods: _WaitingPeriods
 
 
 class _Approval(BaseModel):
@@ -353,8 +364,30 @@ def _build_ir(
         )
         for name, rule in overlay.clarifications.pre_authorization.items()
     }
+    waiting_period_rules = WaitingPeriodRules(
+        initial=WaitingPeriodRule(
+            rule_id="waiting_period.initial",
+            source_pointer="/waiting_periods/initial_waiting_period_days",
+            days=source.waiting_periods.initial_waiting_period_days,
+        ),
+        pre_existing=WaitingPeriodRule(
+            rule_id="waiting_period.pre_existing",
+            source_pointer="/waiting_periods/pre_existing_conditions_days",
+            days=source.waiting_periods.pre_existing_conditions_days,
+        ),
+        specific_conditions={
+            condition: WaitingPeriodRule(
+                rule_id=f"waiting_period.specific_condition.{condition}",
+                source_pointer=f"/waiting_periods/specific_conditions/{condition}",
+                days=days,
+            )
+            for condition, days in sorted(
+                source.waiting_periods.specific_conditions.items()
+            )
+        },
+    )
     return PolicyIR(
-        schema_version=1,
+        schema_version=2,
         policy_id=source.policy_id,
         source_sha256=source_hash,
         overlay_sha256=overlay_hash,
@@ -370,6 +403,7 @@ def _build_ir(
         category_rules=category_rules,
         document_requirements=document_rules,
         pre_authorization_rules=pre_authorization_rules,
+        waiting_period_rules=waiting_period_rules,
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",
@@ -383,5 +417,5 @@ def _build_ir(
             "copay",
             "final_recommendation",
         ),
-        engine_contract_version="policy-evaluator-v1",
+        engine_contract_version="policy-evaluator-v2",
     )
