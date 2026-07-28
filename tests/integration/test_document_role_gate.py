@@ -453,6 +453,82 @@ async def test_assignment_tc005_waiting_period_decides_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc006_partial_dental_decision_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_member_utilization(
+        app.state.session_factory,
+        member_id="EMP002",
+        as_of_date="2024-10-15",
+    )
+    bill = _assignment_tc006_document()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp002",
+                "Idempotency-Key": "assignment-tc006-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc006_metadata())},
+            files=[("files", ("dental_bill.jpg", bill, "image/jpeg"))],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp002"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "PARTIAL",
+        "approved_amount": "8000.00",
+        "currency": "INR",
+    }
+    assert body["explanation"] == {
+        "summary": "₹8,000.00 approved; ₹4,000.00 excluded from the dental claim.",
+        "deductions": [
+            {
+                "code": "DENTAL_LINE_ITEM_EXCLUDED",
+                "label": "Teeth Whitening is excluded by the dental policy.",
+                "amount": "4000.00",
+            }
+        ],
+        "line_items": [
+            {
+                "concept": "root_canal_treatment",
+                "label": "Root Canal Treatment",
+                "claimed_amount": "8000.00",
+                "approved_amount": "8000.00",
+                "status": "APPROVED",
+                "reason_code": "DENTAL_LINE_ITEM_COVERED",
+            },
+            {
+                "concept": "teeth_whitening",
+                "label": "Teeth Whitening",
+                "claimed_amount": "4000.00",
+                "approved_amount": "0.00",
+                "status": "REJECTED",
+                "reason_code": "DENTAL_LINE_ITEM_EXCLUDED",
+            },
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -727,6 +803,38 @@ def _assignment_tc005_documents() -> tuple[bytes, bytes]:
     return prescription, bill
 
 
+def _assignment_tc006_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP002",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "DENTAL",
+        "treatment_date": "2024-10-15",
+        "claimed_amount": "12000.00",
+        "currency": "INR",
+        "documents": [{"upload_index": 0, "client_document_id": "F011"}],
+    }
+
+
+def _assignment_tc006_document() -> bytes:
+    return _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "hospital_name": "Smile Dental Clinic",
+                "line_items": [
+                    {"amount": 8000, "description": "Root Canal Treatment"},
+                    {"amount": 4000, "description": "Teeth Whitening"},
+                ],
+                "patient_name": "Priya Singh",
+                "total": 12000,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+
+
 def _assignment_tc004_documents() -> tuple[bytes, bytes]:
     prescription = _assignment_document_image(
         "PRESCRIPTION\n"
@@ -801,25 +909,38 @@ async def _import_decision_utilization(factory) -> None:
 
 
 async def _import_tc005_utilization(factory) -> None:
+    await _import_member_utilization(
+        factory,
+        member_id="EMP005",
+        as_of_date="2024-10-15",
+    )
+
+
+async def _import_member_utilization(
+    factory,
+    *,
+    member_id: str,
+    as_of_date: str,
+) -> None:
     await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
         _POLICY_BYTES,
         source_name="policy_terms.json",
         member_data_bytes=json.dumps(
             {
                 "policy_id": "PLUM_GHI_2024",
-                "as_of_date": "2024-10-15",
+                "as_of_date": as_of_date,
                 "claim_history": [],
                 "utilization": [
                     {
-                        "member_id": "EMP005",
+                        "member_id": member_id,
                         "period_start": "2024-04-01",
                         "period_end": "2025-03-31",
                         "used_amount": "0.00",
                         "currency": "INR",
-                        "as_of_date": "2024-10-15",
+                        "as_of_date": as_of_date,
                     }
                 ],
             }
         ).encode(),
-        member_data_source_name="tc005-no-fixture-member-facts.json",
+        member_data_source_name=f"{member_id.casefold()}-no-fixture-member-facts.json",
     )
