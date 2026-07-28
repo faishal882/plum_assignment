@@ -25,9 +25,9 @@ def migrated_database_url(postgres_database_url: str) -> Iterator[str]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE claim_actions, idempotency_keys, document_versions, "
-                "documents, claim_work_items, audit_events, claim_versions, claims "
-                "RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE workflow_effects, workflow_runs, claim_actions, "
+                "idempotency_keys, document_versions, documents, claim_work_items, "
+                "audit_events, claim_versions, claims RESTART IDENTITY CASCADE"
             )
         )
         connection.execute(

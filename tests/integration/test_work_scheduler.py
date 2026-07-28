@@ -262,6 +262,7 @@ async def test_concurrent_enqueue_deduplicates_the_operation_key(
     claim_id = UUID(submitted.json()["claim_id"])
     request = WorkRequest(
         claim_id=claim_id,
+        claim_version=1,
         operation_key=f"claim:{claim_id}:diagnostics:v1",
         available_at=now,
         max_attempts=3,
