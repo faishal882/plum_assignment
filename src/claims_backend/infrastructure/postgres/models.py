@@ -930,3 +930,32 @@ class MemberActionRow(Base):
     required_document_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     details: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class IdentityReconciliationRow(Base):
+    __tablename__ = "identity_reconciliations"
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            name="identity_reconciliations_claim_version_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    member_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("member_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    member_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    candidates: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

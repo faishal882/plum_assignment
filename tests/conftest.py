@@ -65,7 +65,8 @@ def _reset_database(database_url: str, *, include_setup: bool) -> None:
         )
         connection.execute(
             text(
-                "TRUNCATE TABLE member_actions, document_triage_results, "
+                "TRUNCATE TABLE identity_reconciliations, member_actions, "
+                "document_triage_results, "
                 "rule_results, decision_records, casefiles, "
                 "processing_fixtures, workflow_effects, workflow_runs, claim_actions, "
                 "idempotency_keys, document_versions, documents, claim_work_items, "
