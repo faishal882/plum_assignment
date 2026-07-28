@@ -78,7 +78,7 @@ class PostgresReviewRepository:
             parent=parent,
         ):
             result = await self._get_task(task_id)
-            self._log("review_task_inspected", parent, task_id, "OK")
+            self._log("review_task_inspected", parent, "OK")
             return result
 
     async def _get_task(self, task_id: UUID) -> ReviewTaskDetail | None:
@@ -159,7 +159,6 @@ class PostgresReviewRepository:
             self._log(
                 "review_task_resolved",
                 parent,
-                task_id,
                 "OK",
             )
             return result
@@ -275,6 +274,7 @@ class PostgresReviewRepository:
                         WorkflowRunRow.id,
                         WorkflowEventRow.trace_id,
                         WorkflowEventRow.span_id,
+                        WorkflowEventRow.attempt_number,
                     )
                     .join(
                         ClaimWorkItemRow,
@@ -308,6 +308,7 @@ class PostgresReviewRepository:
             workflow_run_id=row.id,
             trace_id=row.trace_id,
             span_id=row.span_id,
+            attempt=row.attempt_number,
         )
 
     @contextmanager
@@ -334,7 +335,6 @@ class PostgresReviewRepository:
         self,
         event_name: str,
         parent: "_ReviewTraceParent | None",
-        task_id: UUID,
         outcome: str,
     ) -> None:
         if self._observability is None:
@@ -347,6 +347,8 @@ class PostgresReviewRepository:
                 workflow_run_id=(
                     None if parent is None else str(parent.workflow_run_id)
                 ),
+                attempt=None if parent is None else parent.attempt,
+                duration_ms=0,
                 outcome=outcome,
             )
         )
@@ -360,11 +362,13 @@ class _ReviewTraceParent:
         workflow_run_id: UUID,
         trace_id: str,
         span_id: str,
+        attempt: int,
     ) -> None:
         self.claim_id = claim_id
         self.workflow_run_id = workflow_run_id
         self.trace_id = trace_id
         self.span_id = span_id
+        self.attempt = attempt
 
 
 def _resolved_values(
