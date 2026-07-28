@@ -782,6 +782,70 @@ async def test_assignment_tc010_network_discount_decision_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc012_excluded_treatment_decision_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_member_utilization(
+        app.state.session_factory,
+        member_id="EMP009",
+        as_of_date="2024-10-18",
+    )
+    prescription, bill = _assignment_tc012_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp009",
+                "Idempotency-Key": "assignment-tc012-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc012_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp009"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "REJECTED",
+        "approved_amount": "0.00",
+        "currency": "INR",
+    }
+    assert body["explanation"] == {
+        "summary": (
+            "This claim is excluded because Obesity and weight loss programs are not covered by "
+            "the policy."
+        ),
+        "deductions": [
+            {
+                "code": "EXCLUDED_CONDITION",
+                "label": "Obesity and weight loss programs",
+                "amount": "8000.00",
+            }
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -1270,6 +1334,57 @@ def _assignment_tc010_documents() -> tuple[bytes, bytes]:
                 ],
                 "patient_name": "Deepak Shah",
                 "total": 4500,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
+
+
+def _assignment_tc012_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP009",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-10-18",
+        "claimed_amount": "8000.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F023"},
+            {"upload_index": 1, "client_document_id": "F024"},
+        ],
+    }
+
+
+def _assignment_tc012_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {
+                "diagnosis": "Morbid Obesity — BMI 37",
+                "doctor_name": "Dr. P. Banerjee",
+                "doctor_registration": "WB/34567/2015",
+                "treatment": "Bariatric Consultation and Customised Diet Plan",
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "line_items": [
+                    {"amount": 3000, "description": "Bariatric Consultation"},
+                    {
+                        "amount": 5000,
+                        "description": "Personalised Diet and Nutrition Program",
+                    },
+                ],
+                "total": 8000,
             },
             sort_keys=True,
             indent=2,
