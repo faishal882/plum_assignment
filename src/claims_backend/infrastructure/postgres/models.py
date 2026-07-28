@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -999,4 +1000,77 @@ class DocumentPageArtifactRow(Base):
     width: Mapped[int] = mapped_column(Integer, nullable=False)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
     render_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OcrPageResultRow(Base):
+    __tablename__ = "ocr_page_results"
+    __table_args__ = (
+        CheckConstraint("page_number > 0", name="ocr_page_results_page_positive"),
+        CheckConstraint(
+            "retry_attempts >= 0",
+            name="ocr_page_results_retry_attempts_nonnegative",
+        ),
+        UniqueConstraint(
+            "page_artifact_id",
+            "provider_name",
+            "provider_version",
+            name="ocr_page_results_artifact_provider_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    page_artifact_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_page_artifacts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    profile: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    retry_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OcrObservationRow(Base):
+    __tablename__ = "ocr_observations"
+    __table_args__ = (
+        CheckConstraint("page_number > 0", name="ocr_observations_page_positive"),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="ocr_observations_confidence_range",
+        ),
+        UniqueConstraint(
+            "observation_id",
+            name="ocr_observations_observation_id_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    ocr_page_result_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("ocr_page_results.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    observation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    region: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    source_id: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
