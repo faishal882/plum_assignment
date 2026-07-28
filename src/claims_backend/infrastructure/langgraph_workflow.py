@@ -42,6 +42,8 @@ class WorkflowState(TypedDict):
     required_roles: list[str]
     affected_documents: list[dict[str, str]]
     identity_conflict: list[dict[str, str]]
+    rendered_page_count: int
+    ocr_observation_count: int
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -68,13 +70,15 @@ class WorkflowUpdate(TypedDict, total=False):
     required_roles: list[str]
     affected_documents: list[dict[str, str]]
     identity_conflict: list[dict[str, str]]
+    rendered_page_count: int
+    ocr_observation_count: int
     terminal_committed: bool
     effect_count: int
 
 
 class LangGraphClaimWorkflow(WorkflowRuntime):
     graph_name = "claim-processing"
-    graph_version = "claim-processing-v3"
+    graph_version = "claim-processing-v4"
 
     def __init__(
         self,
@@ -114,6 +118,8 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 builder.add_node("adjudicate", self._adjudicate)
                 builder.add_node("commit_decision", self._commit_decision)
                 builder.add_node("triage_documents", self._triage_documents)
+                builder.add_node("render_documents", self._render_documents)
+                builder.add_node("ocr_documents", self._ocr_documents)
                 builder.add_node("commit_member_action", self._commit_member_action)
                 builder.add_edge("load_claim", "media_inspect")
                 builder.add_conditional_edges(
@@ -133,9 +139,18 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     _after_triage,
                     {
                         "commit_member_action": "commit_member_action",
-                        "finalize": "finalize",
+                        "render_documents": "render_documents",
                     },
                 )
+                builder.add_conditional_edges(
+                    "render_documents",
+                    _after_rendering,
+                    {
+                        "commit_member_action": "commit_member_action",
+                        "ocr_documents": "ocr_documents",
+                    },
+                )
+                builder.add_edge("ocr_documents", "finalize")
                 builder.add_edge("commit_member_action", END)
             builder.add_edge(START, "load_claim")
             builder.add_edge("finalize", END)
@@ -170,6 +185,8 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "required_roles": [],
                     "affected_documents": [],
                     "identity_conflict": [],
+                    "rendered_page_count": 0,
+                    "ocr_observation_count": 0,
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -365,6 +382,67 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         await self._after_effect("commit_member_action")
         return {"terminal_committed": True}
 
+    async def _render_documents(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("render_documents")
+        result = await self._required_processor().render_documents(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        action = result.action
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"document-pages-prepared:v{state['claim_version']}",
+            ("DOCUMENT_RENDERING_BLOCKED" if action is not None else "DOCUMENT_PAGES_RENDERED"),
+            {
+                "rendered_page_count": result.rendered_page_count,
+                "action_required": action is not None,
+                "action_code": None if action is None else action.code,
+            },
+        )
+        await self._after_effect("render_documents")
+        if action is None:
+            return {
+                "rendered_page_count": result.rendered_page_count,
+                "effect_count": state["effect_count"] + int(created),
+            }
+        return {
+            "rendered_page_count": result.rendered_page_count,
+            "action_required": True,
+            "action_code": action.code or "",
+            "action_message": action.message or "",
+            "observed_roles": list(action.observed_roles),
+            "required_roles": list(action.required_roles),
+            "affected_documents": [
+                {
+                    "client_document_id": document.client_document_id,
+                    "observed_role": document.observed_role,
+                    "requested_action": document.requested_action,
+                }
+                for document in action.affected_documents
+            ],
+            "identity_conflict": [],
+            "effect_count": state["effect_count"] + int(created),
+        }
+
+    async def _ocr_documents(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("ocr_documents")
+        observation_count = await self._required_processor().ocr_documents(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"page-ocr-completed:v{state['claim_version']}",
+            "PAGE_OCR_COMPLETED",
+            {
+                "rendered_page_count": state["rendered_page_count"],
+                "observation_count": observation_count,
+            },
+        )
+        await self._after_effect("ocr_documents")
+        return {
+            "ocr_observation_count": observation_count,
+            "effect_count": state["effect_count"] + int(created),
+        }
+
     def _required_processor(self) -> ClaimProcessor:
         if self._processor is None:
             raise WorkflowIncompleteError
@@ -431,8 +509,14 @@ def _after_media_inspection(
 
 def _after_triage(
     state: WorkflowState,
-) -> Literal["commit_member_action", "finalize"]:
-    return "commit_member_action" if state["action_required"] else "finalize"
+) -> Literal["commit_member_action", "render_documents"]:
+    return "commit_member_action" if state["action_required"] else "render_documents"
+
+
+def _after_rendering(
+    state: WorkflowState,
+) -> Literal["commit_member_action", "ocr_documents"]:
+    return "commit_member_action" if state["action_required"] else "ocr_documents"
 
 
 def _checkpoint_url(database_url: str) -> str:

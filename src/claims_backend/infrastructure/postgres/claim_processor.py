@@ -5,6 +5,13 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from claims_backend.application.intelligence import (
+    OcrApplication,
+    PageArtifactApplication,
+    PageArtifactRepository,
+    RenderedPageTooLargeError,
+    SourceDocument,
+)
 from claims_backend.domain.adjudication import (
     AdjudicationProposal,
     ClaimCasefile,
@@ -12,7 +19,11 @@ from claims_backend.domain.adjudication import (
     FactState,
     RuleResult,
 )
-from claims_backend.domain.evidence import StructuredEvidencePayload, TriageModelOutput
+from claims_backend.domain.evidence import (
+    DocumentRole,
+    StructuredEvidencePayload,
+    TriageModelOutput,
+)
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
     AffectedDocument,
@@ -22,6 +33,7 @@ from claims_backend.domain.processing import (
     EarlyGateResult,
     FrozenCasefileRef,
     IdentityConflictDetail,
+    PagePreparationResult,
     ProcessingRoute,
 )
 from claims_backend.domain.reconciliation import (
@@ -59,9 +71,19 @@ class ProcessingInvariantError(RuntimeError):
 
 
 class PostgresClaimProcessor:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        page_artifacts: PageArtifactApplication | None = None,
+        page_repository: PageArtifactRepository | None = None,
+        ocr: OcrApplication | None = None,
+    ) -> None:
         self._session_factory = session_factory
         self._adjudicator = DeterministicPolicyAdjudicator()
+        self._page_artifacts = page_artifacts
+        self._page_repository = page_repository
+        self._ocr = ocr
 
     async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
         async with self._session_factory() as session:
@@ -692,6 +714,117 @@ class PostgresClaimProcessor:
             run.completed_at = now
             run.updated_at = now
             await session.flush()
+
+    async def render_documents(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> PagePreparationResult:
+        if self._page_artifacts is None:
+            raise ProcessingInvariantError("Page artifact pipeline is not configured.")
+        async with self._session_factory() as session:
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            snapshots = claim_version.submission["documents"]
+            if not isinstance(snapshots, list):
+                raise ProcessingInvariantError
+            triage_rows = (
+                await session.scalars(
+                    select(DocumentTriageResultRow).where(
+                        DocumentTriageResultRow.claim_id == workflow_run.claim_id,
+                        DocumentTriageResultRow.claim_version == workflow_run.claim_version,
+                    )
+                )
+            ).all()
+            triage_by_client_id = {row.client_document_id: row for row in triage_rows}
+
+        rendered_page_count = 0
+        for snapshot in sorted(
+            (item for item in snapshots if isinstance(item, dict)),
+            key=lambda item: int(str(item["upload_index"])),
+        ):
+            client_document_id = str(snapshot["client_document_id"])
+            triage = triage_by_client_id.get(client_document_id)
+            if triage is None:
+                raise ProcessingInvariantError("Document triage provenance is incomplete.")
+            source = SourceDocument(
+                document_id=UUID(str(snapshot["document_id"])),
+                document_version_id=UUID(str(snapshot["document_version_id"])),
+                relative_path=str(
+                    await self._document_relative_path(UUID(str(snapshot["document_version_id"])))
+                ),
+                media_type=str(snapshot["media_type"]),
+                sha256=str(snapshot["sha256"]),
+                page_count=int(str(snapshot["page_count"])),
+            )
+            try:
+                artifacts = await self._page_artifacts.process(source)
+            except RenderedPageTooLargeError as error:
+                role_label = triage.role.replace("_", " ").lower()
+                action = EarlyGateResult(
+                    action_required=True,
+                    code="PAGE_TOO_LARGE_FOR_OCR",
+                    message=(
+                        f"Page {error.page_number} of the {role_label} "
+                        f"({client_document_id}) is too large for OCR. "
+                        "Please replace it with a clearer or smaller document."
+                    ),
+                    observed_roles=tuple(row.role for row in triage_rows),
+                    required_roles=(triage.role,),
+                    affected_documents=(
+                        AffectedDocument(
+                            client_document_id=client_document_id,
+                            observed_role=triage.role,
+                            requested_action="REPLACE",
+                        ),
+                    ),
+                )
+                return PagePreparationResult(
+                    rendered_page_count=rendered_page_count,
+                    action=action,
+                )
+            rendered_page_count += len(artifacts)
+        return PagePreparationResult(rendered_page_count=rendered_page_count)
+
+    async def ocr_documents(self, workflow_run: WorkflowRun) -> int:
+        if self._ocr is None or self._page_repository is None:
+            raise ProcessingInvariantError("OCR pipeline is not configured.")
+        async with self._session_factory() as session:
+            triage_rows = (
+                await session.scalars(
+                    select(DocumentTriageResultRow)
+                    .where(
+                        DocumentTriageResultRow.claim_id == workflow_run.claim_id,
+                        DocumentTriageResultRow.claim_version == workflow_run.claim_version,
+                    )
+                    .order_by(DocumentTriageResultRow.client_document_id)
+                )
+            ).all()
+        observation_count = 0
+        for triage in triage_rows:
+            artifacts = await self._page_repository.list_for_document_version(
+                triage.document_version_id
+            )
+            if not artifacts:
+                raise ProcessingInvariantError("Rendered page artifacts are missing.")
+            observations = await self._ocr.process(
+                artifacts,
+                DocumentRole(triage.role),
+            )
+            observation_count += len(observations)
+        return observation_count
+
+    async def _document_relative_path(self, document_version_id: UUID) -> str:
+        async with self._session_factory() as session:
+            row = await session.get(DocumentVersionRow, document_version_id)
+        if row is None:
+            raise ProcessingInvariantError("Document version is missing.")
+        return row.relative_path
 
     async def inspect_trace(self, claim_id: UUID) -> ClaimProcessingTrace | None:
         async with self._session_factory() as session:

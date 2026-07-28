@@ -4,6 +4,7 @@ from uuid import UUID
 from claims_backend.domain.processing import (
     EarlyGateResult,
     FrozenCasefileRef,
+    PagePreparationResult,
     ProcessingRoute,
 )
 from claims_backend.domain.work import WorkLease
@@ -40,3 +41,10 @@ class ClaimProcessor(Protocol):
         lease: WorkLease,
         result: EarlyGateResult,
     ) -> None: ...
+
+    async def render_documents(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> PagePreparationResult: ...
+
+    async def ocr_documents(self, workflow_run: WorkflowRun) -> int: ...

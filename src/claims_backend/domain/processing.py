@@ -42,6 +42,12 @@ class EarlyGateResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PagePreparationResult:
+    rendered_page_count: int
+    action: EarlyGateResult | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CasefileTrace:
     id: UUID
     content_hash: str
