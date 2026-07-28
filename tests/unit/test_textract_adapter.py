@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
 from unittest.mock import Mock, patch
 from uuid import UUID
 
@@ -145,7 +147,6 @@ def test_textract_client_applies_configured_timeout_and_attempt_limit() -> None:
     create_textract_client(
         region="ap-south-1",
         read_timeout_seconds=31,
-        max_attempts=3,
         client_factory=factory,
     )
 
@@ -154,7 +155,42 @@ def test_textract_client_applies_configured_timeout_and_attempt_limit() -> None:
     assert factory.call_args.kwargs["region_name"] == "ap-south-1"
     provider_config = factory.call_args.kwargs["config"]
     assert provider_config.read_timeout == 31
-    assert provider_config.retries["total_max_attempts"] == 3
+    assert provider_config.retries["total_max_attempts"] == 1
+
+
+def test_textract_adapter_bounds_concurrent_provider_calls() -> None:
+    release = Event()
+    two_started = Event()
+    lock = Lock()
+    active = 0
+    maximum_active = 0
+
+    class BlockingClient:
+        def detect_document_text(self, *, Document):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+                if active == 2:
+                    two_started.set()
+            assert release.wait(timeout=2)
+            with lock:
+                active -= 1
+            return _blocks_response("bounded-request")
+
+    adapter = TextractAdapter(BlockingClient())
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [
+            pool.submit(adapter.analyze, _page(), DocumentRole.UNKNOWN)
+            for _ in range(3)
+        ]
+        assert two_started.wait(timeout=2)
+        assert maximum_active == 2
+        release.set()
+        for future in futures:
+            future.result(timeout=2)
+
+    assert maximum_active == 2
 
 
 def _client():

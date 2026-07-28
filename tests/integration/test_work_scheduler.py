@@ -10,7 +10,14 @@ from pypdf import PdfWriter
 from sqlalchemy import select, update
 
 from claims_backend.api.app import create_app
-from claims_backend.application.work import LeaseLostError, WorkCompleted, WorkerService
+from claims_backend.application.failure_policy import RetrySchedule
+from claims_backend.application.work import (
+    LeaseLostError,
+    WorkCompleted,
+    WorkerService,
+    WorkFailed,
+    WorkRetry,
+)
 from claims_backend.config import Settings
 from claims_backend.domain.work import RetryDisposition, WorkRequest
 from claims_backend.infrastructure.postgres.models import ClaimWorkItemRow
@@ -178,6 +185,43 @@ async def test_retry_is_durable_and_not_leaseable_until_its_due_time(
 
 
 @pytest.mark.asyncio
+async def test_worker_persists_exponential_retry_with_selected_jitter(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "jittered-retry")
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    schedule = RetrySchedule(
+        base_delay=timedelta(seconds=4),
+        maximum_delay=timedelta(seconds=30),
+        jitter_ratio=0.25,
+        clock=clock,
+        entropy=lambda: 0.5,
+    )
+
+    async def handler(lease):
+        return WorkRetry(
+            "TEXTRACT_TIMEOUT",
+            schedule.available_at(attempt_number=lease.attempt_number),
+        )
+
+    assert await WorkerService(scheduler).run_once("jitter-worker", handler)
+    async with app.state.session_factory() as session:
+        waiting = await session.scalar(select(ClaimWorkItemRow))
+
+    assert waiting is not None
+    assert waiting.status == "AVAILABLE"
+    assert waiting.available_at == clock() + timedelta(seconds=4.5)
+    assert waiting.last_failure_code == "TEXTRACT_TIMEOUT"
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_retry_budget_exhaustion_marks_work_failed(
     migrated_database_url: str,
     tmp_path,
@@ -208,6 +252,57 @@ async def test_retry_budget_exhaustion_marks_work_failed(
     assert failed.status == "FAILED"
     assert failed.last_failure_code == "PROVIDER_UNAVAILABLE"
     assert failed.attempt_count == failed.max_attempts == 1
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "deterministic-failure")
+
+    scheduler = PostgresWorkScheduler(app.state.session_factory)
+
+    async def handler(_):
+        return WorkFailed("MODEL_SEMANTIC_VALIDATION_FAILED")
+
+    assert await WorkerService(scheduler).run_once("failure-worker", handler)
+    async with app.state.session_factory() as session:
+        failed = await session.scalar(select(ClaimWorkItemRow))
+
+    assert failed is not None
+    assert failed.status == "FAILED"
+    assert failed.attempt_count == 1
+    assert failed.max_attempts == 3
+    assert failed.last_failure_code == "MODEL_SEMANTIC_VALIDATION_FAILED"
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_submission_persists_configured_provider_attempt_budget(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            data_root=tmp_path,
+            provider_max_attempts=2,
+        )
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "configured-attempts")
+
+    async with app.state.session_factory() as session:
+        work = await session.scalar(select(ClaimWorkItemRow))
+
+    assert work is not None
+    assert work.max_attempts == 2
     await app.state.engine.dispose()
 
 

@@ -4,10 +4,18 @@ from time import monotonic
 from typing import cast
 
 from botocore.config import Config as BotoConfig  # type: ignore[import-untyped]
+from botocore.exceptions import (  # type: ignore[import-untyped]
+    BotoCoreError,
+    ClientError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 from langchain_aws import ChatBedrockConverse
 from pydantic import BaseModel
 
-from claims_backend.domain.extraction import ModelSchemaValidationError
+from claims_backend.config import Settings
+from claims_backend.domain.extraction import ModelProviderError, ModelSchemaValidationError
 from claims_backend.model.routing import ModelRouteConfig
 from claims_backend.model.transport import ModelInvocation
 
@@ -18,23 +26,25 @@ class ChatBedrockConverseTransport:
         *,
         connect_timeout_seconds: int = 30,
         read_timeout_seconds: int = 90,
-        max_attempts: int = 3,
         concurrency_limit: int = 2,
     ) -> None:
         for name, value in (
             ("connect_timeout_seconds", connect_timeout_seconds),
             ("read_timeout_seconds", read_timeout_seconds),
-            ("max_attempts", max_attempts),
             ("concurrency_limit", concurrency_limit),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
-        if max_attempts > 3:
-            raise ValueError("max_attempts cannot exceed three")
         self._connect_timeout_seconds = connect_timeout_seconds
         self._read_timeout_seconds = read_timeout_seconds
-        self._max_attempts = max_attempts
         self._permit = BoundedSemaphore(concurrency_limit)
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "ChatBedrockConverseTransport":
+        return cls(
+            read_timeout_seconds=settings.bedrock_timeout_seconds,
+            concurrency_limit=settings.bedrock_concurrency_limit,
+        )
 
     def invoke(
         self,
@@ -50,7 +60,8 @@ class ChatBedrockConverseTransport:
                 connect_timeout=self._connect_timeout_seconds,
                 read_timeout=self._read_timeout_seconds,
                 retries={
-                    "total_max_attempts": self._max_attempts,
+                    # Workflow retries are durable and auditable; do not hide attempts here.
+                    "total_max_attempts": 1,
                     "mode": "standard",
                 },
             ),
@@ -61,8 +72,39 @@ class ChatBedrockConverseTransport:
             include_raw=True,
         )
         started = monotonic()
-        with self._permit:
-            raw_result = structured.invoke(messages)
+        try:
+            with self._permit:
+                raw_result = structured.invoke(messages)
+        except (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError) as error:
+            raise ModelProviderError(
+                "Bedrock request timed out.",
+                code="BEDROCK_TIMEOUT",
+                retryable=True,
+            ) from error
+        except ClientError as error:
+            provider_code = str(error.response.get("Error", {}).get("Code", "UNKNOWN"))
+            metadata = _optional_mapping(error.response.get("ResponseMetadata"))
+            request_id = metadata.get("RequestId")
+            status = metadata.get("HTTPStatusCode")
+            throttled = provider_code in {
+                "ThrottlingException",
+                "TooManyRequestsException",
+                "ServiceQuotaExceededException",
+            }
+            raise ModelProviderError(
+                "Bedrock request failed.",
+                code=("BEDROCK_THROTTLED" if throttled else "BEDROCK_PROVIDER_ERROR"),
+                retryable=throttled or (isinstance(status, int) and status >= 500),
+                provider_code=provider_code,
+                provider_request_id=(request_id if isinstance(request_id, str) else None),
+            ) from error
+        except BotoCoreError as error:
+            raise ModelProviderError(
+                "Bedrock client failed.",
+                code="BEDROCK_PROVIDER_ERROR",
+                retryable=True,
+                provider_code=type(error).__name__,
+            ) from error
         latency_ms = max(0, round((monotonic() - started) * 1000))
         result = _mapping(raw_result)
         if result.get("parsing_error") is not None:
@@ -97,6 +139,10 @@ def _mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ModelSchemaValidationError("Bedrock response metadata has an invalid shape.")
     return value
+
+
+def _optional_mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _nonnegative_integer(value: object) -> int:

@@ -2,8 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 from unittest.mock import Mock, patch
 
+import pytest
+from botocore.exceptions import ReadTimeoutError
+
 from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
+    ModelProviderError,
     ModelRoute,
 )
 from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
@@ -47,7 +51,6 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     ) as constructor:
         result = ChatBedrockConverseTransport(
             read_timeout_seconds=91,
-            max_attempts=3,
         ).invoke(
             config,
             ComplexExtractionOutput,
@@ -63,7 +66,7 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     assert constructor.call_args.kwargs["temperature"] == 0
     provider_config = constructor.call_args.kwargs["config"]
     assert provider_config.read_timeout == 91
-    assert provider_config.retries["total_max_attempts"] == 3
+    assert provider_config.retries["total_max_attempts"] == 1
     model.with_structured_output.assert_called_once_with(
         ComplexExtractionOutput,
         method="function_calling",
@@ -142,3 +145,32 @@ def test_bedrock_transport_bounds_concurrent_provider_calls() -> None:
             future.result(timeout=2)
 
     assert maximum_active == 2
+
+
+def test_bedrock_timeout_has_a_retryable_typed_failure() -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
+    ).resolve(ModelRoute.COMPLEX_EXTRACTION)
+    runnable = Mock()
+    runnable.invoke.side_effect = ReadTimeoutError(
+        endpoint_url="https://bedrock-runtime.us-west-2.amazonaws.com"
+    )
+    model = Mock()
+    model.with_structured_output.return_value = runnable
+
+    with (
+        patch(
+            "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
+            return_value=model,
+        ),
+        pytest.raises(ModelProviderError) as captured,
+    ):
+        ChatBedrockConverseTransport().invoke(
+            config,
+            ComplexExtractionOutput,
+            [("human", "synthetic")],
+        )
+
+    assert captured.value.code == "BEDROCK_TIMEOUT"
+    assert captured.value.retryable is True

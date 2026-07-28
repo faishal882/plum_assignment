@@ -15,6 +15,7 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
 )
 
 from claims_backend.application.intelligence import RenderedPage
+from claims_backend.config import Settings
 from claims_backend.domain.evidence import DocumentRole, NormalizedRegion
 from claims_backend.domain.ocr import (
     OcrMalformedResponseError,
@@ -146,15 +147,12 @@ def create_textract_client(
     *,
     region: str,
     read_timeout_seconds: int = 30,
-    max_attempts: int = 3,
     client_factory: Callable[..., object] | None = None,
 ) -> TextractClient:
     if not region:
         raise ValueError("region cannot be empty")
     if read_timeout_seconds <= 0:
         raise ValueError("read_timeout_seconds must be greater than zero")
-    if not 0 < max_attempts <= 3:
-        raise ValueError("max_attempts must be between one and three")
     factory = client_factory or boto3.client
     return cast(
         TextractClient,
@@ -165,11 +163,27 @@ def create_textract_client(
                 connect_timeout=30,
                 read_timeout=read_timeout_seconds,
                 retries={
-                    "total_max_attempts": max_attempts,
+                    # Workflow retries are durable and auditable; do not hide attempts here.
+                    "total_max_attempts": 1,
                     "mode": "standard",
                 },
             ),
         ),
+    )
+
+
+def textract_adapter_from_settings(
+    settings: Settings,
+    *,
+    client_factory: Callable[..., object] | None = None,
+) -> TextractAdapter:
+    return TextractAdapter(
+        create_textract_client(
+            region=settings.aws_region,
+            read_timeout_seconds=settings.textract_timeout_seconds,
+            client_factory=client_factory,
+        ),
+        concurrency_limit=settings.textract_concurrency_limit,
     )
 
 

@@ -25,6 +25,8 @@ class WorkScheduler(Protocol):
         available_at: datetime,
     ) -> RetryDisposition: ...
 
+    async def fail(self, lease: WorkLease, failure_code: str) -> None: ...
+
 
 class LeaseLostError(Exception):
     pass
@@ -54,7 +56,12 @@ class WorkRetry:
     available_at: datetime
 
 
-type WorkOutcome = WorkCompleted | WorkCommitted | WorkRetry
+@dataclass(frozen=True, slots=True)
+class WorkFailed:
+    failure_code: str
+
+
+type WorkOutcome = WorkCompleted | WorkCommitted | WorkRetry | WorkFailed
 type WorkHandler = Callable[[WorkLease], Awaitable[WorkOutcome]]
 
 
@@ -82,4 +89,6 @@ class WorkerService:
                 outcome.failure_code,
                 outcome.available_at,
             )
+        elif isinstance(outcome, WorkFailed):
+            await self._scheduler.fail(lease, outcome.failure_code)
         return True

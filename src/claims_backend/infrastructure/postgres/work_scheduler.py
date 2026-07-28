@@ -236,6 +236,33 @@ class PostgresWorkScheduler(WorkScheduler):
             row.available_at = retry_at
             return RetryDisposition.SCHEDULED
 
+    async def fail(self, lease: WorkLease, failure_code: str) -> None:
+        _validate_failure_code(failure_code)
+        now = _aware_utc(self._clock())
+        async with self._session_factory.begin() as session:
+            failed_id = await session.scalar(
+                update(ClaimWorkItemRow)
+                .where(
+                    ClaimWorkItemRow.id == lease.work_item_id,
+                    ClaimWorkItemRow.status == WorkStatus.LEASED.value,
+                    ClaimWorkItemRow.lease_owner == lease.worker_id,
+                    ClaimWorkItemRow.lease_token == lease.lease_token,
+                    ClaimWorkItemRow.lease_until == lease.lease_until,
+                    ClaimWorkItemRow.lease_until > now,
+                )
+                .values(
+                    status=WorkStatus.FAILED.value,
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_until=None,
+                    last_failure_code=failure_code,
+                    updated_at=now,
+                )
+                .returning(ClaimWorkItemRow.id)
+            )
+            if failed_id is None:
+                raise LeaseLostError
+
 
 def _validate_lease_request(worker_id: str, limit: int, ttl: timedelta) -> None:
     if _WORKER_ID_PATTERN.fullmatch(worker_id) is None:
