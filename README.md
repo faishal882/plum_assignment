@@ -102,6 +102,32 @@ lease lasts five minutes. Retry failures use bounded sanitized codes and persist
 completes or reschedules through a separate scheduler transaction. The table remains authoritative
 across worker crashes; no FastAPI background task, SQS, Redis, or in-memory queue is involved.
 
+## Resumable workflow skeleton
+
+Phase 7 introduces one fixed typed LangGraph behind the project-owned `WorkflowRuntime` boundary.
+The current skeleton deliberately performs only two framework-neutral steps—loading an immutable
+claim-version reference and recording skeleton completion. OCR, extraction, policy evaluation, and
+decisions are added by later phases rather than simulated here.
+
+Every process work item carries a normalized `claim_version`. Its first execution atomically
+creates one `workflow_runs` record pinned to the work item, claim version, graph name, and graph
+version. The workflow-run UUID is used unchanged as LangGraph's `thread_id`, while the project
+record stores the `skeleton-v1` graph version independently of LangGraph's reserved root checkpoint
+namespace. Graph state is limited to IDs, the operation key, version, booleans, and a small effect
+count—never document bytes, OCR bodies, prompts, or provider responses.
+
+Call `LangGraphClaimWorkflow.setup()` once when initializing a fresh local worker database. The
+LangGraph PostgreSQL adapter owns its checkpoint tables, while Alembic owns `workflow_runs`,
+`workflow_effects`, and all other application tables. Alembic explicitly ignores the four
+framework checkpoint tables during drift detection.
+
+LangGraph checkpoints each completed super-step. If a worker dies after a checkpoint, the
+replacement worker reuses the stable run/thread ID and invokes the graph with no new input, so
+execution resumes at the next node. If a node commits an effect but dies before its checkpoint,
+the node may run again; `(workflow_run_id, effect_key)` uniqueness makes that write idempotent.
+The work lease is completed only after both the graph and project-owned workflow run reach
+completion.
+
 ## Local identities
 
 Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
