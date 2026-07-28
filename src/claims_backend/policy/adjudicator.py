@@ -11,7 +11,7 @@ from claims_backend.domain.adjudication import (
     RuleResult,
     RuleStatus,
 )
-from claims_backend.domain.policy import PolicyIR
+from claims_backend.domain.policy import PolicyIR, PreAuthorizationMode
 from claims_backend.domain.reconciliation import EvidenceSourceType
 
 
@@ -106,6 +106,23 @@ class DeterministicPolicyAdjudicator:
                 policy,
                 results,
             )
+        pre_authorization_result = _pre_authorization_result(
+            sequence=len(results) + 1,
+            casefile=casefile,
+            policy=policy,
+            amount=amount,
+            roles=roles,
+        )
+        if pre_authorization_result is not None:
+            results.append(pre_authorization_result)
+            if pre_authorization_result.status is RuleStatus.FAIL:
+                return _proposal(
+                    AdjudicationRecommendation.REJECTED,
+                    0,
+                    casefile,
+                    policy,
+                    results,
+                )
         excluded_line_items = False
         if casefile.category == "DENTAL":
             amount, excluded_line_items = _evaluate_dental_line_items(
@@ -189,6 +206,51 @@ class DeterministicPolicyAdjudicator:
             policy,
             results,
         )
+
+
+def _pre_authorization_result(
+    *,
+    sequence: int,
+    casefile: ClaimCasefile,
+    policy: PolicyIR,
+    amount: int,
+    roles: set[str],
+) -> RuleResult | None:
+    treatment_fact = casefile.clinical_treatment
+    if treatment_fact is None or treatment_fact.state is not FactState.KNOWN:
+        return None
+    treatment = _string(treatment_fact.value).upper()
+    rule = policy.pre_authorization_rules.get(treatment)
+    if rule is None or rule.mode is PreAuthorizationMode.NEVER:
+        return None
+    required = rule.mode is PreAuthorizationMode.ALWAYS or (
+        rule.mode is PreAuthorizationMode.ABOVE_THRESHOLD
+        and rule.threshold_paise is not None
+        and amount > rule.threshold_paise
+    )
+    if not required:
+        return None
+    present = "PRE_AUTHORIZATION" in roles
+    return _result(
+        sequence,
+        rule.rule_id,
+        RuleStatus.PASS if present else RuleStatus.FAIL,
+        "PRE_AUTH_PRESENT" if present else "PRE_AUTH_MISSING",
+        rule.source_pointer,
+        (
+            *treatment_fact.evidence_refs,
+            *casefile.billed_paise.evidence_refs,
+        ),
+        {
+            "treatment": treatment,
+            "eligible_paise": amount,
+            "mode": rule.mode.value,
+            "threshold_paise": rule.threshold_paise,
+            "authorization_present": present,
+        },
+        amount,
+        0 if present else -amount,
+    )
 
 
 def _clinical_exclusion_result(

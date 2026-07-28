@@ -177,6 +177,27 @@ def test_neighboring_covered_condition_does_not_match_exclusion() -> None:
     assert all(result.reason_code != "EXCLUDED_CONDITION" for result in proposal.rule_results)
 
 
+def test_tc007_rejects_mri_above_threshold_without_pre_authorization() -> None:
+    proposal = _evaluate_pre_authorization_case(
+        treatment="mri",
+        amount_paise=1_500_000,
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.REJECTED
+    assert proposal.approved_paise == 0
+    authorization = proposal.rule_results[-1]
+    assert authorization.status is RuleStatus.FAIL
+    assert authorization.reason_code == "PRE_AUTH_MISSING"
+    assert authorization.policy_path == "/clarifications/pre_authorization/MRI"
+    assert authorization.inputs == {
+        "treatment": "MRI",
+        "eligible_paise": 1_500_000,
+        "mode": "ABOVE_THRESHOLD",
+        "threshold_paise": 1_000_000,
+        "authorization_present": False,
+    }
+
+
 def _evaluate_waiting_case(
     *,
     join_date: date,
@@ -239,6 +260,78 @@ def _evaluate_waiting_case(
             state=FactState.UNKNOWN,
             value=[],
             evidence_refs=(),
+        ),
+        ytd_used_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=0,
+            evidence_refs=("utilization:zero",),
+        ),
+    )
+    return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
+
+
+def _evaluate_pre_authorization_case(
+    *,
+    treatment: str,
+    amount_paise: int,
+):
+    compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
+    assert compilation.ir is not None
+    casefile = ClaimCasefile(
+        schema_version=4,
+        claim_id=UUID("00000000-0000-0000-0000-000000000707"),
+        claim_version=1,
+        member_id="EMP007",
+        member_version_id=UUID("00000000-0000-0000-0000-000000000701"),
+        member_snapshot_sha256="7" * 64,
+        policy_version_id=UUID("00000000-0000-0000-0000-000000000702"),
+        category="DIAGNOSTIC",
+        claimed_paise=amount_paise,
+        currency="INR",
+        eligibility=EvidenceFact(
+            state=FactState.KNOWN,
+            value=True,
+            evidence_refs=("member:active",),
+        ),
+        document_roles=EvidenceFact(
+            state=FactState.KNOWN,
+            value=["PRESCRIPTION", "LAB_REPORT", "HOSPITAL_BILL"],
+            evidence_refs=("document:prescription", "document:report", "document:bill"),
+        ),
+        billed_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=amount_paise,
+            evidence_refs=("document:bill-total",),
+        ),
+        claimed_amount=EvidenceFact(
+            state=FactState.KNOWN,
+            value=amount_paise,
+            evidence_refs=("claim:amount",),
+        ),
+        treatment_date=EvidenceFact(
+            state=FactState.KNOWN,
+            value="2024-11-02",
+            evidence_refs=("claim:treatment-date",),
+        ),
+        member_join_date=EvidenceFact(
+            state=FactState.KNOWN,
+            value="2024-04-01",
+            evidence_refs=("member:join-date",),
+        ),
+        patient_identity=EvidenceFact(
+            state=FactState.KNOWN,
+            value="sanjay reddy",
+            evidence_refs=("member:name",),
+        ),
+        clinical_condition=EvidenceFact(
+            state=FactState.KNOWN,
+            value="lumbar disc herniation",
+            evidence_refs=("document:diagnosis",),
+        ),
+        clinical_treatment=EvidenceFact(
+            state=FactState.KNOWN,
+            value=treatment,
+            evidence_refs=("document:test",),
         ),
         ytd_used_paise=EvidenceFact(
             state=FactState.KNOWN,
