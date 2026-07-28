@@ -414,14 +414,14 @@ Add evidence-equivalence and line-item adjudication for dental claims. A suffici
 
 ### Acceptance criteria
 
-- [ ] Dental evidence sufficiency is based on procedure-level facts rather than unconditional presence of a dental-report role.
-- [ ] A generic dental bill without procedure detail requests a dental report.
-- [ ] A detailed bill containing adequate procedure evidence proceeds without a redundant document request.
-- [ ] Root-canal and whitening items remain separate through extraction, reconciliation, and policy evaluation.
-- [ ] TC006 produces `PARTIAL` with exactly ₹8,000 approved for root canal and ₹0 for whitening.
-- [ ] Whitening carries its line-item exclusion reason and policy reference.
-- [ ] The category-specific dental limit takes precedence over the general per-claim limit.
-- [ ] The member projection itemizes approved and rejected charges and explains each adjustment.
+- [x] Dental evidence sufficiency is based on procedure-level facts rather than unconditional presence of a dental-report role.
+- [x] A generic dental bill without procedure detail requests a dental report.
+- [x] A detailed bill containing adequate procedure evidence proceeds without a redundant document request.
+- [x] Root-canal and whitening items remain separate through extraction, reconciliation, and policy evaluation.
+- [x] TC006 produces `PARTIAL` with exactly ₹8,000 approved for root canal and ₹0 for whitening.
+- [x] Whitening carries its line-item exclusion reason and policy reference.
+- [x] The category-specific dental limit takes precedence over the general per-claim limit.
+- [x] The member projection itemizes approved and rejected charges and explains each adjustment.
 
 ---
 
@@ -435,13 +435,13 @@ Apply supported condition and treatment exclusions to a fully evidenced claim. T
 
 ### Acceptance criteria
 
-- [ ] The normalized treatment concept retains links to source clinical evidence.
-- [ ] An exclusion cannot fire from an ungrounded model label alone.
-- [ ] TC012 produces `REJECTED` with `EXCLUDED_CONDITION`.
-- [ ] The decision identifies the applicable policy exclusion and supporting evidence.
-- [ ] Missing or conflicting clinical evidence routes to correction or review rather than rejection.
-- [ ] The rendered evaluation records confidence above the assignment threshold while preserving the deterministic reason trace.
-- [ ] Neighboring covered-treatment tests protect against over-broad exclusion matching.
+- [x] The normalized treatment concept retains links to source clinical evidence.
+- [x] An exclusion cannot fire from an ungrounded model label alone.
+- [x] TC012 produces `REJECTED` with `EXCLUDED_CONDITION`.
+- [x] The decision identifies the applicable policy exclusion and supporting evidence.
+- [x] Missing or conflicting clinical evidence routes to correction or review rather than rejection.
+- [x] The rendered evaluation records confidence above the assignment threshold while preserving the deterministic reason trace.
+- [x] Neighboring covered-treatment tests protect against over-broad exclusion matching.
 
 ---
 
