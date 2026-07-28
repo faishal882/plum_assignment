@@ -9,6 +9,7 @@ from botocore.config import Config
 from PIL import Image, ImageDraw
 
 from claims_backend.application.intelligence import RenderedPage
+from claims_backend.config import Settings
 from claims_backend.domain.evidence import DocumentRole
 from claims_backend.infrastructure.aws.textract import TextractAdapter
 
@@ -19,6 +20,7 @@ pytestmark = [
         reason="Set CLAIMS_RUN_LIVE_AWS=1 to permit the synthetic AWS smoke test.",
     ),
 ]
+_SETTINGS = Settings.from_env()
 
 
 def test_synthetic_page_passes_live_textract_schema_smoke() -> None:
@@ -38,7 +40,7 @@ def test_synthetic_page_passes_live_textract_schema_smoke() -> None:
     )
     client = boto3.client(
         "textract",
-        region_name=environ.get("CLAIMS_AWS_REGION", "ap-south-1"),
+        region_name=_SETTINGS.aws_region,
         config=Config(connect_timeout=30, read_timeout=30, retries={"max_attempts": 2}),
     )
 

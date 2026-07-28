@@ -1,9 +1,9 @@
 from logging.config import fileConfig
-from os import environ
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from claims_backend.config import Settings
 from claims_backend.infrastructure.postgres.models import Base
 
 config = context.config
@@ -11,9 +11,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = environ.get("CLAIMS_DATABASE_URL")
-if database_url is not None:
-    config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", Settings.from_env().database_url)
 
 target_metadata = Base.metadata
 _LANGGRAPH_CHECKPOINT_TABLES = {

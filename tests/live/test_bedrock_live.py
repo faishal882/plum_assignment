@@ -2,6 +2,7 @@ from os import environ
 
 import pytest
 
+from claims_backend.config import Settings
 from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
     ModelRoute,
@@ -18,15 +19,13 @@ pytestmark = [
         reason="Set CLAIMS_RUN_LIVE_AWS=1 to permit the synthetic AWS smoke test.",
     ),
 ]
+_SETTINGS = Settings.from_env()
 
 
 def test_synthetic_ocr_passes_live_bedrock_structured_output_smoke() -> None:
     config = ModelRouter.default(
-        region=environ.get("CLAIMS_BEDROCK_REGION", "us-west-2"),
-        model_id=environ.get(
-            "CLAIMS_BEDROCK_MODEL_ID",
-            "qwen.qwen3-235b-a22b-2507-v1:0",
-        ),
+        region=_SETTINGS.bedrock_region,
+        model_id=_SETTINGS.bedrock_model_id,
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
     invocation = ChatBedrockConverseTransport().invoke(
         config,

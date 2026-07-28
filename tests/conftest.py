@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.application.policy_admin import PolicyAdministrationApplication
 from claims_backend.application.setup_import import SetupDataApplication
+from claims_backend.config import load_environment
 from claims_backend.domain.identity import Principal, Role
 from claims_backend.infrastructure.postgres.policy_repository import (
     PostgresPolicyRepository,
@@ -26,13 +27,12 @@ _OVERLAY_PATH = Path("config/policy/assignment-overlay-v1.json")
 _POLICY_BYTES = _POLICY_PATH.read_bytes()
 _OVERLAY_BYTES = _OVERLAY_PATH.read_bytes()
 
+load_environment()
+
 
 @pytest.fixture(scope="session")
 def postgres_database_url() -> Iterator[str]:
-    database_url = environ.get(
-        "CLAIMS_TEST_DATABASE_URL",
-        "postgresql+psycopg://claims:claims@127.0.0.1:55432/claims",
-    )
+    database_url = environ["CLAIMS_TEST_DATABASE_URL"]
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")

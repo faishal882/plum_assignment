@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: claims
-      POSTGRES_USER: claims
-      POSTGRES_PASSWORD: claims
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "55432:5432"
+      - "${POSTGRES_PORT}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U claims -d claims"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -17,4 +17,3 @@ services:
 
 volumes:
   claims-postgres-data:
-
