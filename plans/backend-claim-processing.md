@@ -310,14 +310,14 @@ Implement complete page-oriented OCR for locally stored documents. Render bounde
 
 ### Acceptance criteria
 
-- [ ] Every supported PDF page is rendered locally in stable order and remains linked to its immutable original.
-- [ ] No rendered page exceeds the configured 5 MiB provider limit; unsafe pages request a clearer or smaller document rather than being dropped.
-- [ ] Bills and receipts use expense analysis where appropriate; forms, tables, reports, and free text use the configured profile behavior.
-- [ ] Direct Textract calls receive page bytes and require no S3 resource.
-- [ ] Provider responses are mapped into project-owned typed observations with page and geometry provenance.
-- [ ] Page-level results are idempotent and merge in deterministic order.
-- [ ] Botocore-stubbed tests cover successful analysis, malformed responses, throttling, timeouts, and provider errors.
-- [ ] Selected synthetic pages pass an explicitly invoked live Textract smoke test.
+- [x] Every supported PDF page is rendered locally in stable order and remains linked to its immutable original.
+- [x] No rendered page exceeds the configured 5 MiB provider limit; unsafe pages request a clearer or smaller document rather than being dropped.
+- [x] Bills and receipts use expense analysis where appropriate; forms, tables, reports, and free text use the configured profile behavior.
+- [x] Direct Textract calls receive page bytes and require no S3 resource.
+- [x] Provider responses are mapped into project-owned typed observations with page and geometry provenance.
+- [x] Page-level results are idempotent and merge in deterministic order.
+- [x] Botocore-stubbed tests cover successful analysis, malformed responses, throttling, timeouts, and provider errors.
+- [x] Selected synthetic pages pass an explicitly invoked live Textract smoke test.
 
 ---
 
@@ -331,14 +331,18 @@ Add schema-constrained semantic extraction over bounded document observations. T
 
 ### Acceptance criteria
 
-- [ ] Fast-triage and complex-extraction routes are configured independently behind the same project-owned model boundary.
-- [ ] Both routes initially resolve to an explicit enabled and evaluation-approved Claude Sonnet model identifier.
-- [ ] Structured outputs are validated against versioned Pydantic/JSON schemas.
-- [ ] Outputs containing decisions, payable amounts, policy outcomes, or undeclared fields are rejected.
-- [ ] Every accepted candidate references supporting document/page observations rather than unsupported model text.
-- [ ] Schema, semantic, grounding, and authority-validation failures have distinct typed outcomes.
-- [ ] Recorded sanitized responses exercise the default no-network integration path.
+- [x] Fast-triage and complex-extraction routes are configured independently behind the same project-owned model boundary.
+- [x] Both routes initially resolve to an explicit enabled and evaluation-approved Claude Sonnet model identifier.
+- [x] Structured outputs are validated against versioned Pydantic/JSON schemas.
+- [x] Outputs containing decisions, payable amounts, policy outcomes, or undeclared fields are rejected.
+- [x] Every accepted candidate references supporting document/page observations rather than unsupported model text.
+- [x] Schema, semantic, grounding, and authority-validation failures have distinct typed outcomes.
+- [x] Recorded sanitized responses exercise the default no-network integration path.
 - [ ] An explicit synthetic live test records current schema adherence, latency, token usage, and provider request metadata.
+
+The live Bedrock test is implemented and opt-in. On 2026-07-28 it reached the Converse API, but
+AWS returned `INVALID_PAYMENT_INSTRUMENT` while attempting the configured model subscription.
+Keep this item open until the account prerequisite is fixed and the smoke test passes.
 
 ---
 
