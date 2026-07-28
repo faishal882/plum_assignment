@@ -261,6 +261,7 @@ def test_tc008_rejects_eligible_consultation_amount_above_category_limit() -> No
         "general_limit_paise": 500_000,
         "precedence": "CATEGORY_OVER_GENERAL",
         "outcome": "REJECT",
+        "operation": "LIMIT_COMPARE",
     }
     explanation = render_member_explanation(proposal)
     assert "₹7,500.00" in explanation.summary
@@ -355,6 +356,13 @@ def test_tc010_applies_network_discount_before_copay() -> None:
         "amount.consultation.copay",
         "final.recommendation",
     ]
+    amount_steps = [
+        result
+        for result in proposal.rule_results
+        if result.rule_id.startswith("amount.")
+        or result.rule_id == "final.recommendation"
+    ]
+    assert all(result.inputs.get("operation") for result in amount_steps)
 
 
 @settings(max_examples=30)
