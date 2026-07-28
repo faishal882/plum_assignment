@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from claims_backend.domain.policy import (
     CategoryRule,
+    DentalProcedureRule,
     DocumentRequirementRule,
     FindingCategory,
     LimitOutcome,
@@ -22,7 +23,7 @@ from claims_backend.domain.policy import (
     WaitingPeriodRules,
 )
 
-COMPILER_VERSION = "policy-compiler-v2"
+COMPILER_VERSION = "policy-compiler-v3"
 _TEST_IDENTIFIER_PATTERN = re.compile(r"\bTC\d+\b|case_id|test_case", re.IGNORECASE)
 
 
@@ -57,6 +58,8 @@ class _CategorySource(BaseModel):
     requires_pre_auth: bool = False
     covered: bool
     requires_dental_report: bool = False
+    covered_procedures: list[str] = Field(default_factory=list)
+    excluded_procedures: list[str] = Field(default_factory=list)
 
 
 class _DocumentSource(BaseModel):
@@ -386,8 +389,32 @@ def _build_ir(
             )
         },
     )
+    dental_source = source.opd_categories.get("dental")
+    dental_procedure_rules: dict[str, DentalProcedureRule] = {}
+    if dental_source is not None:
+        for covered, procedures, pointer in (
+            (
+                True,
+                dental_source.covered_procedures,
+                "/opd_categories/dental/covered_procedures",
+            ),
+            (
+                False,
+                dental_source.excluded_procedures,
+                "/opd_categories/dental/excluded_procedures",
+            ),
+        ):
+            for index, label in enumerate(procedures):
+                concept = _concept(label)
+                dental_procedure_rules[concept] = DentalProcedureRule(
+                    rule_id=f"dental.procedure.{concept}",
+                    source_pointer=f"{pointer}/{index}",
+                    concept=concept,
+                    label=label,
+                    covered=covered,
+                )
     return PolicyIR(
-        schema_version=2,
+        schema_version=3,
         policy_id=source.policy_id,
         source_sha256=source_hash,
         overlay_sha256=overlay_hash,
@@ -404,6 +431,7 @@ def _build_ir(
         document_requirements=document_rules,
         pre_authorization_rules=pre_authorization_rules,
         waiting_period_rules=waiting_period_rules,
+        dental_procedure_rules=dental_procedure_rules,
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",
@@ -417,5 +445,9 @@ def _build_ir(
             "copay",
             "final_recommendation",
         ),
-        engine_contract_version="policy-evaluator-v2",
+        engine_contract_version="policy-evaluator-v3",
     )
+
+
+def _concept(value: str) -> str:
+    return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", value.casefold())).strip("_")

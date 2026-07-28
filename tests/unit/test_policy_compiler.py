@@ -42,6 +42,16 @@ def test_compiles_deterministic_assignment_policy_ir() -> None:
     assert diabetes.days == 90
     assert diabetes.source_pointer == "/waiting_periods/specific_conditions/diabetes"
     assert diabetes.rule_id == "waiting_period.specific_condition.diabetes"
+    root_canal = first.ir.dental_procedure_rules["root_canal_treatment"]
+    whitening = first.ir.dental_procedure_rules["teeth_whitening"]
+    assert root_canal.covered
+    assert root_canal.source_pointer == (
+        "/opd_categories/dental/covered_procedures/0"
+    )
+    assert not whitening.covered
+    assert whitening.source_pointer == (
+        "/opd_categories/dental/excluded_procedures/0"
+    )
     assert not first.has_errors
     assert FindingCategory.VOCABULARY in {finding.category for finding in first.findings}
 

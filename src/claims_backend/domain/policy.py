@@ -102,6 +102,16 @@ class WaitingPeriodRules(BaseModel):
     specific_conditions: dict[str, WaitingPeriodRule]
 
 
+class DentalProcedureRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    concept: str
+    label: str
+    covered: bool
+
+
 class PolicyIR(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -122,6 +132,7 @@ class PolicyIR(BaseModel):
     document_requirements: dict[str, DocumentRequirementRule]
     pre_authorization_rules: dict[str, PreAuthorizationRule]
     waiting_period_rules: WaitingPeriodRules
+    dental_procedure_rules: dict[str, DentalProcedureRule]
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str
