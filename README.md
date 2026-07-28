@@ -38,6 +38,25 @@ Submit a claim as multipart form data:
 The accepted response contains a claim ID and status URL. Phase 1 leaves the claim in `QUEUED`;
 worker processing begins in later phases.
 
+## Local identities
+
+Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
+
+| Username | Role | Member |
+|---|---|---|
+| `member.emp001` | Member | `EMP001` |
+| `member.emp002` | Member | `EMP002` |
+| `reviewer.local` | Reviewer | — |
+| `operator.local` | Operator | — |
+
+Username lookup is case-insensitive. Claims are owned by immutable user UUIDs, so renaming a
+username does not change ownership. The username used for each mutation remains preserved in its
+claim and audit snapshots.
+
+This header is intentionally a local-development identity mechanism, not authentication. Route
+authorization depends on a replaceable identity-provider contract so a JWT or OAuth/OIDC adapter
+can replace it later without changing claim application behavior.
+
 ## Verification
 
 The default tests use the PostgreSQL container:
