@@ -533,8 +533,9 @@ off to 10–15 seconds while the tab remains visible. Do not infer progress perc
 
 ### Replace a document
 
-Use this operation when `Claim.lifecycle_status` is `ACTION_REQUIRED` and the action identifies a
-replaceable `client_document_id`.
+The backend accepts replacement while a claim is `QUEUED` or `ACTION_REQUIRED`. A normal member
+UI should offer it when the returned action identifies a replaceable `client_document_id`; an
+advanced upload screen may also allow correcting a queued document before processing starts.
 
 ```http
 POST /v1/claims/{claim_id}/actions
