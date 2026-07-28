@@ -147,6 +147,16 @@ class RecordedDiscoveryOcrProvider:
                 "total": 7500,
             },
         ),
+        "ad8823e89fa4d72725ba67c491921dbcaaf453d896dd3e21cb48b614682ee2a7": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Ravi Menon",
+            content={"date": "2024-10-30", "diagnosis": "Migraine"},
+        ),
+        "29732a9119b59785d6e21b29686ac66e9b4552c8ad44319ad68b2bfccafe079d": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Ravi Menon",
+            content={"date": "2024-10-30", "total": 4800},
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
