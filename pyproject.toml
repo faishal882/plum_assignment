@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2.11,<3",
     "pypdf>=6,<7",
     "pypdfium2>=4.30,<5",
+    "python-dotenv>=1.2,<2",
     "python-multipart>=0.0.20,<1",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.35,<1",
