@@ -6,6 +6,9 @@ from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from pypdf import PdfWriter
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -21,6 +24,9 @@ from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkf
 from claims_backend.infrastructure.postgres.claim_processor import (
     PostgresClaimProcessor,
 )
+from claims_backend.infrastructure.postgres.reconstruction import (
+    PostgresClaimReconstructor,
+)
 from claims_backend.infrastructure.postgres.setup_import_repository import (
     PostgresSetupImportRepository,
 )
@@ -30,6 +36,7 @@ from claims_backend.infrastructure.postgres.work_scheduler import (
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
+from claims_backend.observability import ObservabilityConfig, create_observability
 
 POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
 
@@ -42,7 +49,25 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     engine = create_async_engine(migrated_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     await _import_tc009_history(factory)
-    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    exporter = InMemorySpanExporter()
+    observability_config = ObservabilityConfig(
+        log_root=tmp_path / "diagnostics",
+        phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
+    )
+    api_observability = create_observability(
+        observability_config,
+        process_name="api",
+        span_exporter=exporter,
+    )
+    worker_observability = create_observability(
+        observability_config,
+        process_name="worker",
+        span_exporter=exporter,
+    )
+    app = create_app(
+        Settings(database_url=migrated_database_url, data_root=tmp_path),
+        observability=api_observability,
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
@@ -66,6 +91,7 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
             migrated_database_url,
             workflows,
             processor=processor,
+            observability=worker_observability,
         )
         await runtime.setup()
         assert await WorkerService(PostgresWorkScheduler(app.state.session_factory)).run_once(
@@ -248,6 +274,22 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
         "approved_amount": "4320.00",
         "currency": "INR",
     }
+    reconstruction = await PostgresClaimReconstructor(
+        app.state.session_factory
+    ).reconstruct(claim_id)
+    assert reconstruction is not None
+    assert reconstruction.review_task is not None
+    assert reconstruction.review_task["status"] == "RESOLVED"
+    assert reconstruction.review_resolutions[0]["action"] == "ACCEPT"
+    assert reconstruction.review_resolutions[0]["actor_username"] == "reviewer.local"
+    spans = exporter.get_finished_spans()
+    workflow_span = next(span for span in spans if span.name == "claim.workflow")
+    review_span = next(span for span in spans if span.name == "review.resolve")
+    assert review_span.context.trace_id == workflow_span.context.trace_id
+    assert (tmp_path / "diagnostics" / "api.jsonl").is_file()
+    assert (tmp_path / "diagnostics" / "worker.jsonl").is_file()
+    api_observability.shutdown()
+    worker_observability.shutdown()
     await app.state.engine.dispose()
     await engine.dispose()
 

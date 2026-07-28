@@ -1,8 +1,11 @@
 import json
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
 
+from opentelemetry.util.types import AttributeValue
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -26,33 +29,59 @@ from claims_backend.infrastructure.postgres.models import (
     AuditEventRow,
     CasefileRow,
     ClaimRow,
+    ClaimWorkItemRow,
     DecisionRecordRow,
     ReviewResolutionRow,
     ReviewTaskRow,
     RuleResultRow,
+    WorkflowEventRow,
+    WorkflowRunRow,
 )
+from claims_backend.observability import EngineeringLogEvent, Observability
 
 
 class PostgresReviewRepository:
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
+        *,
+        observability: Observability | None = None,
     ) -> None:
         self._session_factory = session_factory
+        self._observability = observability
 
     async def list_tasks(self) -> tuple[ReviewTaskSummary, ...]:
-        async with self._session_factory() as session:
-            rows = (
-                await session.scalars(
-                    select(ReviewTaskRow).order_by(
-                        ReviewTaskRow.created_at,
-                        ReviewTaskRow.id,
+        with self._span("review.list", attributes={"review.operation": "LIST"}):
+            async with self._session_factory() as session:
+                rows = (
+                    await session.scalars(
+                        select(ReviewTaskRow).order_by(
+                            ReviewTaskRow.created_at,
+                            ReviewTaskRow.id,
+                        )
                     )
-                )
-            ).all()
+                ).all()
         return tuple(_summary(row) for row in rows)
 
     async def get_task(self, task_id: UUID) -> ReviewTaskDetail | None:
+        parent = await self._trace_parent(task_id)
+        attributes: dict[str, AttributeValue] = {
+            "review.operation": "INSPECT",
+            "review.task_id": str(task_id),
+        }
+        if parent is not None:
+            attributes["claim.id"] = str(parent.claim_id)
+            attributes["workflow.run_id"] = str(parent.workflow_run_id)
+        with self._span(
+            "review.inspect",
+            attributes=attributes,
+            parent=parent,
+        ):
+            result = await self._get_task(task_id)
+            self._log("review_task_inspected", parent, task_id, "OK")
+            return result
+
+    async def _get_task(self, task_id: UUID) -> ReviewTaskDetail | None:
         async with self._session_factory() as session:
             task = await session.scalar(select(ReviewTaskRow).where(ReviewTaskRow.id == task_id))
             if task is None:
@@ -101,6 +130,41 @@ class PostgresReviewRepository:
         )
 
     async def resolve(
+        self,
+        task_id: UUID,
+        command: ReviewCommand,
+        principal: Principal,
+        idempotency_key: str,
+    ) -> ReviewResolution:
+        parent = await self._trace_parent(task_id)
+        attributes: dict[str, AttributeValue] = {
+            "review.operation": "RESOLVE",
+            "review.task_id": str(task_id),
+            "review.action": command.action.value,
+        }
+        if parent is not None:
+            attributes["claim.id"] = str(parent.claim_id)
+            attributes["workflow.run_id"] = str(parent.workflow_run_id)
+        with self._span(
+            "review.resolve",
+            attributes=attributes,
+            parent=parent,
+        ):
+            result = await self._resolve(
+                task_id,
+                command,
+                principal,
+                idempotency_key,
+            )
+            self._log(
+                "review_task_resolved",
+                parent,
+                task_id,
+                "OK",
+            )
+            return result
+
+    async def _resolve(
         self,
         task_id: UUID,
         command: ReviewCommand,
@@ -201,6 +265,106 @@ class PostgresReviewRepository:
             )
             await session.flush((row,))
             return _resolution(row, replayed=False)
+
+    async def _trace_parent(self, task_id: UUID) -> "_ReviewTraceParent | None":
+        async with self._session_factory() as session:
+            row = (
+                await session.execute(
+                    select(
+                        ReviewTaskRow.claim_id,
+                        WorkflowRunRow.id,
+                        WorkflowEventRow.trace_id,
+                        WorkflowEventRow.span_id,
+                    )
+                    .join(
+                        ClaimWorkItemRow,
+                        (ClaimWorkItemRow.claim_id == ReviewTaskRow.claim_id)
+                        & (
+                            ClaimWorkItemRow.claim_version
+                            == ReviewTaskRow.claim_version
+                        ),
+                    )
+                    .join(
+                        WorkflowRunRow,
+                        WorkflowRunRow.work_item_id == ClaimWorkItemRow.id,
+                    )
+                    .join(
+                        WorkflowEventRow,
+                        WorkflowEventRow.workflow_run_id == WorkflowRunRow.id,
+                    )
+                    .where(
+                        ReviewTaskRow.id == task_id,
+                        WorkflowEventRow.trace_id.is_not(None),
+                        WorkflowEventRow.span_id.is_not(None),
+                    )
+                    .order_by(WorkflowEventRow.sequence)
+                    .limit(1)
+                )
+            ).one_or_none()
+        if row is None or row.trace_id is None or row.span_id is None:
+            return None
+        return _ReviewTraceParent(
+            claim_id=row.claim_id,
+            workflow_run_id=row.id,
+            trace_id=row.trace_id,
+            span_id=row.span_id,
+        )
+
+    @contextmanager
+    def _span(
+        self,
+        name: str,
+        *,
+        attributes: Mapping[str, AttributeValue],
+        parent: "_ReviewTraceParent | None" = None,
+    ) -> Iterator[None]:
+        if self._observability is None:
+            yield
+            return
+        with self._observability.span(
+            name,
+            component="review",
+            attributes=attributes,
+            parent_trace_id=None if parent is None else parent.trace_id,
+            parent_span_id=None if parent is None else parent.span_id,
+        ):
+            yield
+
+    def _log(
+        self,
+        event_name: str,
+        parent: "_ReviewTraceParent | None",
+        task_id: UUID,
+        outcome: str,
+    ) -> None:
+        if self._observability is None:
+            return
+        self._observability.log(
+            EngineeringLogEvent(
+                event_name=event_name,
+                component="review",
+                claim_id=None if parent is None else str(parent.claim_id),
+                workflow_run_id=(
+                    None if parent is None else str(parent.workflow_run_id)
+                ),
+                outcome=outcome,
+            )
+        )
+
+
+class _ReviewTraceParent:
+    def __init__(
+        self,
+        *,
+        claim_id: UUID,
+        workflow_run_id: UUID,
+        trace_id: str,
+        span_id: str,
+    ) -> None:
+        self.claim_id = claim_id
+        self.workflow_run_id = workflow_run_id
+        self.trace_id = trace_id
+        self.span_id = span_id
 
 
 def _resolved_values(

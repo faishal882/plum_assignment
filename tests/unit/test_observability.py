@@ -83,6 +83,34 @@ def test_errors_record_only_sanitized_exception_class(tmp_path: Path) -> None:
     assert "diagnosis" not in serialized.casefold()
 
 
+def test_later_operation_can_attach_to_persisted_trace_context(
+    tmp_path: Path,
+) -> None:
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path),
+        process_name="api",
+        span_exporter=exporter,
+    )
+
+    with observability.span("claim.workflow.node", component="workflow") as parent:
+        trace_id = f"{parent.context.trace_id:032x}"
+        span_id = f"{parent.context.span_id:016x}"
+    with observability.span(
+        "review.resolve",
+        component="review",
+        parent_trace_id=trace_id,
+        parent_span_id=span_id,
+    ):
+        pass
+
+    observability.shutdown()
+    parent_span, review_span = exporter.get_finished_spans()
+    assert review_span.context.trace_id == parent_span.context.trace_id
+    assert review_span.parent is not None
+    assert review_span.parent.span_id == parent_span.context.span_id
+
+
 def test_phi_canary_rejects_forbidden_keys_and_values(tmp_path: Path) -> None:
     observability = create_observability(
         ObservabilityConfig(

@@ -105,7 +105,12 @@ CurrentPrincipalDependency = Annotated[Principal, Depends(get_current_principal)
 
 def get_review_application(request: Request) -> ReviewApplication:
     session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
-    return ReviewApplication(PostgresReviewRepository(session_factory))
+    return ReviewApplication(
+        PostgresReviewRepository(
+            session_factory,
+            observability=request.app.state.observability,
+        )
+    )
 
 
 ReviewApplicationDependency = Annotated[

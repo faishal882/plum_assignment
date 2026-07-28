@@ -14,7 +14,7 @@ from openinference.semconv.trace import (
     OpenInferenceSpanKindValues,
     SpanAttributes,
 )
-from opentelemetry import trace
+from opentelemetry import context, trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import Span, TracerProvider
@@ -23,7 +23,15 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
 )
-from opentelemetry.trace import Status, StatusCode, Tracer
+from opentelemetry.trace import (
+    NonRecordingSpan,
+    SpanContext,
+    Status,
+    StatusCode,
+    TraceFlags,
+    Tracer,
+    set_span_in_context,
+)
 from opentelemetry.util.types import AttributeValue
 
 _SAFE_ATTRIBUTE_PREFIXES = (
@@ -175,6 +183,8 @@ class Observability:
         component: str,
         attributes: Mapping[str, AttributeValue] | None = None,
         span_kind: str = OpenInferenceSpanKindValues.CHAIN.value,
+        parent_trace_id: str | None = None,
+        parent_span_id: str | None = None,
     ) -> Iterator[Span]:
         safe_attributes: dict[str, AttributeValue] = {
             "component": component,
@@ -184,8 +194,10 @@ class Observability:
         safe_attributes = self._guard.attributes(safe_attributes)
         started = monotonic()
         failed_error: Exception | None = None
+        parent_context = _parent_context(parent_trace_id, parent_span_id)
         with self._tracer.start_as_current_span(
             name,
+            context=parent_context,
             attributes=safe_attributes,
             record_exception=False,
             set_status_on_exception=False,
@@ -308,6 +320,32 @@ def trace_identifiers() -> tuple[str | None, str | None]:
     if not context.is_valid:
         return None, None
     return f"{context.trace_id:032x}", f"{context.span_id:016x}"
+
+
+def _parent_context(
+    trace_id: str | None,
+    span_id: str | None,
+) -> context.Context | None:
+    if trace_id is None and span_id is None:
+        return None
+    if trace_id is None or span_id is None:
+        raise ValueError("Both parent trace and span identifiers are required")
+    if len(trace_id) != 32 or len(span_id) != 16:
+        raise ValueError("Parent trace identifiers have invalid lengths")
+    try:
+        parsed_trace_id = int(trace_id, 16)
+        parsed_span_id = int(span_id, 16)
+    except ValueError as error:
+        raise ValueError("Parent trace identifiers must be hexadecimal") from error
+    parent = SpanContext(
+        trace_id=parsed_trace_id,
+        span_id=parsed_span_id,
+        is_remote=True,
+        trace_flags=TraceFlags(TraceFlags.SAMPLED),
+    )
+    if not parent.is_valid:
+        raise ValueError("Parent trace identifiers are invalid")
+    return set_span_in_context(NonRecordingSpan(parent))
 
 
 class _JsonFormatter(logging.Formatter):
