@@ -70,6 +70,7 @@ class PostgresReviewRepository:
             "review.task_id": str(task_id),
         }
         if parent is not None:
+            attributes["session.id"] = str(parent.claim_id)
             attributes["claim.id"] = str(parent.claim_id)
             attributes["workflow.run_id"] = str(parent.workflow_run_id)
         with self._span(
@@ -143,6 +144,7 @@ class PostgresReviewRepository:
             "review.action": command.action.value,
         }
         if parent is not None:
+            attributes["session.id"] = str(parent.claim_id)
             attributes["claim.id"] = str(parent.claim_id)
             attributes["workflow.run_id"] = str(parent.workflow_run_id)
         with self._span(

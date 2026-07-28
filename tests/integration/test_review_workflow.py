@@ -286,6 +286,7 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     workflow_span = next(span for span in spans if span.name == "claim.workflow")
     review_span = next(span for span in spans if span.name == "review.resolve")
     assert review_span.context.trace_id == workflow_span.context.trace_id
+    assert review_span.attributes["session.id"] == str(claim_id)
     assert (tmp_path / "diagnostics" / "api.jsonl").is_file()
     assert (tmp_path / "diagnostics" / "worker.jsonl").is_file()
     api_observability.shutdown()

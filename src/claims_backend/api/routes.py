@@ -169,6 +169,7 @@ async def submit_claim(
 @router.post("/{claim_id}/actions", response_model=ClaimActionResponse)
 async def apply_claim_action(
     claim_id: UUID,
+    request_context: Request,
     command: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     application: ClaimsApplicationDependency,
@@ -238,6 +239,21 @@ async def apply_claim_action(
         ) from error
     except DocumentIngestionError as error:
         raise _document_error(error) from error
+
+    observability = request_context.app.state.observability
+    if observability is not None:
+        with observability.span(
+            "api.claim_document_replaced",
+            component="api",
+            attributes={
+                "session.id": str(result.claim.id),
+                "claim.id": str(result.claim.id),
+                "claim.version": result.result_version,
+                "claim.previous_version": result.previous_version,
+                "outcome": result.result_lifecycle.value,
+            },
+        ):
+            pass
 
     return ClaimActionResponse(
         action_id=result.action_id,
