@@ -594,6 +594,71 @@ async def test_assignment_tc007_pre_authorization_decision_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc008_per_claim_limit_decision_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_member_utilization(
+        app.state.session_factory,
+        member_id="EMP003",
+        as_of_date="2024-10-20",
+        used_amount="10000.00",
+    )
+    prescription, bill = _assignment_tc008_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp003",
+                "Idempotency-Key": "assignment-tc008-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc008_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp003"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "REJECTED",
+        "approved_amount": "0.00",
+        "currency": "INR",
+    }
+    assert body["explanation"] == {
+        "summary": (
+            "The eligible claim expense is ₹7,500.00, which exceeds the applicable "
+            "per-claim limit of ₹5,000.00."
+        ),
+        "deductions": [
+            {
+                "code": "PER_CLAIM_EXCEEDED",
+                "label": "Applicable per-claim category limit exceeded.",
+                "amount": "7500.00",
+            }
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -955,6 +1020,54 @@ def _assignment_tc007_documents() -> tuple[bytes, bytes, bytes]:
     return prescription, report, bill
 
 
+def _assignment_tc008_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP003",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-10-20",
+        "claimed_amount": "7500.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F015"},
+            {"upload_index": 1, "client_document_id": "F016"},
+        ],
+    }
+
+
+def _assignment_tc008_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {
+                "diagnosis": "Gastroenteritis",
+                "doctor_name": "Dr. R. Gupta",
+                "doctor_registration": "DL/34567/2016",
+                "medicines": ["Antibiotics", "Probiotics", "ORS"],
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "line_items": [
+                    {"amount": 2000, "description": "Consultation Fee"},
+                    {"amount": 5500, "description": "Medicines"},
+                ],
+                "total": 7500,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
+
+
 def _assignment_tc004_documents() -> tuple[bytes, bytes]:
     prescription = _assignment_document_image(
         "PRESCRIPTION\n"
@@ -1041,6 +1154,7 @@ async def _import_member_utilization(
     *,
     member_id: str,
     as_of_date: str,
+    used_amount: str = "0.00",
 ) -> None:
     await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
         _POLICY_BYTES,
@@ -1055,7 +1169,7 @@ async def _import_member_utilization(
                         "member_id": member_id,
                         "period_start": "2024-04-01",
                         "period_end": "2025-03-31",
-                        "used_amount": "0.00",
+                        "used_amount": used_amount,
                         "currency": "INR",
                         "as_of_date": as_of_date,
                     }
