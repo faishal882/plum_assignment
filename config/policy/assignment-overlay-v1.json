@@ -30,6 +30,7 @@
     },
     "relationship_aliases": {
       "CHILDREN": "CHILD"
-    }
+    },
+    "same_day_claim_review_threshold": 4
   }
 }

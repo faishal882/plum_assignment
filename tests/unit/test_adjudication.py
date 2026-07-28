@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 
 from claims_backend.domain.adjudication import (
     AdjudicationRecommendation,
+    CasefileClaimHistory,
     ClaimCasefile,
     EvidenceFact,
     FactState,
@@ -382,6 +383,51 @@ def test_increasing_copay_cannot_increase_approved_amount(
     assert 0 <= higher.approved_paise <= lower.approved_paise <= amount_paise
 
 
+def test_tc009_records_same_day_velocity_without_rejecting_claim() -> None:
+    proposal = _evaluate_limit_case(
+        amount_paise=480_000,
+        same_day_history=(
+            CasefileClaimHistory(
+                history_claim_id="CLM_0081",
+                treatment_date="2024-10-30",
+                amount_paise=120_000,
+                provider="City Clinic A",
+                evidence_ref="history:1",
+            ),
+            CasefileClaimHistory(
+                history_claim_id="CLM_0082",
+                treatment_date="2024-10-30",
+                amount_paise=180_000,
+                provider="City Clinic B",
+                evidence_ref="history:2",
+            ),
+            CasefileClaimHistory(
+                history_claim_id="CLM_0083",
+                treatment_date="2024-10-30",
+                amount_paise=210_000,
+                provider="Wellness Center",
+                evidence_ref="history:3",
+            ),
+        ),
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.APPROVED
+    signal = next(
+        result
+        for result in proposal.rule_results
+        if result.reason_code == "SAME_DAY_CLAIM_VELOCITY"
+    )
+    assert signal.status is RuleStatus.APPLIED
+    assert signal.inputs == {
+        "prior_same_day_claims": 3,
+        "claim_ordinal": 4,
+        "review_threshold": 4,
+        "operation": "REVIEW_SIGNAL",
+    }
+    assert signal.evidence_refs == ("history:1", "history:2", "history:3")
+    assert proposal.rule_results[-1].reason_code == "FINAL_APPROVED"
+
+
 def _evaluate_waiting_case(
     *,
     join_date: date,
@@ -583,6 +629,7 @@ def _evaluate_limit_case(
     limit_paise: int | None = None,
     provider_name: str | None = None,
     copay_percent: int | None = None,
+    same_day_history: tuple[CasefileClaimHistory, ...] = (),
 ):
     compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
     assert compilation.ir is not None
@@ -648,6 +695,7 @@ def _evaluate_limit_case(
             value=0,
             evidence_refs=("utilization:zero",),
         ),
+        same_day_history=same_day_history,
     )
     return DeterministicPolicyAdjudicator().evaluate(casefile, policy)
 

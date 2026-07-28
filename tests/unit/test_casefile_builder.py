@@ -79,7 +79,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     first = build_casefile(request)
     repeated = build_casefile(request)
 
-    assert first.schema_version == 6
+    assert first.schema_version == 7
     assert first.canonical_hash() == repeated.canonical_hash()
     assert first.member_snapshot_sha256 == "a" * 64
     assert first.evidence == reconciliation

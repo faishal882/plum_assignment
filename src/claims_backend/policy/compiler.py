@@ -128,6 +128,7 @@ class _Clarifications(BaseModel):
     dental_report_evidence: Literal["DETAILED_LINE_ITEM_BILL_OR_DENTAL_REPORT"]
     pre_authorization: dict[str, _PreAuthorizationClarification]
     relationship_aliases: dict[str, str]
+    same_day_claim_review_threshold: int = Field(ge=2)
 
 
 class _Overlay(BaseModel):
@@ -451,6 +452,9 @@ def _build_ir(
         dental_procedure_rules=dental_procedure_rules,
         clinical_exclusion_rules=clinical_exclusion_rules,
         network_hospitals=tuple(source.network_hospitals),
+        same_day_claim_review_threshold=(
+            overlay.clarifications.same_day_claim_review_threshold
+        ),
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",

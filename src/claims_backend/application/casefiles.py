@@ -3,6 +3,7 @@ from typing import Protocol
 from uuid import UUID
 
 from claims_backend.domain.adjudication import (
+    CasefileClaimHistory,
     CasefileLineItem,
     ClaimCasefile,
     EvidenceFact,
@@ -48,6 +49,7 @@ class CasefileBuildRequest:
     ytd_used_paise: int | None
     utilization_evidence_ref: str | None
     reconciliation: EvidenceReconciliation
+    same_day_history: tuple[CasefileClaimHistory, ...] = ()
 
 
 def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
@@ -64,7 +66,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         candidate_id for fact in line_item_facts for candidate_id in fact.candidate_ids
     )
     return ClaimCasefile(
-        schema_version=6,
+        schema_version=7,
         claim_id=request.claim_id,
         claim_version=request.claim_version,
         member_id=request.member_id,
@@ -107,6 +109,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
             for fact in line_item_facts
         ),
         pre_authorization=_pre_authorization(facts),
+        same_day_history=request.same_day_history,
         ytd_used_paise=EvidenceFact(
             state=(FactState.KNOWN if request.ytd_used_paise is not None else FactState.UNKNOWN),
             value=request.ytd_used_paise,

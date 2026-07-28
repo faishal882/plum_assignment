@@ -58,6 +58,16 @@ class PreAuthorizationEvidence(BaseModel):
     applicable_paise: EvidenceFact
 
 
+class CasefileClaimHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    history_claim_id: str = Field(min_length=1, max_length=128)
+    treatment_date: str
+    amount_paise: int = Field(ge=0)
+    provider: str | None = None
+    evidence_ref: str = Field(min_length=1, max_length=255)
+
+
 class ClaimCasefile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -88,6 +98,7 @@ class ClaimCasefile(BaseModel):
     line_items: EvidenceFact | None = None
     line_item_facts: tuple[CasefileLineItem, ...] = ()
     pre_authorization: PreAuthorizationEvidence | None = None
+    same_day_history: tuple[CasefileClaimHistory, ...] = ()
     evidence: EvidenceReconciliation | None = None
 
     def canonical_bytes(self) -> bytes:

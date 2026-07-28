@@ -144,6 +144,7 @@ class PolicyIR(BaseModel):
     dental_procedure_rules: dict[str, DentalProcedureRule]
     clinical_exclusion_rules: dict[str, ClinicalExclusionRule]
     network_hospitals: tuple[str, ...]
+    same_day_claim_review_threshold: int = Field(ge=2)
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str
