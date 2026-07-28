@@ -81,6 +81,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Terminal processing failure closes the corresponding workflow run as `FAILED`.
 - [x] Role-aware OCR is independently persisted and supplied to extraction; discovery OCR remains
   isolated for triage.
+- [x] Workflow root spans expose queue wait and terminal outcome alongside duration, graph,
+  profile, and attempt metadata.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

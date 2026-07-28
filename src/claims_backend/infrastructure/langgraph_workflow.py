@@ -308,12 +308,16 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "workflow.graph_version": self.graph_version,
                     "workflow.execution_profile": self._execution_profile,
                     "work.attempt": lease.attempt_number,
+                    "workflow.queue_wait_ms": max(
+                        0,
+                        round((lease.leased_at - lease.available_at).total_seconds() * 1000),
+                    ),
                 }
                 with self._observability.span(
                     "claim.workflow",
                     component="workflow",
                     attributes=root_attributes,
-                ):
+                ) as root_span:
                     self._observability.log(
                         EngineeringLogEvent(
                             event_name="workflow_started",
@@ -357,6 +361,14 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                             ),
                             outcome="OK",
                         )
+                    )
+                    self._observability.set_attributes(
+                        root_span,
+                        {
+                            "workflow.terminal_outcome": (
+                                "COMMITTED" if result["terminal_committed"] else "FINALIZED"
+                            ),
+                        },
                     )
             if not result["finalized"] and not result["terminal_committed"]:
                 raise WorkflowIncompleteError
