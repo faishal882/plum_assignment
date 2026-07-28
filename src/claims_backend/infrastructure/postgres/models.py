@@ -123,6 +123,51 @@ class IdempotencyKeyRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ClaimActionRow(Base):
+    __tablename__ = "claim_actions"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_user_id",
+            "claim_id",
+            "idempotency_key",
+            name="claim_actions_user_claim_key_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    scope_user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    previous_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_lifecycle_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    replacement_document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    replacement_document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    replacement_document_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    response_status: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ClaimVersionRow(Base):
     __tablename__ = "claim_versions"
     __table_args__ = (

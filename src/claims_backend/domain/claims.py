@@ -15,6 +15,7 @@ class ClaimCategory(StrEnum):
 class ClaimLifecycle(StrEnum):
     RECEIVED = "RECEIVED"
     QUEUED = "QUEUED"
+    ACTION_REQUIRED = "ACTION_REQUIRED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +50,21 @@ class Claim:
     lifecycle: ClaimLifecycle
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaceDocument:
+    expected_version: int
+    client_document_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentReplacementResult:
+    action_id: UUID
+    claim: Claim
+    previous_version: int
+    result_version: int
+    result_lifecycle: ClaimLifecycle
+    client_document_id: str
+    document_version: int
+    replayed: bool

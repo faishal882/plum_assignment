@@ -11,16 +11,24 @@ from claims_backend.api.dependencies import (
     CurrentPrincipalDependency,
 )
 from claims_backend.api.schemas import (
+    ClaimActionResponse,
     ClaimMetadataRequest,
     ClaimReceiptResponse,
     ClaimResponse,
     ProgressResponse,
+    ReplaceDocumentCommandRequest,
+    ReplacementDocumentResponse,
 )
 from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
+    ActionIdempotencyConflictError,
+    ClaimActionForbiddenError,
+    ClaimActionNotAllowedError,
+    ClaimDocumentNotFoundError,
     ClaimNotFoundError,
     ClaimSubmissionForbiddenError,
     IdempotencyConflictError,
+    StaleClaimVersionError,
 )
 from claims_backend.application.documents import (
     ClaimUploadTooLargeError,
@@ -28,7 +36,12 @@ from claims_backend.application.documents import (
     FileTooLargeError,
     UnsupportedDocumentError,
 )
-from claims_backend.domain.claims import Claim, DocumentManifestItem, SubmitClaim
+from claims_backend.domain.claims import (
+    Claim,
+    DocumentManifestItem,
+    ReplaceDocument,
+    SubmitClaim,
+)
 
 router = APIRouter(prefix="/v1/claims", tags=["claims"])
 _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -108,6 +121,94 @@ async def submit_claim(
     )
 
 
+@router.post("/{claim_id}/actions", response_model=ClaimActionResponse)
+async def apply_claim_action(
+    claim_id: UUID,
+    command: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    application: ClaimsApplicationDependency,
+    principal: CurrentPrincipalDependency,
+    idempotency_key_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ClaimActionResponse:
+    idempotency_key = _validate_idempotency_key(idempotency_key_header)
+    request = _parse_action(command)
+    try:
+        result = await application.replace_document(
+            claim_id,
+            ReplaceDocument(
+                expected_version=request.expected_version,
+                client_document_id=request.client_document_id,
+            ),
+            principal,
+            FastAPIUploadSource(file),
+            idempotency_key,
+        )
+    except ClaimNotFoundError as error:
+        raise _claim_not_found(error) from error
+    except ClaimActionForbiddenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CLAIM_ACTION_FORBIDDEN",
+                "message": "The identity cannot apply this claim action.",
+                "details": [],
+            },
+        ) from error
+    except ClaimDocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "CLAIM_DOCUMENT_NOT_FOUND",
+                "message": "The claim document was not found.",
+                "details": [],
+            },
+        ) from error
+    except StaleClaimVersionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "STALE_CLAIM_VERSION",
+                "message": "The claim changed before this action could be applied.",
+                "details": [],
+                "current_version": error.current_version,
+            },
+        ) from error
+    except ClaimActionNotAllowedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "CLAIM_ACTION_NOT_ALLOWED",
+                "message": "This action is not allowed for the current claim lifecycle.",
+                "details": [],
+            },
+        ) from error
+    except ActionIdempotencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ACTION_IDEMPOTENCY_KEY_REUSED",
+                "message": "The Idempotency-Key was already used for a different action.",
+                "details": [],
+            },
+        ) from error
+    except DocumentIngestionError as error:
+        raise _document_error(error) from error
+
+    return ClaimActionResponse(
+        action_id=result.action_id,
+        action_type="REPLACE_DOCUMENT",
+        claim_id=result.claim.id,
+        previous_version=result.previous_version,
+        version=result.result_version,
+        lifecycle_status=result.result_lifecycle.value,
+        document=ReplacementDocumentResponse(
+            client_document_id=result.client_document_id,
+            version=result.document_version,
+        ),
+        status_url=f"/v1/claims/{result.claim.id}",
+    )
+
+
 @router.get("/{claim_id}", response_model=ClaimResponse)
 async def get_claim(
     claim_id: UUID,
@@ -117,14 +218,7 @@ async def get_claim(
     try:
         claim = await application.get(claim_id, principal)
     except ClaimNotFoundError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "CLAIM_NOT_FOUND",
-                "message": "Claim was not found.",
-                "details": [],
-            },
-        ) from error
+        raise _claim_not_found(error) from error
     return _to_response(claim)
 
 
@@ -159,6 +253,27 @@ def _parse_metadata(metadata: str) -> ClaimMetadataRequest:
             detail={
                 "code": "INVALID_CLAIM_METADATA",
                 "message": "Claim metadata is invalid.",
+                "details": [
+                    {
+                        "location": [str(item) for item in issue["loc"]],
+                        "message": issue["msg"],
+                        "type": issue["type"],
+                    }
+                    for issue in error.errors()
+                ],
+            },
+        ) from error
+
+
+def _parse_action(command: str) -> ReplaceDocumentCommandRequest:
+    try:
+        return ReplaceDocumentCommandRequest.model_validate_json(command)
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "INVALID_CLAIM_ACTION",
+                "message": "Claim action is invalid.",
                 "details": [
                     {
                         "location": [str(item) for item in issue["loc"]],
@@ -215,5 +330,16 @@ def _document_error(error: DocumentIngestionError) -> HTTPException:
             "code": error.code,
             "message": error.message,
             "details": details,
+        },
+    )
+
+
+def _claim_not_found(error: ClaimNotFoundError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": "CLAIM_NOT_FOUND",
+            "message": "Claim was not found.",
+            "details": [],
         },
     )

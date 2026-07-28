@@ -71,6 +71,30 @@ class ClaimResponse(BaseModel):
         return f"{amount:.2f}"
 
 
+class ReplaceDocumentCommandRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["REPLACE_DOCUMENT"]
+    expected_version: int = Field(ge=1)
+    client_document_id: str = Field(min_length=1, max_length=128)
+
+
+class ReplacementDocumentResponse(BaseModel):
+    client_document_id: str
+    version: int
+
+
+class ClaimActionResponse(BaseModel):
+    action_id: UUID
+    action_type: Literal["REPLACE_DOCUMENT"]
+    claim_id: UUID
+    previous_version: int
+    version: int
+    lifecycle_status: str
+    document: ReplacementDocumentResponse
+    status_url: str
+
+
 class ErrorDetailResponse(BaseModel):
     location: list[str | int] | None = None
     message: str

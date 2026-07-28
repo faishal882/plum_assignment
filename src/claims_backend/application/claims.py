@@ -5,7 +5,12 @@ from typing import Protocol
 from uuid import UUID
 
 from claims_backend.application.documents import DocumentStore, StoredDocument, UploadSource
-from claims_backend.domain.claims import Claim, SubmitClaim
+from claims_backend.domain.claims import (
+    Claim,
+    DocumentReplacementResult,
+    ReplaceDocument,
+    SubmitClaim,
+)
 from claims_backend.domain.identity import Principal, Role
 
 
@@ -20,6 +25,28 @@ class ClaimSubmissionForbiddenError(Exception):
 
 
 class IdempotencyConflictError(Exception):
+    pass
+
+
+class ActionIdempotencyConflictError(Exception):
+    pass
+
+
+class StaleClaimVersionError(Exception):
+    def __init__(self, current_version: int) -> None:
+        self.current_version = current_version
+        super().__init__(f"Claim is currently at version {current_version}")
+
+
+class ClaimActionNotAllowedError(Exception):
+    pass
+
+
+class ClaimActionForbiddenError(Exception):
+    pass
+
+
+class ClaimDocumentNotFoundError(Exception):
     pass
 
 
@@ -40,6 +67,16 @@ class ClaimsRepository(Protocol):
     ) -> ClaimCreationResult: ...
 
     async def get_owned(self, claim_id: UUID, owner_user_id: UUID) -> Claim | None: ...
+
+    async def replace_document(
+        self,
+        claim_id: UUID,
+        action: ReplaceDocument,
+        principal: Principal,
+        document: StoredDocument,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> DocumentReplacementResult: ...
 
 
 class ClaimsApplication:
@@ -78,6 +115,34 @@ class ClaimsApplication:
             raise ClaimNotFoundError(claim_id)
         return claim
 
+    async def replace_document(
+        self,
+        claim_id: UUID,
+        action: ReplaceDocument,
+        principal: Principal,
+        upload: UploadSource,
+        idempotency_key: str,
+    ) -> DocumentReplacementResult:
+        if Role.MEMBER not in principal.roles:
+            raise ClaimActionForbiddenError
+        documents = await self._document_store.store_all([upload])
+        document = documents[0]
+        try:
+            result = await self._repository.replace_document(
+                claim_id,
+                action,
+                principal,
+                document,
+                idempotency_key,
+                _canonical_action_hash(claim_id, action, principal, document),
+            )
+        except BaseException:
+            await self._document_store.delete_all(documents)
+            raise
+        if result.replayed:
+            await self._document_store.delete_all(documents)
+        return result
+
 
 def _canonical_request_hash(
     submission: SubmitClaim,
@@ -104,6 +169,34 @@ def _canonical_request_hash(
         "claimed_paise": submission.claimed_paise,
         "currency": submission.currency,
         "documents": canonical_documents,
+    }
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _canonical_action_hash(
+    claim_id: UUID,
+    action: ReplaceDocument,
+    principal: Principal,
+    document: StoredDocument,
+) -> str:
+    payload = {
+        "action_type": "REPLACE_DOCUMENT",
+        "claim_id": str(claim_id),
+        "owner_user_id": str(principal.user_id),
+        "expected_version": action.expected_version,
+        "client_document_id": action.client_document_id,
+        "document": {
+            "sha256": document.sha256,
+            "media_type": document.media_type,
+            "size_bytes": document.size_bytes,
+            "page_count": document.page_count,
+        },
     }
     serialized = json.dumps(
         payload,
