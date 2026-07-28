@@ -118,6 +118,38 @@ def test_null_snapshot_candidate_remains_explicitly_unknown() -> None:
     assert result.sufficiency.corrective_actions[0].fact_path == "member.join_date"
 
 
+def test_conflicting_treatment_dates_require_correction() -> None:
+    claim_date = _candidate(
+        candidate_id="7" * 64,
+        fact_path="treatment.date",
+        value="2024-10-15",
+        normalized_value="2024-10-15",
+        observation_id="7" * 64,
+        page=1,
+    )
+    document_date = _candidate(
+        candidate_id="8" * 64,
+        fact_path="treatment.date",
+        value="2024-10-16",
+        normalized_value="2024-10-16",
+        observation_id="8" * 64,
+        page=1,
+    )
+
+    result = reconcile_evidence(
+        (claim_date, document_date),
+        material_fact_paths=("treatment.date",),
+    )
+
+    assert result.facts[0].state is ReconciledFactState.CONFLICT
+    assert result.sufficiency.corrective_actions[0].code == (
+        "CONFLICTING_TREATMENT_DATE"
+    )
+    assert result.sufficiency.corrective_actions[0].requested_action == (
+        "CORRECT_DOCUMENT"
+    )
+
+
 def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:
     member_candidate = ProvenancedEvidenceCandidate(
         candidate_id="c" * 64,
@@ -205,6 +237,7 @@ def test_reconciliation_is_stable_under_candidate_reordering(
 def _candidate(
     *,
     candidate_id: str,
+    fact_path: str = "billing.total",
     value: str,
     normalized_value: str,
     observation_id: str,
@@ -212,7 +245,7 @@ def _candidate(
 ) -> ProvenancedEvidenceCandidate:
     return ProvenancedEvidenceCandidate(
         candidate_id=candidate_id,
-        fact_path="billing.total",
+        fact_path=fact_path,
         value=value,
         normalized_value=normalized_value,
         producer="BEDROCK",
