@@ -189,13 +189,13 @@ Create the setup-time import path for immutable policy sources, member records, 
 
 ### Acceptance criteria
 
-- [ ] Policy source bytes and their cryptographic hash are stored immutably.
-- [ ] Member and dependent records are versioned and retain source provenance.
-- [ ] Claim history and utilization are loaded into PostgreSQL rather than accepted from claim submissions.
-- [ ] Missing dependent references and invalid source relationships produce structured findings.
-- [ ] Missing data remains unknown and is never coerced into eligible or ineligible.
-- [ ] Re-importing identical source content is idempotent.
-- [ ] Imported records can be inspected through the local CLI without adding policy-mutation HTTP routes.
+- [x] Policy source bytes and their cryptographic hash are stored immutably.
+- [x] Member and dependent records are versioned and retain source provenance.
+- [x] Claim history and utilization are loaded into PostgreSQL rather than accepted from claim submissions.
+- [x] Missing dependent references and invalid source relationships produce structured findings.
+- [x] Missing data remains unknown and is never coerced into eligible or ineligible.
+- [x] Re-importing identical source content is idempotent.
+- [x] Imported records can be inspected through the local CLI without adding policy-mutation HTTP routes.
 
 ---
 
