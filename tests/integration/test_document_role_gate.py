@@ -195,6 +195,47 @@ async def test_public_claim_processes_without_processing_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc001_documents_require_correction_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    document = _assignment_document_image("PRESCRIPTION\n{}")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "assignment-tc001-no-fixture",
+            },
+            data={"metadata": json.dumps(_metadata())},
+            files=[
+                ("files", ("first.jpg", document, "image/jpeg")),
+                ("files", ("second.jpg", document, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+    assert projection.status_code == 200
+    assert projection.json()["lifecycle_status"] == "ACTION_REQUIRED"
+    assert projection.json()["action"]["code"] == "MISSING_REQUIRED_DOCUMENT"
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
