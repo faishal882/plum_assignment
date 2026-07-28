@@ -76,6 +76,32 @@ action based on an old version returns `409 STALE_CLAIM_VERSION` with the curren
 owning member can replace documents, and an `ACTION_REQUIRED` claim returns to `QUEUED` after a
 valid replacement. Failed transactions remove the new artifact and do not reserve the action key.
 
+## PostgreSQL work scheduler
+
+`claim_work_items` is the durable local queue. Claim acceptance and document replacement create
+version-specific operation keys in the same transaction as the corresponding claim state. A
+project-owned `WorkScheduler` port keeps worker code independent of SQL, while
+`PostgresWorkScheduler` provides enqueue, lease, complete, and retry operations.
+
+The scheduler state transitions are:
+
+```text
+AVAILABLE (due) -> LEASED -> COMPLETED
+                         -> AVAILABLE (future retry)
+                         -> FAILED (attempt budget exhausted)
+AVAILABLE/LEASED        -> SUPERSEDED (newer claim version)
+```
+
+Leasing orders work by `available_at`, uses `FOR UPDATE SKIP LOCKED`, increments the attempt, and
+commits a worker ID, expiry, and unique fencing token before returning. Expired leases can be
+reclaimed with a new token; the prior worker can no longer complete or retry them. A default worker
+lease lasts five minutes. Retry failures use bounded sanitized codes and persist a future
+`available_at` instead of sleeping in memory or inside a transaction.
+
+`WorkerService` invokes its typed handler only after the lease transaction has committed, then
+completes or reschedules through a separate scheduler transaction. The table remains authoritative
+across worker crashes; no FastAPI background task, SQS, Redis, or in-memory queue is involved.
+
 ## Local identities
 
 Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
