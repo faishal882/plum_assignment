@@ -29,6 +29,16 @@ from claims_backend.model.application import (
 from claims_backend.model.routing import ModelRouter
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
 from claims_backend.policy.compiler import PolicyCompiler
+from evaluation_workbench import (
+    ActualCaseResult,
+    EvaluationRunBuilder,
+    ExecutionProfile,
+    OracleScorer,
+    OutcomeSnapshot,
+    SourceVersions,
+    execution_guard,
+    load_evaluation_inputs,
+)
 
 pytestmark = [
     pytest.mark.live_aws,
@@ -40,6 +50,8 @@ pytestmark = [
 _SETTINGS = Settings.from_env()
 _POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
 _OVERLAY_BYTES = Path("config/policy/assignment-overlay-v1.json").read_bytes()
+_DATASET_PATH = Path("problem_statement/test_cases.json")
+_DATASET_BYTES = _DATASET_PATH.read_bytes()
 _MATERIAL_PATHS = (
     "billing.total",
     "claim.claimed_amount",
@@ -52,6 +64,11 @@ _MATERIAL_PATHS = (
 
 @pytest.mark.asyncio
 async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
+    with execution_guard(
+        ExecutionProfile.LIVE_INTELLIGENCE,
+        synthetic_only=True,
+    ):
+        pass
     textract = TextractAdapter(
         boto3.client(
             "textract",
@@ -143,6 +160,50 @@ async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
     assert proposal.recommendation.value == "APPROVED"
     assert proposal.approved_paise == 135_000
     assert proposal.rule_results[-1].reason_code == "CATEGORY_COPAY_APPLIED"
+    dataset = load_evaluation_inputs(_DATASET_PATH)
+    builder = EvaluationRunBuilder(
+        dataset,
+        SourceVersions(
+            dataset_version=dataset.version,
+            dataset_sha256=sha256(_DATASET_BYTES).hexdigest(),
+            policy_version="PLUM_GHI_2024:1",
+            policy_sha256=sha256(_POLICY_BYTES).hexdigest(),
+            overlay_version="assignment-overlay:2",
+            overlay_sha256=sha256(_OVERLAY_BYTES).hexdigest(),
+            model_id=_SETTINGS.bedrock_model_id,
+            prompt_versions=(
+                "fast-triage-prompt-v1",
+                "complex-extraction-prompt-v2",
+            ),
+            schema_versions=("triage-output-v2", "complex-extraction-v1"),
+            graph_version="claim-processing-v7",
+            execution_profile=ExecutionProfile.LIVE_INTELLIGENCE,
+            ocr_mode="ENABLED",
+        ),
+        selected_case_ids=("TC004",),
+    )
+    builder.record(
+        ActualCaseResult(
+            case_id="TC004",
+            outcome=OutcomeSnapshot(
+                lifecycle="DECIDED",
+                adjudication=proposal.recommendation.value,
+                approved_paise=proposal.approved_paise,
+                reason_codes=tuple(result.reason_code for result in proposal.rule_results),
+                provenance=("F007", "F008"),
+                trace_complete=bool(
+                    prescription_ocr.provider_request_id
+                    and bill_ocr.provider_request_id
+                    and extracted[0].invocation.provider_request_id
+                    and extracted[1].invocation.provider_request_id
+                ),
+                assumptions=(),
+                failures=(),
+            ),
+        )
+    )
+    report = OracleScorer.score(_DATASET_PATH, builder.finalize())
+    assert report.passed is True
 
 
 class _MemoryModelRepository:

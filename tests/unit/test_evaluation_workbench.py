@@ -107,6 +107,40 @@ def test_structured_profile_is_explicitly_labeled_as_ocr_bypassed() -> None:
     assert versions.ocr_mode == "BYPASSED"
 
 
+def test_only_live_profile_can_finalize_a_selected_case_subset() -> None:
+    dataset = load_evaluation_inputs(_DATASET_PATH)
+    with pytest.raises(ValueError, match="Only LIVE_INTELLIGENCE"):
+        EvaluationRunBuilder(
+            dataset,
+            _versions(),
+            selected_case_ids=("TC004",),
+        )
+
+    builder = EvaluationRunBuilder(
+        dataset,
+        _versions(profile=ExecutionProfile.LIVE_INTELLIGENCE),
+        selected_case_ids=("TC004",),
+    )
+    builder.record(
+        ActualCaseResult(
+            case_id="TC004",
+            outcome=OutcomeSnapshot(
+                lifecycle="DECIDED",
+                adjudication="APPROVED",
+                approved_paise=135_000,
+                reason_codes=("CATEGORY_COPAY_APPLIED",),
+                provenance=("F007", "F008"),
+                trace_complete=True,
+                assumptions=(),
+                failures=(),
+            ),
+        )
+    )
+    report = OracleScorer.score(_DATASET_PATH, builder.finalize())
+    assert report.passed is True
+    assert [case.case_id for case in report.cases] == ["TC004"]
+
+
 def test_recorded_profiles_deny_external_network(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

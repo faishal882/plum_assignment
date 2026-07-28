@@ -8,6 +8,7 @@ from evaluation_workbench.models import (
     ActualCaseResult,
     CaseEvaluation,
     EvaluationReport,
+    ExecutionProfile,
     FinalizedEvaluationRun,
     OutcomeSnapshot,
     SourceVersions,
@@ -51,16 +52,31 @@ class EvaluationRunBuilder:
         self,
         dataset: EvaluationDataset,
         versions: SourceVersions,
+        *,
+        selected_case_ids: tuple[str, ...] | None = None,
     ) -> None:
         self._dataset = dataset
         self._versions = versions
         self._actuals: dict[str, ActualCaseResult] = {}
         self._finalized = False
+        all_case_ids = tuple(case.case_id for case in dataset.cases)
+        selected = all_case_ids if selected_case_ids is None else selected_case_ids
+        if not selected or len(selected) != len(set(selected)):
+            raise ValueError("Evaluation case selection must be non-empty and unique")
+        unknown = set(selected) - set(all_case_ids)
+        if unknown:
+            raise ValueError(f"Unknown selected evaluation cases: {sorted(unknown)}")
+        if (
+            set(selected) != set(all_case_ids)
+            and versions.execution_profile is not ExecutionProfile.LIVE_INTELLIGENCE
+        ):
+            raise ValueError("Only LIVE_INTELLIGENCE may evaluate a selected subset")
+        self._selected_case_ids = selected
 
     def record(self, result: ActualCaseResult) -> None:
         if self._finalized:
             raise RuntimeError("Evaluation run is already finalized")
-        known = {case.case_id for case in self._dataset.cases}
+        known = set(self._selected_case_ids)
         if result.case_id not in known:
             raise ValueError(f"Unknown evaluation case: {result.case_id}")
         if result.case_id in self._actuals:
@@ -71,15 +87,15 @@ class EvaluationRunBuilder:
         if self._finalized:
             raise RuntimeError("Evaluation run is already finalized")
         missing = [
-            case.case_id
-            for case in self._dataset.cases
-            if case.case_id not in self._actuals
+            case_id
+            for case_id in self._selected_case_ids
+            if case_id not in self._actuals
         ]
         if missing:
             raise ValueError(
                 f"Cannot finalize evaluation with missing cases: {', '.join(missing)}"
             )
-        cases = tuple(self._actuals[case.case_id] for case in self._dataset.cases)
+        cases = tuple(self._actuals[case_id] for case_id in self._selected_case_ids)
         self._finalized = True
         return FinalizedEvaluationRun(
             versions=self._versions,
@@ -100,10 +116,16 @@ class OracleScorer:
     ) -> EvaluationReport:
         oracle_cases = _oracle_cases(oracle_path)
         actual_by_id = {case.case_id: case for case in run.cases}
-        if set(oracle_cases) != set(actual_by_id):
-            raise ValueError("Finalized actuals and oracle cases do not match")
+        if not set(actual_by_id).issubset(oracle_cases):
+            raise ValueError("Finalized actuals contain unknown oracle cases")
+        if (
+            set(oracle_cases) != set(actual_by_id)
+            and run.versions.execution_profile is not ExecutionProfile.LIVE_INTELLIGENCE
+        ):
+            raise ValueError("Only LIVE_INTELLIGENCE may score a selected subset")
         evaluated: list[CaseEvaluation] = []
-        for case_id, oracle in oracle_cases.items():
+        for case_id in (case.case_id for case in run.cases):
+            oracle = oracle_cases[case_id]
             expected = _expected_snapshot(case_id, oracle)
             actual = actual_by_id[case_id].outcome
             mismatches = _mismatches(expected, actual)
