@@ -6,7 +6,6 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.api.review_routes import router as review_router
 from claims_backend.api.routes import router
@@ -14,9 +13,8 @@ from claims_backend.config import Settings
 from claims_backend.observability import (
     EngineeringLogEvent,
     Observability,
-    ObservabilityConfig,
-    create_observability,
 )
+from claims_backend.runtime.composition import create_process_runtime
 
 
 def create_app(
@@ -25,22 +23,16 @@ def create_app(
     observability: Observability | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
-    engine = create_async_engine(resolved_settings.database_url, pool_pre_ping=True)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    owned_observability = observability is None and resolved_settings.observability_enabled
-    resolved_observability = observability
-    if resolved_observability is None and resolved_settings.observability_enabled:
-        resolved_observability = create_observability(
-            _observability_config(resolved_settings),
-            process_name="api",
-        )
+    runtime = create_process_runtime(
+        resolved_settings,
+        process_name="api",
+        observability=observability,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
-        await engine.dispose()
-        if owned_observability and resolved_observability is not None:
-            resolved_observability.shutdown()
+        await runtime.close()
 
     app = FastAPI(
         title="Plum Claims Backend",
@@ -48,11 +40,12 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = resolved_settings
-    app.state.engine = engine
-    app.state.session_factory = session_factory
-    app.state.observability = resolved_observability
-    if resolved_observability is not None:
-        _install_observability_middleware(app, resolved_observability)
+    app.state.runtime = runtime
+    app.state.engine = runtime.engine
+    app.state.session_factory = runtime.session_factory
+    app.state.observability = runtime.observability
+    if runtime.observability is not None:
+        _install_observability_middleware(app, runtime.observability)
     app.include_router(router)
     app.include_router(review_router)
     app.add_exception_handler(RequestValidationError, _request_validation_error)
@@ -105,20 +98,6 @@ def _install_observability_middleware(
                 )
             )
             return response
-
-
-def _observability_config(settings: Settings) -> ObservabilityConfig:
-    return ObservabilityConfig(
-        log_root=settings.log_root,
-        enabled=settings.observability_enabled,
-        phoenix_endpoint=settings.phoenix_endpoint,
-        project_name=settings.phoenix_project,
-        log_max_bytes=settings.log_max_bytes,
-        log_backup_count=settings.log_backup_count,
-        execution_profile=settings.execution_profile,
-        capture_content=settings.observability_capture_content,
-        synthetic_only=settings.observability_synthetic_only,
-    )
 
 
 async def _request_validation_error(
