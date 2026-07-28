@@ -122,6 +122,11 @@ class _Overlay(BaseModel):
 class PolicyCompilation:
     source_sha256: str
     overlay_sha256: str
+    overlay_id: str | None
+    overlay_version: int | None
+    overlay_base_policy_sha256: str | None
+    overlay_approved_by: str | None
+    overlay_approved_at: datetime | None
     ir: PolicyIR | None
     canonical_ir: bytes | None
     ir_sha256: str | None
@@ -168,6 +173,11 @@ class PolicyCompiler:
             return PolicyCompilation(
                 source_sha256=source_hash,
                 overlay_sha256=overlay_hash,
+                overlay_id=overlay.overlay_id,
+                overlay_version=overlay.version,
+                overlay_base_policy_sha256=overlay.base_policy_sha256,
+                overlay_approved_by=overlay.approval.approved_by,
+                overlay_approved_at=overlay.approval.approved_at,
                 ir=None,
                 canonical_ir=None,
                 ir_sha256=None,
@@ -184,6 +194,11 @@ class PolicyCompiler:
         return PolicyCompilation(
             source_sha256=source_hash,
             overlay_sha256=overlay_hash,
+            overlay_id=overlay.overlay_id,
+            overlay_version=overlay.version,
+            overlay_base_policy_sha256=overlay.base_policy_sha256,
+            overlay_approved_by=overlay.approval.approved_by,
+            overlay_approved_at=overlay.approval.approved_at,
             ir=ir,
             canonical_ir=canonical_ir,
             ir_sha256=sha256(canonical_ir).hexdigest(),
@@ -206,7 +221,19 @@ def _invalid_compilation(
         )
         for issue in error.errors(include_url=False)
     )
-    return PolicyCompilation(source_hash, overlay_hash, None, None, None, findings)
+    return PolicyCompilation(
+        source_sha256=source_hash,
+        overlay_sha256=overlay_hash,
+        overlay_id=None,
+        overlay_version=None,
+        overlay_base_policy_sha256=None,
+        overlay_approved_by=None,
+        overlay_approved_at=None,
+        ir=None,
+        canonical_ir=None,
+        ir_sha256=None,
+        findings=findings,
+    )
 
 
 def _semantic_findings(

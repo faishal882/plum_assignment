@@ -1,4 +1,7 @@
+from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -31,6 +34,13 @@ class PreAuthorizationMode(StrEnum):
     ABOVE_THRESHOLD = "ABOVE_THRESHOLD"
     ALWAYS = "ALWAYS"
     NEVER = "NEVER"
+
+
+class PolicyVersionStatus(StrEnum):
+    INVALID = "INVALID"
+    COMPILED = "COMPILED"
+    ACTIVE = "ACTIVE"
+    RETIRED = "RETIRED"
 
 
 class PolicyFinding(BaseModel):
@@ -98,3 +108,21 @@ class PolicyIR(BaseModel):
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyVersionInspection:
+    policy_version_id: UUID
+    policy_id: str
+    version: int
+    source_sha256: str
+    overlay_sha256: str
+    overlay_id: str | None
+    overlay_version: int | None
+    compiler_version: str
+    ir_sha256: str | None
+    status: PolicyVersionStatus
+    findings: tuple[PolicyFinding, ...]
+    compiled_at: datetime
+    activated_at: datetime | None
+    activated_by: str | None
