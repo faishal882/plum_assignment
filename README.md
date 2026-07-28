@@ -142,12 +142,11 @@ curl --fail-with-body \
 
 `uvicorn` starts only the HTTP API. The repository contains the durable scheduler,
 `WorkerService`, and `LangGraphClaimWorkflow`, but it does not yet expose a worker executable or
-local composition root. Consequently, a claim submitted to a normally started API is expected to
-remain `QUEUED`; that does not mean submission is broken.
+local composition root. Start `uv run claims-worker run-loop` alongside the API to advance a
+submitted claim through the durable PostgreSQL work queue.
 
-Use the integration tests below to verify complete processing through triage, OCR/model fixtures,
-adjudication, review, persistence, and reconstruction. A standalone worker command is required
-before a manually submitted claim can advance end to end outside the test harness.
+Use the integration tests below to verify complete processing through triage, recorded OCR/model
+providers, adjudication, review, persistence, and reconstruction.
 
 ## Test that it works
 
@@ -158,12 +157,10 @@ docker compose up -d postgres
 uv run alembic upgrade head
 ```
 
-> **Database warning:** pytest truncates claim, workflow, review, and setup tables in
-> `CLAIMS_TEST_DATABASE_URL`. The committed `.env.example` points that setting at the same local
-> `claims` database as `CLAIMS_DATABASE_URL`. Run tests before creating manual data, or point
-> `CLAIMS_TEST_DATABASE_URL` at a separate disposable PostgreSQL database. If tests use the default
-> database, any manually submitted local claims are removed and the test fixture replaces setup
-> data with its deterministic policy/member data.
+> **Database safety:** pytest truncates claim, workflow, review, and setup tables in
+> `CLAIMS_TEST_DATABASE_URL`. It refuses to run when that target is the same database as
+> `CLAIMS_DATABASE_URL`, unless `CLAIMS_ALLOW_DESTRUCTIVE_TEST_DATABASE=1` is explicitly set.
+> The committed example uses a separate disposable `claims_test` database.
 
 Run the complete deterministic suite:
 

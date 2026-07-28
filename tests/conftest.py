@@ -21,6 +21,7 @@ from claims_backend.infrastructure.postgres.setup_import_repository import (
     PostgresSetupImportRepository,
 )
 from claims_backend.policy.compiler import PolicyCompiler
+from claims_backend.testing import assert_safe_test_database
 
 _POLICY_PATH = Path("problem_statement/policy_terms.json")
 _OVERLAY_PATH = Path("config/policy/assignment-overlay-v1.json")
@@ -33,6 +34,11 @@ load_environment()
 @pytest.fixture(scope="session")
 def postgres_database_url() -> Iterator[str]:
     database_url = environ["CLAIMS_TEST_DATABASE_URL"]
+    assert_safe_test_database(
+        environ["CLAIMS_DATABASE_URL"],
+        database_url,
+        allow_destructive_override=(environ.get("CLAIMS_ALLOW_DESTRUCTIVE_TEST_DATABASE") == "1"),
+    )
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(config, "head")
