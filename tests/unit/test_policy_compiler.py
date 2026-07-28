@@ -57,9 +57,7 @@ def test_schema_and_referential_errors_produce_no_policy_ir() -> None:
 
     assert malformed.ir is None
     assert malformed.has_errors
-    assert {finding.category for finding in malformed.findings} == {
-        FindingCategory.SCHEMA
-    }
+    assert {finding.category for finding in malformed.findings} == {FindingCategory.SCHEMA}
     assert mismatched.ir is None
     assert any(
         finding.category is FindingCategory.REFERENTIAL

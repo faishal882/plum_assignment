@@ -105,21 +105,15 @@ async def test_submission_persists_the_complete_initial_claim_unit(
         "policy_version_id": str(persisted_claim.policy_version_id),
         "policy_version": 1,
         "source_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
-        "overlay_sha256": (
-            "e120cd13dff8502a2890de83cfa85b8c25f74703c1bfd7e0f99d14a2df5b56e3"
-        ),
+        "overlay_sha256": ("e120cd13dff8502a2890de83cfa85b8c25f74703c1bfd7e0f99d14a2df5b56e3"),
         "ir_sha256": persisted_version.submission["policy_snapshot"]["ir_sha256"],
     }
     assert persisted_version.submission["member_snapshot"] == {
         "member_id": "EMP001",
-        "member_record_id": persisted_version.submission["member_snapshot"][
-            "member_record_id"
-        ],
+        "member_record_id": persisted_version.submission["member_snapshot"]["member_record_id"],
         "member_version_id": str(persisted_claim.member_version_id),
         "member_version": 1,
-        "setup_import_id": persisted_version.submission["member_snapshot"][
-            "setup_import_id"
-        ],
+        "setup_import_id": persisted_version.submission["member_snapshot"]["setup_import_id"],
     }
     assert [(event.sequence, event.event_type) for event in audit_events] == [
         (1, "CLAIM_RECEIVED"),

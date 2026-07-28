@@ -74,7 +74,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table_name in ("policy_activation_events", "policy_findings"):
         op.execute(f"DROP TRIGGER {table_name}_immutable ON {table_name}")
-    op.execute(
-        "DROP TRIGGER policy_versions_content_immutable ON policy_versions"
-    )
+    op.execute("DROP TRIGGER policy_versions_content_immutable ON policy_versions")
     op.execute("DROP FUNCTION reject_policy_version_content_mutation()")

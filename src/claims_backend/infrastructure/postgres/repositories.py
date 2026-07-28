@@ -502,8 +502,7 @@ class PostgresClaimsRepository:
                 .where(
                     PolicyVersionRow.policy_id == submission.policy_id,
                     PolicyVersionRow.status == "ACTIVE",
-                    SetupImportRow.policy_source_id
-                    == PolicyVersionRow.policy_source_id,
+                    SetupImportRow.policy_source_id == PolicyVersionRow.policy_source_id,
                 )
                 .order_by(
                     SetupImportRow.imported_at.desc(),
