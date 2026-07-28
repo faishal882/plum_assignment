@@ -21,6 +21,7 @@ class RetryDisposition(StrEnum):
 class WorkLease:
     work_item_id: UUID
     claim_id: UUID
+    claim_version: int
     operation_key: str
     worker_id: str
     lease_token: UUID
@@ -34,6 +35,7 @@ class WorkLease:
 @dataclass(frozen=True, slots=True)
 class WorkRequest:
     claim_id: UUID
+    claim_version: int
     operation_key: str
     available_at: datetime
     max_attempts: int = 3

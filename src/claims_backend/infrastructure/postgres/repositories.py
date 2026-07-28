@@ -183,6 +183,7 @@ class PostgresClaimsRepository:
                 ClaimWorkItemRow(
                     id=uuid4(),
                     claim_id=claim_id,
+                    claim_version=version,
                     operation_key=f"claim:{claim_id}:process:v{version}",
                     status="AVAILABLE",
                     available_at=now,
@@ -410,6 +411,7 @@ class PostgresClaimsRepository:
                 ClaimWorkItemRow(
                     id=uuid4(),
                     claim_id=claim_id,
+                    claim_version=new_claim_version,
                     operation_key=f"claim:{claim_id}:process:v{new_claim_version}",
                     status="AVAILABLE",
                     available_at=now,

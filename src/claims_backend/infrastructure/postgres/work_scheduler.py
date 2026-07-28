@@ -38,6 +38,8 @@ class PostgresWorkScheduler(WorkScheduler):
     async def enqueue(self, request: WorkRequest) -> WorkRef:
         _validate_operation_key(request.operation_key)
         available_at = _aware_utc(request.available_at)
+        if request.claim_version <= 0:
+            raise InvalidWorkRequestError("Claim version must be positive.")
         if request.max_attempts <= 0:
             raise InvalidWorkRequestError("Maximum attempts must be positive.")
         now = _aware_utc(self._clock())
@@ -49,6 +51,7 @@ class PostgresWorkScheduler(WorkScheduler):
                 .values(
                     id=work_item_id,
                     claim_id=request.claim_id,
+                    claim_version=request.claim_version,
                     operation_key=request.operation_key,
                     status=WorkStatus.AVAILABLE.value,
                     available_at=available_at,
@@ -76,6 +79,7 @@ class PostgresWorkScheduler(WorkScheduler):
             ).one()
             if (
                 existing.claim_id != request.claim_id
+                or existing.claim_version != request.claim_version
                 or existing.max_attempts != request.max_attempts
             ):
                 raise OperationKeyConflictError
@@ -152,6 +156,7 @@ class PostgresWorkScheduler(WorkScheduler):
                     WorkLease(
                         work_item_id=row.id,
                         claim_id=row.claim_id,
+                        claim_version=row.claim_version,
                         operation_key=row.operation_key,
                         worker_id=worker_id,
                         lease_token=lease_token,

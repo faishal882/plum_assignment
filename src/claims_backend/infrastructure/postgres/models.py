@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -265,6 +266,10 @@ class ClaimWorkItemRow(Base):
             name="claim_work_items_max_attempts_positive",
         ),
         CheckConstraint(
+            "claim_version > 0",
+            name="claim_work_items_claim_version_positive",
+        ),
+        CheckConstraint(
             "status IN ('AVAILABLE', 'LEASED', 'COMPLETED', 'SUPERSEDED', 'FAILED')",
             name="claim_work_items_status_supported",
         ),
@@ -282,6 +287,12 @@ class ClaimWorkItemRow(Base):
             "created_at",
         ),
         Index("ix_claim_work_items_lease_until", "lease_until"),
+        ForeignKeyConstraint(
+            ["claim_id", "claim_version"],
+            ["claim_versions.claim_id", "claim_versions.version"],
+            name="claim_work_items_claim_version_fkey",
+            ondelete="RESTRICT",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
@@ -291,6 +302,7 @@ class ClaimWorkItemRow(Base):
         nullable=False,
     )
     operation_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -307,3 +319,78 @@ class ClaimWorkItemRow(Base):
     last_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorkflowRunRow(Base):
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "claim_version > 0",
+            name="workflow_runs_claim_version_positive",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'RUNNING', 'COMPLETED')",
+            name="workflow_runs_status_supported",
+        ),
+        ForeignKeyConstraint(
+            ["claim_id", "claim_version"],
+            ["claim_versions.claim_id", "claim_versions.version"],
+            name="workflow_runs_claim_version_fkey",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            "graph_name",
+            "graph_version",
+            name="workflow_runs_claim_graph_version_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    work_item_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claim_work_items.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    graph_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    graph_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class WorkflowEffectRow(Base):
+    __tablename__ = "workflow_effects"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_run_id",
+            "effect_key",
+            name="workflow_effects_run_key_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    workflow_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("workflow_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    effect_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    effect_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
