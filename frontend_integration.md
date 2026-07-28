@@ -7,7 +7,7 @@ runtime errors and workflow behavior that OpenAPI does not fully describe.
 
 ## Integration status and constraints
 
-The backend currently exposes six HTTP operations:
+The backend currently exposes eight HTTP operations:
 
 | Method | Path | Actor | Purpose |
 |---|---|---|---|
@@ -17,21 +17,44 @@ The backend currently exposes six HTTP operations:
 | `GET` | `/v1/review-tasks` | Reviewer | List all review tasks |
 | `GET` | `/v1/review-tasks/{task_id}` | Reviewer | Read task evidence and decision trace |
 | `POST` | `/v1/review-tasks/{task_id}/commands` | Reviewer | Resolve a review task |
+| `GET` | `/health/live` | Any local caller | API process liveness |
+| `GET` | `/health/ready` | Any local caller | Local configuration and PostgreSQL readiness |
 
 The following capabilities do not exist yet:
 
 - No member claim-list endpoint. The frontend must retain returned claim IDs locally or add a
   backend endpoint before implementing a reliable claims dashboard.
 - No document download or preview endpoint.
-- No health endpoint; use `GET /openapi.json` only as an API-process smoke check.
 - No Server-Sent Events or WebSocket stream. Poll `GET /v1/claims/{claim_id}`.
 - No pagination, filtering, or sorting parameters on `GET /v1/review-tasks`.
-- No standalone worker executable. A claim submitted to a normally started API remains `QUEUED`.
-  Complete state transitions currently run through the integration-test composition.
+- The worker is a separate local process. Start it with `uv run claims-worker run-loop`; claim
+  submission is asynchronous and returns `202` before processing begins.
 - No CORS middleware. A browser hosted on another origin cannot call FastAPI directly.
 - No real authentication. `X-Dev-Username` is a local identity selector, not proof of identity.
 
 These are current-contract limitations, not frontend workarounds to conceal.
+
+## Local operational startup and polling
+
+Start the API and worker in separate terminals:
+
+```bash
+uv run uvicorn claims_backend.api.app:app --reload
+uv run claims-worker run-loop
+```
+
+For one deterministic worker pass, use `uv run claims-worker run-once`. The default
+`RECORDED_LOCAL` profile is cost-free and does not construct AWS clients. A submitted claim moves
+from `QUEUED` to one of `ACTION_REQUIRED`, `IN_REVIEW`, `DECIDED`, or `PROCESSING_FAILED`.
+
+Poll the returned `status_url` every 1–2 seconds while `progress.is_terminal` is `false`. Stop
+polling at any terminal state. `PROCESSING_FAILED` is a safe processing result, not a rejection;
+show retry guidance rather than a coverage decision. `ACTION_REQUIRED` means the member should
+follow the `action` payload and submit a replacement document.
+
+Use `GET /health/live` for a process check and `GET /health/ready` before accepting local UI work.
+Readiness returns `503` when PostgreSQL is unavailable. Neither endpoint invokes OCR or model
+providers.
 
 ## Recommended Next.js topology
 
