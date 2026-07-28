@@ -95,19 +95,21 @@ Replace placeholder document handling with bounded streaming ingestion into the 
 
 **User stories**: 4, 5
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Make claim submission safe under client and network retries. Bind each member-scoped idempotency key to the canonical request identity and persist the original receipt.
 
 ### Acceptance criteria
 
-- [ ] `POST /v1/claims` requires an idempotency key.
-- [ ] Repeating the same canonical request with the same member and key returns the original status code and receipt.
-- [ ] Reusing a key with different metadata, document manifest, or content hashes returns a conflict.
-- [ ] Concurrent identical submissions create exactly one claim, one initial work item, and one set of document references.
-- [ ] Idempotency records and claim acceptance commit atomically.
-- [ ] A failed or rolled-back acceptance does not permanently reserve a key.
-- [ ] Tests cover sequential retries, concurrent retries, conflicting payloads, and member scoping.
+- [x] `POST /v1/claims` requires an idempotency key.
+- [x] Repeating the same canonical request with the same member and key returns the original status code and receipt.
+- [x] Reusing a key with different metadata, document manifest, or content hashes returns a conflict.
+- [x] Concurrent identical submissions create exactly one claim, one initial work item, and one set of document references.
+- [x] Idempotency records and claim acceptance commit atomically.
+- [x] A failed or rolled-back acceptance does not permanently reserve a key.
+- [x] Tests cover sequential retries, concurrent retries, conflicting payloads, and member scoping.
 
 ---
 
