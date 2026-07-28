@@ -1,10 +1,12 @@
 import json
+from datetime import date, timedelta
 from hashlib import sha256
 
 from claims_backend.domain.adjudication import (
     AdjudicationProposal,
     AdjudicationRecommendation,
     ClaimCasefile,
+    EvidenceFact,
     FactState,
     RuleResult,
     RuleStatus,
@@ -72,6 +74,22 @@ class DeterministicPolicyAdjudicator:
                 0,
             )
         )
+        if casefile.schema_version >= 2:
+            waiting_result = _waiting_period_result(
+                sequence=len(results) + 1,
+                casefile=casefile,
+                policy=policy,
+                amount=amount,
+            )
+            results.append(waiting_result)
+            if waiting_result.status is RuleStatus.FAIL:
+                return _proposal(
+                    AdjudicationRecommendation.REJECTED,
+                    0,
+                    casefile,
+                    policy,
+                    results,
+                )
         if amount > category.limit_paise:
             raise UnsafeCasefileError("Category limit outcome is not implemented for this slice.")
         results.append(
@@ -131,38 +149,109 @@ class DeterministicPolicyAdjudicator:
         approved = amount - deduction
         if not 0 <= approved <= casefile.claimed_paise:
             raise UnsafeCasefileError("Approved amount violates money invariants.")
-        ir_bytes = json.dumps(
-            policy.model_dump(mode="json"),
+        return _proposal(
+            AdjudicationRecommendation.APPROVED,
+            approved,
+            casefile,
+            policy,
+            results,
+        )
+
+
+def _waiting_period_result(
+    *,
+    sequence: int,
+    casefile: ClaimCasefile,
+    policy: PolicyIR,
+    amount: int,
+) -> RuleResult:
+    join_fact = _known_fact(casefile.member_join_date, "member join date")
+    treatment_fact = _known_fact(casefile.treatment_date, "treatment date")
+    condition_fact = _known_fact(casefile.clinical_condition, "clinical condition")
+    join_date = _iso_date(join_fact.value, "member join date")
+    treatment_date = _iso_date(treatment_fact.value, "treatment date")
+    condition = _string(condition_fact.value).casefold()
+    rule = policy.waiting_period_rules.specific_conditions.get(
+        condition,
+        policy.waiting_period_rules.initial,
+    )
+    eligible_from = join_date + timedelta(days=rule.days)
+    waiting = treatment_date < eligible_from
+    return _result(
+        sequence,
+        rule.rule_id,
+        RuleStatus.FAIL if waiting else RuleStatus.PASS,
+        "WAITING_PERIOD" if waiting else "WAITING_PERIOD_SATISFIED",
+        rule.source_pointer,
+        (
+            *join_fact.evidence_refs,
+            *treatment_fact.evidence_refs,
+            *condition_fact.evidence_refs,
+        ),
+        {
+            "condition": condition,
+            "waiting_days": rule.days,
+            "member_join_date": join_date.isoformat(),
+            "treatment_date": treatment_date.isoformat(),
+            "eligible_from": eligible_from.isoformat(),
+        },
+        amount,
+        -amount if waiting else 0,
+    )
+
+
+def _proposal(
+    recommendation: AdjudicationRecommendation,
+    approved_paise: int,
+    casefile: ClaimCasefile,
+    policy: PolicyIR,
+    results: list[RuleResult],
+) -> AdjudicationProposal:
+    ir_bytes = json.dumps(
+        policy.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()
+    policy_hash = sha256(ir_bytes).hexdigest()
+    canonical_payload = {
+        "recommendation": recommendation.value,
+        "approved_paise": approved_paise,
+        "currency": casefile.currency,
+        "casefile_hash": casefile.canonical_hash(),
+        "policy_ir_sha256": policy_hash,
+        "rule_results": [result.model_dump(mode="json") for result in results],
+    }
+    canonical_hash = sha256(
+        json.dumps(
+            canonical_payload,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
         ).encode()
-        policy_hash = sha256(ir_bytes).hexdigest()
-        canonical_payload = {
-            "recommendation": AdjudicationRecommendation.APPROVED.value,
-            "approved_paise": approved,
-            "currency": casefile.currency,
-            "casefile_hash": casefile.canonical_hash(),
-            "policy_ir_sha256": policy_hash,
-            "rule_results": [result.model_dump(mode="json") for result in results],
-        }
-        canonical_hash = sha256(
-            json.dumps(
-                canonical_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
-            ).encode()
-        ).hexdigest()
-        return AdjudicationProposal(
-            recommendation=AdjudicationRecommendation.APPROVED,
-            approved_paise=approved,
-            currency=casefile.currency,
-            casefile_hash=casefile.canonical_hash(),
-            policy_ir_sha256=policy_hash,
-            rule_results=tuple(results),
-            canonical_hash=canonical_hash,
-        )
+    ).hexdigest()
+    return AdjudicationProposal(
+        recommendation=recommendation,
+        approved_paise=approved_paise,
+        currency=casefile.currency,
+        casefile_hash=casefile.canonical_hash(),
+        policy_ir_sha256=policy_hash,
+        rule_results=tuple(results),
+        canonical_hash=canonical_hash,
+    )
+
+
+def _known_fact(fact: EvidenceFact | None, label: str) -> EvidenceFact:
+    if fact is None or fact.state is not FactState.KNOWN:
+        raise UnsafeCasefileError(f"{label.capitalize()} must be known before adjudication.")
+    return fact
+
+
+def _iso_date(value: object, label: str) -> date:
+    try:
+        return date.fromisoformat(_string(value))
+    except ValueError as error:
+        raise UnsafeCasefileError(f"{label.capitalize()} is not a valid ISO date.") from error
 
 
 def _result(
@@ -198,5 +287,11 @@ def _integer(value: object) -> int:
 
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise UnsafeCasefileError
+    return value
+
+
+def _string(value: object) -> str:
+    if not isinstance(value, str) or not value:
         raise UnsafeCasefileError
     return value
