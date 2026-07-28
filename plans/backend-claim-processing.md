@@ -161,19 +161,21 @@ Turn queued claims into durable local work. A worker leases due work using Postg
 
 **User stories**: 48, 52, 55
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Establish the fixed typed LangGraph execution skeleton and make worker crashes recoverable. A claim run resumes from committed state using its workflow-run identifier and never duplicates already committed effects.
 
 ### Acceptance criteria
 
-- [ ] Each workflow run has a stable identifier used as the LangGraph thread identifier and references one claim version.
-- [ ] Graph state contains references and compact typed summaries, not uploaded bytes or full provider bodies.
-- [ ] Checkpoints are durable in PostgreSQL.
-- [ ] A worker terminated after a committed checkpoint can be replaced after lease expiry.
-- [ ] Resumed execution starts from the last committed checkpoint instead of restarting completed side effects.
-- [ ] Repeated workflow operations cannot create duplicate observations, audit events, or terminal decisions.
-- [ ] Recovery tests terminate processing at controlled boundaries and prove eventual single completion.
+- [x] Each workflow run has a stable identifier used as the LangGraph thread identifier and references one claim version.
+- [x] Graph state contains references and compact typed summaries, not uploaded bytes or full provider bodies.
+- [x] Checkpoints are durable in PostgreSQL.
+- [x] A worker terminated after a committed checkpoint can be replaced after lease expiry.
+- [x] Resumed execution starts from the last committed checkpoint instead of restarting completed side effects.
+- [x] Repeated workflow operations cannot create duplicate observations, audit events, or terminal decisions.
+- [x] Recovery tests terminate processing at controlled boundaries and prove eventual single completion.
 
 ---
 
