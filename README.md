@@ -89,6 +89,50 @@ requires both an explicit `LIVE_INTELLIGENCE` profile and a synthetic-only asser
 JSONL logs are diagnostic copies; PostgreSQL workflow events and decision records remain the
 reconstruction authority.
 
+## Evaluation profiles
+
+The evaluation workbench is intentionally outside the installable `claims_backend` package.
+Production schemas, workflows, policy code, and provider adapters cannot import its oracle
+scorer. The public dataset loader removes every `expected` field; actual results are frozen and
+hashed before the scorer opens `problem_statement/test_cases.json`.
+
+Run the no-AWS gates with:
+
+```bash
+uv run pytest tests/unit/test_evaluation_workbench.py -q
+uv run pytest \
+  tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate \
+  -q
+uv run pytest \
+  tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate \
+  -q
+```
+
+`STRUCTURED_COMPONENT` is labeled `OCR=BYPASSED`. `RENDERED_RECORDED` generates image
+documents, applies the deterministic unreadable transform, enters through the production
+multipart API, and exercises rendering, recorded OCR, recorded structured extraction,
+reconciliation, policy adjudication, persistence, and reconstruction for TC001–TC012. Both
+profiles install a non-loopback network guard, so they cannot contact AWS or another external
+service; loopback PostgreSQL remains available.
+
+The report contains expected and actual lifecycle, adjudication, approved amount, reason codes,
+provenance, trace completeness, assumptions, and component failures, together with dataset,
+policy, overlay, model, prompt, schema, graph, and profile versions. API, worker, and evaluation
+logs are independently scanned with PHI canaries during the rendered gate.
+
+The selected live gate remains separate because it can incur AWS cost:
+
+```bash
+CLAIMS_RUN_LIVE_AWS=1 \
+CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=1 \
+  uv run pytest tests/live/test_tc004_live_intelligence.py -q
+```
+
+It uses only generated TC004 documents, calls real Textract and Bedrock, freezes the actual
+result before opening the selected oracle case, and verifies the same deterministic ₹1,350.00
+policy result as the recorded suite.
+
 Submit a claim as multipart form data:
 
 - `metadata`: JSON containing `member_id`, `policy_id`, `claim_category`,

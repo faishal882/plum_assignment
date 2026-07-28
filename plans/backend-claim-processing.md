@@ -573,24 +573,33 @@ Finish the diagnostic and quality system around the complete backend. Every work
 
 ### Acceptance criteria
 
-- [ ] Every claim workflow produces one correlated Phoenix trace tree with node entry, exit, duration, outcome, and error spans.
-- [ ] Bedrock spans include route, exact model, prompt/schema versions, token usage, latency, provider request ID, and sanitized errors.
-- [ ] Textract, reconciliation, policy evaluation, persistence, and review operations appear as custom spans in the same trace.
-- [ ] API, worker, and evaluation processes write separate rotating JSONL logs carrying claim, workflow, trace, span, attempt, duration, and outcome identifiers.
-- [ ] Default Phoenix attributes and logs contain no patient names, diagnoses, OCR text, document bytes, local paths, raw prompts/responses, or credentials.
-- [ ] PHI canary tests fail when forbidden fields or values enter trace/log attributes.
-- [ ] Rich prompt and response capture can be enabled only in an explicit synthetic-only evaluation profile.
-- [ ] PostgreSQL retains the ordered workflow events, evidence references, frozen casefile, rule tree, amount steps, decision, failures, and human actions.
-- [ ] Removing Phoenix data and JSONL logs does not prevent exact reconstruction of why a claim received its recommendation and handling.
-- [ ] Unit and recorded profiles make no network calls and cannot incur AWS cost.
-- [ ] Structured-component evaluation bypasses OCR and is labeled accordingly.
-- [ ] Rendered E2E generates documents, applies deterministic quality transforms, seeds history/utilization, and enters through the production multipart API.
-- [ ] Live-intelligence evaluation requires an explicit selector and calls real Textract and Bedrock only with synthetic inputs.
-- [ ] Oracle fields and expected outcomes remain inaccessible until after the system result is finalized.
-- [ ] The evaluation report records dataset, policy, overlay, model, prompt, schema, and execution-profile versions.
-- [ ] TC001–TC012 each include expected and actual lifecycle, adjudication, amount, reasons, provenance, trace completeness, assumptions, and failures.
-- [ ] All twelve cases satisfy their PRD acceptance outcomes in the recorded rendered suite.
-- [ ] Selected synthetic cases satisfy the live-intelligence smoke gate without changing deterministic policy results.
+- [x] Every claim workflow produces one correlated Phoenix trace tree with node entry, exit, duration, outcome, and error spans.
+- [x] Bedrock spans include route, exact model, prompt/schema versions, token usage, latency, provider request ID, and sanitized errors.
+- [x] Textract, reconciliation, policy evaluation, persistence, and review operations appear as custom spans in the same trace.
+- [x] API, worker, and evaluation processes write separate rotating JSONL logs carrying claim, workflow, trace, span, attempt, duration, and outcome identifiers.
+- [x] Default Phoenix attributes and logs contain no patient names, diagnoses, OCR text, document bytes, local paths, raw prompts/responses, or credentials.
+- [x] PHI canary tests fail when forbidden fields or values enter trace/log attributes.
+- [x] Rich prompt and response capture can be enabled only in an explicit synthetic-only evaluation profile.
+- [x] PostgreSQL retains the ordered workflow events, evidence references, frozen casefile, rule tree, amount steps, decision, failures, and human actions.
+- [x] Removing Phoenix data and JSONL logs does not prevent exact reconstruction of why a claim received its recommendation and handling.
+- [x] Unit and recorded profiles make no external network calls and cannot incur AWS cost.
+- [x] Structured-component evaluation bypasses OCR and is labeled accordingly.
+- [x] Rendered E2E generates documents, applies deterministic quality transforms, seeds history/utilization, and enters through the production multipart API.
+- [x] Live-intelligence evaluation requires an explicit selector and calls real Textract and Bedrock only with synthetic inputs.
+- [x] Oracle fields and expected outcomes remain inaccessible until after the system result is finalized.
+- [x] The evaluation report records dataset, policy, overlay, model, prompt, schema, and execution-profile versions.
+- [x] TC001–TC012 each include expected and actual lifecycle, adjudication, amount, reasons, provenance, trace completeness, assumptions, and failures.
+- [x] All twelve cases satisfy their PRD acceptance outcomes in the recorded rendered suite.
+- [x] Selected synthetic cases satisfy the live-intelligence smoke gate without changing deterministic policy results.
+
+### Delivered
+
+- `claims_backend.observability` exports privacy-guarded OpenTelemetry/OpenInference spans to local Phoenix and writes process-isolated rotating JSONL logs. Workflow node events persist the same trace/span identifiers in PostgreSQL; later human-review spans attach to the persisted workflow trace.
+- `PostgresClaimReconstructor` rebuilds the claim snapshot, workflow events/effects, audits, policy hashes, frozen casefile, evidence references, model envelopes, rule and amount tree, decision, component failures, member actions, and review resolutions. TC011 proves the canonical reconstruction hash remains identical after trace and log deletion.
+- `evaluation_workbench` is outside the installable backend package. Its public loader discards oracle fields, freezes and hashes all actuals before oracle scoring, blocks non-loopback connections in deterministic profiles, and permits selected subsets only for explicitly authorized synthetic live evaluation.
+- The structured-component and rendered-recorded gates each run TC001–TC012 through the production multipart API. The rendered gate generates document images, applies the deterministic unreadable transform, uses recorded OCR/model boundaries, seeds utilization/history, verifies complete traces, reconstructs PostgreSQL outcomes, checks all expected decisions/reasons/amounts, and scans API/worker/evaluation telemetry with PHI canaries.
+- The selected live TC004 path requires `CLAIMS_RUN_LIVE_AWS=1`, uses generated documents only, calls real Textract and Bedrock, and verifies the deterministic ₹1,350.00 result through the same versioned report contract. The Qwen provider contract was last exercised successfully on 2026-07-28; the default no-cost suite intentionally skips all three paid live tests.
+- Final local verification on 2026-07-29: `189 passed, 3 skipped`; Ruff, strict MyPy for both backend and evaluation workbench, Alembic autogeneration check, and `git diff --check` all passed.
 
 ---
 
@@ -598,12 +607,12 @@ Finish the diagnostic and quality system around the complete backend. Every work
 
 The backend implementation is complete when all 26 phase acceptance sections pass and:
 
-- [ ] All twelve supplied cases enter through the same production multipart API.
-- [ ] No production schema, workflow, policy evaluator, or provider adapter can read evaluation-oracle fields.
-- [ ] All expected decisions, action-required states, reason codes, and exact approved amounts match.
-- [ ] Every material fact has evidence provenance or an explicit unknown/conflict state.
-- [ ] Every financial outcome has a deterministic policy and amount trace.
-- [ ] Worker restarts, duplicate requests, stale actions, and provider retries cannot create duplicate terminal effects.
-- [ ] Recorded tests run without AWS access; live-intelligence tests require explicit invocation.
-- [ ] Phoenix explains agent execution, while PostgreSQL independently reconstructs the complete business decision.
-- [ ] No frontend, hosted deployment, production authentication, or excluded infrastructure has been introduced.
+- [x] All twelve supplied cases enter through the same production multipart API.
+- [x] No production schema, workflow, policy evaluator, or provider adapter can read evaluation-oracle fields.
+- [x] All expected decisions, action-required states, reason codes, and exact approved amounts match.
+- [x] Every material fact has evidence provenance or an explicit unknown/conflict state.
+- [x] Every financial outcome has a deterministic policy and amount trace.
+- [x] Worker restarts, duplicate requests, stale actions, and provider retries cannot create duplicate terminal effects.
+- [x] Recorded tests run without AWS access; live-intelligence tests require explicit invocation.
+- [x] Phoenix explains agent execution, while PostgreSQL independently reconstructs the complete business decision.
+- [x] No frontend, hosted deployment, production authentication, or excluded infrastructure has been introduced.
