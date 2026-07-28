@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from claims_backend.domain.evidence import NormalizedRegion
 
@@ -43,17 +43,41 @@ class ReconciledFactState(StrEnum):
     CONFLICT = "CONFLICT"
 
 
+class EvidenceSourceType(StrEnum):
+    DOCUMENT = "DOCUMENT"
+    CLAIM_SNAPSHOT = "CLAIM_SNAPSHOT"
+    MEMBER_SNAPSHOT = "MEMBER_SNAPSHOT"
+    UTILIZATION_SNAPSHOT = "UTILIZATION_SNAPSHOT"
+
+
 type EvidenceScalar = str | int | float | bool | None
 
 
 class EvidenceCandidateSource(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    observation_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    document_version_id: UUID
-    page: int = Field(ge=1)
-    region: NormalizedRegion
+    source_type: EvidenceSourceType
+    source_ref: str = Field(min_length=1, max_length=255)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    document_version_id: UUID | None = None
+    page: int | None = Field(default=None, ge=1)
+    region: NormalizedRegion | None = None
+
+    @model_validator(mode="after")
+    def document_provenance_is_complete(self) -> "EvidenceCandidateSource":
+        document_fields = (
+            self.observation_id,
+            self.document_version_id,
+            self.page,
+            self.region,
+        )
+        if self.source_type is EvidenceSourceType.DOCUMENT:
+            if any(value is None for value in document_fields):
+                raise ValueError("Document evidence requires observation, page, and region.")
+        elif any(value is not None for value in document_fields):
+            raise ValueError("Snapshot evidence cannot claim document provenance.")
+        return self
 
 
 class ProvenancedEvidenceCandidate(BaseModel):

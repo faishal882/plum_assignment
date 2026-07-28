@@ -11,6 +11,7 @@ from claims_backend.domain.evidence import NormalizedRegion
 from claims_backend.domain.extraction import EvidenceCandidate, ModelRoute
 from claims_backend.domain.reconciliation import (
     EvidenceCandidateSource,
+    EvidenceSourceType,
     ProvenancedEvidenceCandidate,
 )
 from claims_backend.infrastructure.postgres.models import (
@@ -162,6 +163,8 @@ class PostgresStructuredModelRepository:
                     raise RuntimeError("Evidence candidate references a missing OCR observation.")
                 sources.append(
                     EvidenceCandidateSource(
+                        source_type=EvidenceSourceType.DOCUMENT,
+                        source_ref=f"ocr:{observation.observation_id}",
                         observation_id=observation.observation_id,
                         document_version_id=observation.document_version_id,
                         page=observation.page_number,

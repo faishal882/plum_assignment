@@ -7,6 +7,7 @@ from hypothesis import strategies as st
 from claims_backend.domain.evidence import NormalizedRegion
 from claims_backend.domain.reconciliation import (
     EvidenceCandidateSource,
+    EvidenceSourceType,
     ProvenancedEvidenceCandidate,
     ReconciledFactState,
     reconcile_evidence,
@@ -88,6 +89,56 @@ def test_unknown_and_conflicting_material_facts_return_specific_corrections() ->
     ]
 
 
+def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:
+    member_candidate = ProvenancedEvidenceCandidate(
+        candidate_id="c" * 64,
+        fact_path="patient.name",
+        value="Rajesh Kumar",
+        normalized_value="Rajesh Kumar",
+        producer="MEMBER_SNAPSHOT",
+        producer_version="member-version-v1",
+        schema_version="member-snapshot-v1",
+        confidence=1,
+        sources=(
+            EvidenceCandidateSource(
+                source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                source_ref="member-version:00000000-0000-0000-0000-000000000401",
+                source_sha256="4" * 64,
+            ),
+        ),
+    )
+    document_candidate = ProvenancedEvidenceCandidate(
+        candidate_id="d" * 64,
+        fact_path="patient.name",
+        value="RAJESH  KUMAR",
+        normalized_value="RAJESH KUMAR",
+        producer="BEDROCK",
+        producer_version="qwen-v1",
+        schema_version="complex-extraction-v1",
+        confidence=0.95,
+        sources=(
+            EvidenceCandidateSource(
+                source_type=EvidenceSourceType.DOCUMENT,
+                source_ref="ocr:5" + "5" * 63,
+                observation_id="5" * 64,
+                document_version_id=UUID("00000000-0000-0000-0000-000000000111"),
+                page=1,
+                region=NormalizedRegion(x=0.1, y=0.2, width=0.3, height=0.1),
+                source_sha256="6" * 64,
+            ),
+        ),
+    )
+
+    result = reconcile_evidence(
+        (document_candidate, member_candidate),
+        material_fact_paths=("patient.name",),
+    )
+
+    assert result.facts[0].state is ReconciledFactState.KNOWN
+    assert result.facts[0].value == "rajesh kumar"
+    assert result.sufficiency.sufficient
+
+
 @given(
     data=st.data(),
     amounts=st.lists(
@@ -141,6 +192,8 @@ def _candidate(
         confidence=0.98,
         sources=(
             EvidenceCandidateSource(
+                source_type=EvidenceSourceType.DOCUMENT,
+                source_ref=f"ocr:{observation_id}",
                 observation_id=observation_id,
                 document_version_id=UUID("00000000-0000-0000-0000-000000000111"),
                 page=page,
