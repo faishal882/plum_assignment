@@ -11,7 +11,7 @@ The current implementation follows the phased plan in
 - `uv`
 - Docker with Docker Compose
 
-## Phase 1: run locally
+## Run locally
 
 Install the locked dependencies and start PostgreSQL:
 
@@ -37,6 +37,23 @@ Submit a claim as multipart form data:
 
 The accepted response contains a claim ID and status URL. Phase 1 leaves the claim in `QUEUED`;
 worker processing begins in later phases.
+
+## Submission idempotency
+
+`POST /v1/claims` requires an `Idempotency-Key` header containing 1–128 characters from
+letters, digits, `.`, `_`, `:`, or `-`; the first character must be alphanumeric. Keys are scoped
+to the immutable user UUID, so two members can independently use the same value.
+
+The first accepted request atomically stores the key, canonical request hash, original response
+status, claim, documents, audit events, and initial work item. An identical retry returns the
+original `202 Accepted` receipt without creating another claim, work item, document reference, or
+artifact. A retry using the same member and key with different metadata, manifest identifiers, or
+document content returns `409 IDEMPOTENCY_KEY_REUSED`.
+
+The canonical request identity includes normalized claim fields and server-derived document media
+type, size, page count, and SHA-256 hash. It excludes untrusted filenames, declared MIME types,
+generated storage identifiers, and local paths. PostgreSQL arbitrates concurrent retries through a
+unique member/key constraint; a rolled-back acceptance also rolls back its key reservation.
 
 ## Local identities
 
