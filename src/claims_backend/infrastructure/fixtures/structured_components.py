@@ -257,6 +257,62 @@ class StructuredComponentFixtureAdapter:
                 .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
+    async def seed_rendered_tc004_triage(
+        self,
+        claim_id: UUID,
+        claim_version: int,
+        *,
+        prescription_preview_sha256: str,
+        bill_preview_sha256: str,
+    ) -> None:
+        output = TriageModelOutput(
+            documents=(
+                TriageDocumentResult(
+                    client_document_id="F007",
+                    role=DocumentRole.PRESCRIPTION,
+                    readability=_readability_from_hash(
+                        prescription_preview_sha256,
+                        Readability.READABLE,
+                    ),
+                    identity_observations=(
+                        _identity("Rajesh Kumar", confidence=0.99),
+                    ),
+                ),
+                TriageDocumentResult(
+                    client_document_id="F008",
+                    role=DocumentRole.HOSPITAL_BILL,
+                    readability=_readability_from_hash(
+                        bill_preview_sha256,
+                        Readability.READABLE,
+                    ),
+                    identity_observations=(
+                        _identity("Rajesh Kumar", confidence=0.99),
+                    ),
+                ),
+            )
+        )
+        canonical = json.dumps(
+            output.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        async with self._session_factory.begin() as session:
+            await session.execute(
+                insert(ProcessingFixtureRow)
+                .values(
+                    id=uuid4(),
+                    claim_id=claim_id,
+                    claim_version=claim_version,
+                    route="EARLY_TRIAGE",
+                    payload=output.model_dump(mode="json"),
+                    payload_sha256=sha256(canonical).hexdigest(),
+                    created_at=datetime.now(UTC),
+                )
+                .on_conflict_do_nothing(
+                    constraint="processing_fixtures_claim_version_uq"
+                )
+            )
+
 
 def _readability(seed: str, status: Readability) -> ReadabilityObservation:
     return _readability_from_hash(sha256(seed.encode()).hexdigest(), status)

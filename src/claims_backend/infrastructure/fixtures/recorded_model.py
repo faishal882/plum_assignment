@@ -46,9 +46,7 @@ class RecordedStructuredModelTransport:
             if config.route in self._repeatable_routes:
                 ordinal = 0
             else:
-                raise RuntimeError(
-                    f"No recorded response remains for route {config.route.value}."
-                )
+                raise RuntimeError(f"No recorded response remains for route {config.route.value}.")
         raw_output = deepcopy(route_responses[ordinal])
         self._next_response[config.route] += 1
         request_key = (

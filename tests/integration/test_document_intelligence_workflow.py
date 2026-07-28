@@ -143,6 +143,7 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         }
     )
     workflows = PostgresWorkflowRepository(app.state.session_factory)
+    evidence_repository = PostgresStructuredModelRepository(app.state.session_factory)
     processor = PostgresClaimProcessor(
         app.state.session_factory,
         page_artifacts=PageArtifactApplication(
@@ -163,8 +164,9 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
                 model_id="qwen.qwen3-235b-a22b-2507-v1:0",
             ),
             recorded_model,
-            PostgresStructuredModelRepository(app.state.session_factory),
+            evidence_repository,
         ),
+        evidence_repository=evidence_repository,
     )
     runtime = LangGraphClaimWorkflow(
         migrated_database_url,
@@ -201,7 +203,8 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         "DOCUMENT_PAGES_RENDERED",
         "PAGE_OCR_COMPLETED",
         "STRUCTURED_EXTRACTION_COMPLETED",
-        "WORKFLOW_SKELETON_COMPLETED",
+        "EVIDENCE_RECONCILIATION_REQUIRED",
+        "MEMBER_ACTION_COMMITTED",
     ]
     await app.state.engine.dispose()
 
