@@ -52,6 +52,12 @@ def test_compiles_deterministic_assignment_policy_ir() -> None:
     assert whitening.source_pointer == (
         "/opd_categories/dental/excluded_procedures/0"
     )
+    obesity = first.ir.clinical_exclusion_rules["obesity"]
+    bariatric = first.ir.clinical_exclusion_rules["bariatric_treatment"]
+    assert obesity.source_pointer == "/exclusions/conditions/5"
+    assert obesity.label == "Obesity and weight loss programs"
+    assert bariatric.source_pointer == "/exclusions/conditions/6"
+    assert bariatric.label == "Bariatric surgery"
     assert not first.has_errors
     assert FindingCategory.VOCABULARY in {finding.category for finding in first.findings}
 

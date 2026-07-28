@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from claims_backend.domain.policy import (
     CategoryRule,
+    ClinicalExclusionRule,
     DentalProcedureRule,
     DocumentRequirementRule,
     FindingCategory,
@@ -23,7 +24,7 @@ from claims_backend.domain.policy import (
     WaitingPeriodRules,
 )
 
-COMPILER_VERSION = "policy-compiler-v3"
+COMPILER_VERSION = "policy-compiler-v4"
 _TEST_IDENTIFIER_PATTERN = re.compile(r"\bTC\d+\b|case_id|test_case", re.IGNORECASE)
 
 
@@ -83,6 +84,12 @@ class _WaitingPeriods(BaseModel):
     specific_conditions: dict[str, int]
 
 
+class _Exclusions(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    conditions: list[str]
+
+
 class _PolicySource(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -93,6 +100,7 @@ class _PolicySource(BaseModel):
     document_requirements: dict[str, _DocumentSource]
     submission_rules: _SubmissionRules
     waiting_periods: _WaitingPeriods
+    exclusions: _Exclusions
 
 
 class _Approval(BaseModel):
@@ -413,8 +421,18 @@ def _build_ir(
                     label=label,
                     covered=covered,
                 )
+    clinical_exclusion_rules = {
+        concept: ClinicalExclusionRule(
+            rule_id=f"exclusion.clinical.{concept}",
+            source_pointer=f"/exclusions/conditions/{index}",
+            concept=concept,
+            label=label,
+        )
+        for index, label in enumerate(source.exclusions.conditions)
+        if (concept := _clinical_exclusion_concept(label))
+    }
     return PolicyIR(
-        schema_version=3,
+        schema_version=4,
         policy_id=source.policy_id,
         source_sha256=source_hash,
         overlay_sha256=overlay_hash,
@@ -432,6 +450,7 @@ def _build_ir(
         pre_authorization_rules=pre_authorization_rules,
         waiting_period_rules=waiting_period_rules,
         dental_procedure_rules=dental_procedure_rules,
+        clinical_exclusion_rules=clinical_exclusion_rules,
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",
@@ -445,9 +464,18 @@ def _build_ir(
             "copay",
             "final_recommendation",
         ),
-        engine_contract_version="policy-evaluator-v3",
+        engine_contract_version="policy-evaluator-v4",
     )
 
 
 def _concept(value: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", value.casefold())).strip("_")
+
+
+def _clinical_exclusion_concept(label: str) -> str:
+    normalized = _concept(label)
+    if "obesity" in normalized:
+        return "obesity"
+    if "bariatric" in normalized:
+        return "bariatric_treatment"
+    return normalized

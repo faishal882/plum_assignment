@@ -112,6 +112,15 @@ class DentalProcedureRule(BaseModel):
     covered: bool
 
 
+class ClinicalExclusionRule(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rule_id: str
+    source_pointer: str
+    concept: str
+    label: str
+
+
 class PolicyIR(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -133,6 +142,7 @@ class PolicyIR(BaseModel):
     pre_authorization_rules: dict[str, PreAuthorizationRule]
     waiting_period_rules: WaitingPeriodRules
     dental_procedure_rules: dict[str, DentalProcedureRule]
+    clinical_exclusion_rules: dict[str, ClinicalExclusionRule]
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str
