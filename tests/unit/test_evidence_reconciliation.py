@@ -192,6 +192,38 @@ def test_clinical_exclusion_concepts_normalize_without_broad_neighbor_matching()
     assert covered_neighbor.facts[0].value == "nutrition counselling for diabetes"
 
 
+def test_conflicting_clinical_conditions_require_correction_not_rejection() -> None:
+    obesity = _candidate(
+        candidate_id="1" * 64,
+        fact_path="clinical.condition",
+        value="Morbid Obesity",
+        normalized_value="Morbid Obesity",
+        observation_id="1" * 64,
+        page=1,
+    )
+    fever = _candidate(
+        candidate_id="2" * 64,
+        fact_path="clinical.condition",
+        value="Viral Fever",
+        normalized_value="Viral Fever",
+        observation_id="2" * 64,
+        page=1,
+    )
+
+    result = reconcile_evidence(
+        (obesity, fever),
+        material_fact_paths=("clinical.condition",),
+    )
+
+    assert result.facts[0].state is ReconciledFactState.CONFLICT
+    assert result.sufficiency.corrective_actions[0].code == (
+        "CONFLICTING_CLINICAL_EVIDENCE"
+    )
+    assert result.sufficiency.corrective_actions[0].requested_action == (
+        "CORRECT_DOCUMENT"
+    )
+
+
 def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:
     member_candidate = ProvenancedEvidenceCandidate(
         candidate_id="c" * 64,

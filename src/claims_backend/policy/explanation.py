@@ -58,6 +58,33 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
             line_items=line_items,
         )
 
+    exclusion = next(
+        (
+            result
+            for result in proposal.rule_results
+            if result.reason_code == "EXCLUDED_CONDITION"
+        ),
+        None,
+    )
+    if (
+        proposal.recommendation is AdjudicationRecommendation.REJECTED
+        and exclusion is not None
+    ):
+        label = _required_string(exclusion.inputs.get("exclusion_label"))
+        return MemberExplanation(
+            summary=(
+                f"This claim is excluded because {label} "
+                "are not covered by the policy."
+            ),
+            deductions=(
+                MemberDeduction(
+                    code=exclusion.reason_code,
+                    label=label,
+                    amount_paise=-exclusion.adjustment_paise,
+                ),
+            ),
+        )
+
     waiting = next(
         (
             result
