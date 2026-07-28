@@ -385,6 +385,28 @@ class ClaimRow(Base):
     owner_username_snapshot: Mapped[str] = mapped_column(String(64), nullable=False)
     member_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     policy_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_source_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_sources.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    policy_overlay_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_overlays.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    policy_version_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    member_version_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("member_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     treatment_date: Mapped[date] = mapped_column(Date, nullable=False)
     claimed_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
