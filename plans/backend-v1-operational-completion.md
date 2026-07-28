@@ -77,6 +77,7 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   (`f761e68`, `93ffaa9`).
 - [x] Worker lease heartbeat, bounded shutdown behavior, and recovery-safe fencing (`f554bdc`).
 - [x] Public `PROCESSING_FAILED` projection for terminal worker failure (`f9a3077`).
+- [x] Member-safe processing-failure error and retry contract (`4fa3438`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
 - [x] Repository formatting, lint, strict typing, and Alembic drift checks (`9cffc2e`).
