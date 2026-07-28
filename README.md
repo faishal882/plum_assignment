@@ -128,6 +128,66 @@ the node may run again; `(workflow_run_id, effect_key)` uniqueness makes that wr
 The work lease is completed only after both the graph and project-owned workflow run reach
 completion.
 
+## Setup data import
+
+Policy, roster, claim-history, and utilization data enter through the local `claimsctl` command,
+not through claim HTTP routes. Apply migrations first, then import the supplied policy:
+
+```bash
+uv run claimsctl setup import --policy problem_statement/policy_terms.json
+```
+
+The importer hashes and stores the exact policy bytes, versions every member/dependent record,
+and returns a durable import UUID plus structured findings. PostgreSQL triggers reject updates or
+deletes of policy sources and import envelopes. Repeating the same policy and optional member-data
+bytes returns the original receipt without creating new versions.
+
+Claim history and utilization can be supplied in a separate setup-only JSON file:
+
+```json
+{
+  "policy_id": "PLUM_GHI_2024",
+  "as_of_date": "2024-11-03",
+  "claim_history": [
+    {
+      "history_claim_id": "HIST-001",
+      "member_id": "EMP008",
+      "treatment_date": "2024-10-30",
+      "amount": "1200.50",
+      "currency": "INR",
+      "provider": "City Clinic"
+    }
+  ],
+  "utilization": [
+    {
+      "member_id": "EMP001",
+      "period_start": "2024-04-01",
+      "period_end": "2025-03-31",
+      "used_amount": "5000.00",
+      "currency": "INR",
+      "as_of_date": "2024-11-01"
+    }
+  ]
+}
+```
+
+Import it alongside the policy and inspect the resulting records:
+
+```bash
+uv run claimsctl setup import \
+  --policy problem_statement/policy_terms.json \
+  --member-data path/to/member-data.json
+uv run claimsctl setup inspect-import --import-id <import-uuid>
+uv run claimsctl setup inspect-member \
+  --policy-id PLUM_GHI_2024 \
+  --member-id EMP001
+```
+
+Unknown member references are reported and skipped. Missing utilization has no synthetic zero
+row; member inspection returns `utilization_state: "UNKNOWN"` and `used_paise: null`. The claim
+submission schema forbids these setup facts, keeping PostgreSQL authoritative for later
+adjudication snapshots.
+
 ## Local identities
 
 Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
