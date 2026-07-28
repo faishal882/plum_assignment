@@ -29,19 +29,21 @@ Durable decisions that apply across all phases:
 
 **User stories**: 1, 3, 6, 7
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Create the smallest useful backend slice: a member submits valid claim metadata, the backend persists a claim and initial work record atomically, returns an acceptance receipt, and exposes an authorized status projection. The worker does not adjudicate yet; this phase proves the public contract, persistence boundary, and asynchronous lifecycle.
 
 ### Acceptance criteria
 
-- [ ] `POST /v1/claims` accepts a valid multipart request containing metadata and at least one bounded placeholder document.
-- [ ] A successful request returns `202 Accepted`, a stable claim identifier, current version, lifecycle state, and status URL.
-- [ ] Claim, claim version, initial audit event, and queued work item are committed in one PostgreSQL transaction.
-- [ ] `GET /v1/claims/{claim_id}` returns the persisted member-safe projection.
-- [ ] Lifecycle transitions from `RECEIVED` to `QUEUED` are explicit and machine-readable.
-- [ ] Invalid metadata produces a stable structured error and creates no claim or work item.
-- [ ] Contract and repository tests run against a real migrated PostgreSQL database.
+- [x] `POST /v1/claims` accepts a valid multipart request containing metadata and at least one bounded placeholder document.
+- [x] A successful request returns `202 Accepted`, a stable claim identifier, current version, lifecycle state, and status URL.
+- [x] Claim, claim version, initial audit event, and queued work item are committed in one PostgreSQL transaction.
+- [x] `GET /v1/claims/{claim_id}` returns the persisted member-safe projection.
+- [x] Lifecycle transitions from `RECEIVED` to `QUEUED` are explicit and machine-readable.
+- [x] Invalid metadata produces a stable structured error and creates no claim or work item.
+- [x] Contract and repository tests run against a real migrated PostgreSQL database.
 
 ---
 
