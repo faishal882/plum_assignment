@@ -455,14 +455,14 @@ Introduce verified pre-authorization evidence and conditional diagnostic rules. 
 
 ### Acceptance criteria
 
-- [ ] Pre-authorization evidence captures patient, treatment, validity period, reference, and applicable amount when present.
-- [ ] MRI and CT require authorization only when the eligible amount exceeds ₹10,000.
-- [ ] PET requires authorization regardless of the generic policy flag.
-- [ ] Specific authorization rules override the contradictory generic false flag through Policy IR.
-- [ ] TC007 produces `REJECTED` with `PRE_AUTH_MISSING`.
-- [ ] The explanation states why authorization was required and how the member may resubmit.
-- [ ] A supplied unreadable authorization routes to document correction rather than missing-authorization rejection.
-- [ ] Conflicting authorization facts route to review and preserve every candidate.
+- [x] Pre-authorization evidence captures patient, treatment, validity period, reference, and applicable amount when present.
+- [x] MRI and CT require authorization only when the eligible amount exceeds ₹10,000.
+- [x] PET requires authorization regardless of the generic policy flag.
+- [x] Specific authorization rules override the contradictory generic false flag through Policy IR.
+- [x] TC007 produces `REJECTED` with `PRE_AUTH_MISSING`.
+- [x] The explanation states why authorization was required and how the member may resubmit.
+- [x] A supplied unreadable authorization routes to document correction rather than missing-authorization rejection.
+- [x] Conflicting authorization facts route to review and preserve every candidate.
 
 ---
 
@@ -476,14 +476,14 @@ Implement explicit reject semantics for category limits. TC008 must compare the 
 
 ### Acceptance criteria
 
-- [ ] Policy IR distinguishes reject, cap, and review limit semantics.
-- [ ] Category-specific limits override the general per-claim limit.
-- [ ] Excluded amounts are removed before the applicable limit comparison.
-- [ ] TC008 compares ₹7,500 eligible consultation expense with the ₹5,000 consultation limit.
-- [ ] The result is `REJECTED` with `PER_CLAIM_EXCEEDED`.
-- [ ] The member explanation states both the claimed/eligible amount and applicable limit.
-- [ ] Boundary tests cover amounts below, equal to, and above the limit.
-- [ ] Decreasing a limit cannot increase an approved amount.
+- [x] Policy IR distinguishes reject, cap, and review limit semantics.
+- [x] Category-specific limits override the general per-claim limit.
+- [x] Excluded amounts are removed before the applicable limit comparison.
+- [x] TC008 compares ₹7,500 eligible consultation expense with the ₹5,000 consultation limit.
+- [x] The result is `REJECTED` with `PER_CLAIM_EXCEEDED`.
+- [x] The member explanation states both the claimed/eligible amount and applicable limit.
+- [x] Boundary tests cover amounts below, equal to, and above the limit.
+- [x] Decreasing a limit cannot increase an approved amount.
 
 ---
 
