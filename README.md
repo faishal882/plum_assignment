@@ -52,21 +52,158 @@ in `.env`.
 
 ## Run locally
 
-Install the locked dependencies and start PostgreSQL:
+Create the local configuration, install the locked dependencies, start PostgreSQL, and apply the
+schema:
 
 ```bash
+cp .env.example .env
 uv sync
 docker compose up -d postgres
 uv run alembic upgrade head
 ```
 
-Start the API:
+A fresh database also needs imported member data and one active compiled policy before it can
+accept claims. Run the import and copy `policy_source_sha256` from its JSON output:
+
+```bash
+uv run claimsctl setup import --policy problem_statement/policy_terms.json
+```
+
+Use that hash to compile the policy. Copy `policy_version_id` from this command's JSON output:
+
+```bash
+uv run claimsctl policy compile \
+  --source-sha <policy_source_sha256> \
+  --overlay config/policy/assignment-overlay-v1.json
+```
+
+Activate that version with the seeded local operator:
+
+```bash
+uv run claimsctl policy activate \
+  --policy-version-id <policy_version_id> \
+  --actor operator.local
+```
+
+Start the FastAPI development server:
 
 ```bash
 uv run uvicorn claims_backend.api.app:app --reload
 ```
 
-The OpenAPI document is available at `http://127.0.0.1:8000/docs`.
+The API is now available at `http://127.0.0.1:8000`. Use:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
+- Frontend contract: [`frontend_integration.md`](frontend_integration.md)
+
+There is currently no `/health` endpoint. Treat a successful `200` response from
+`/openapi.json` as the API-process smoke check:
+
+```bash
+curl --fail http://127.0.0.1:8000/openapi.json >/dev/null \
+  && echo "API is responding"
+```
+
+### Submit a smoke-test claim
+
+Use a real PDF, JPEG, or PNG containing no sensitive data. The order of repeated `files` parts
+must match the manifest's zero-based `upload_index` values:
+
+```bash
+curl --fail-with-body \
+  -X POST http://127.0.0.1:8000/v1/claims \
+  -H 'X-Dev-Username: member.emp001' \
+  -H 'Idempotency-Key: readme-smoke-001' \
+  -F 'metadata={"member_id":"EMP001","policy_id":"PLUM_GHI_2024","claim_category":"PHARMACY","treatment_date":"2024-11-01","claimed_amount":"1500.00","currency":"INR","documents":[{"upload_index":0,"client_document_id":"bill-001"}]}' \
+  -F 'files=@/absolute/path/to/synthetic-bill.pdf'
+```
+
+A working submission returns `202 Accepted` with a receipt resembling:
+
+```json
+{
+  "claim_id": "f41ae109-4c76-4af4-b6d8-f530becd2919",
+  "version": 1,
+  "lifecycle_status": "QUEUED",
+  "status_url": "/v1/claims/f41ae109-4c76-4af4-b6d8-f530becd2919"
+}
+```
+
+Poll the returned status URL with the same member identity:
+
+```bash
+curl --fail-with-body \
+  -H 'X-Dev-Username: member.emp001' \
+  http://127.0.0.1:8000/v1/claims/<claim_id>
+```
+
+### Current local runtime boundary
+
+`uvicorn` starts only the HTTP API. The repository contains the durable scheduler,
+`WorkerService`, and `LangGraphClaimWorkflow`, but it does not yet expose a worker executable or
+local composition root. Consequently, a claim submitted to a normally started API is expected to
+remain `QUEUED`; that does not mean submission is broken.
+
+Use the integration tests below to verify complete processing through triage, OCR/model fixtures,
+adjudication, review, persistence, and reconstruction. A standalone worker command is required
+before a manually submitted claim can advance end to end outside the test harness.
+
+## Test that it works
+
+Start PostgreSQL and apply migrations first:
+
+```bash
+docker compose up -d postgres
+uv run alembic upgrade head
+```
+
+> **Database warning:** pytest truncates claim, workflow, review, and setup tables in
+> `CLAIMS_TEST_DATABASE_URL`. The committed `.env.example` points that setting at the same local
+> `claims` database as `CLAIMS_DATABASE_URL`. Run tests before creating manual data, or point
+> `CLAIMS_TEST_DATABASE_URL` at a separate disposable PostgreSQL database. If tests use the default
+> database, any manually submitted local claims are removed and the test fixture replaces setup
+> data with its deterministic policy/member data.
+
+Run the complete deterministic suite:
+
+```bash
+uv run pytest -q
+```
+
+The suite supplies its own deterministic setup data and recorded provider responses. It does not
+need AWS credentials and should not call external services. For faster feedback, run the layers
+independently:
+
+```bash
+# HTTP request/response contracts
+uv run pytest tests/contract -q
+
+# Complete recorded claim-processing behavior
+uv run pytest tests/integration -q
+
+# Static and migration checks
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run alembic check
+```
+
+The strongest no-AWS end-to-end gate is:
+
+```bash
+uv run pytest \
+  tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate \
+  -q
+```
+
+It enters through the real multipart API and covers generated documents, rendering, recorded OCR,
+recorded structured extraction, reconciliation, policy adjudication, persistence, public
+projection, reconstruction, and privacy-safe logging for all twelve evaluation cases.
+
+Live Textract and Bedrock tests are separate, opt-in, may incur AWS charges, and require the
+standard AWS credential chain. See [Evaluation profiles](#evaluation-profiles),
+[Local page OCR](#local-page-ocr), and [Bedrock structured extraction](#bedrock-structured-extraction).
 
 ## Local agent observability
 
@@ -139,8 +276,9 @@ Submit a claim as multipart form data:
   `treatment_date`, `claimed_amount`, `currency`, and a document manifest.
 - `files`: one file part for each manifest item.
 
-The accepted response contains a claim ID and status URL. Phase 1 leaves the claim in `QUEUED`;
-worker processing begins in later phases.
+The accepted response contains a claim ID and status URL. The API queues durable work in
+PostgreSQL; see [Current local runtime boundary](#current-local-runtime-boundary) for the present
+worker-entrypoint limitation.
 
 ## Submission idempotency
 
@@ -491,8 +629,7 @@ Claim routes require the `X-Dev-Username` header. The migrated local database se
 
 | Username | Role | Member |
 |---|---|---|
-| `member.emp001` | Member | `EMP001` |
-| `member.emp002` | Member | `EMP002` |
+| `member.emp001` through `member.emp010` | Member | Matching `EMP001` through `EMP010` |
 | `reviewer.local` | Reviewer | — |
 | `operator.local` | Operator | — |
 
@@ -532,18 +669,6 @@ document-specific API errors before a claim is created. Valid artifacts are atom
 under generated hash-based paths with read-only permissions. PostgreSQL stores only immutable
 document metadata and relative paths. If claim persistence fails, the newly sealed artifacts are
 removed.
-
-## Verification
-
-The default tests use the PostgreSQL container:
-
-```bash
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run alembic check
-```
 
 Stop the local database without deleting its volume:
 
