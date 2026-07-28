@@ -541,17 +541,25 @@ Classify component failures by retryability and decision criticality. Prove that
 
 ### Acceptance criteria
 
-- [ ] Provider timeouts start at 30 seconds per Textract page and 90 seconds per Bedrock request and are configurable.
-- [ ] Textract and Bedrock start with concurrency limits of two and at most three provider attempts.
-- [ ] Retryable failures use persisted exponential backoff with jitter.
-- [ ] Deterministic invalid inputs, policy contradictions, and schema/semantic failures are not retried indefinitely.
-- [ ] Critical OCR, identity, policy, and audit failures cannot produce automatic approval.
-- [ ] Evaluation-only fault injection is inaccessible to production request schemas and application modules.
-- [ ] TC011 injects only the named non-critical `ANOMALY_ENRICHMENT` failure.
-- [ ] TC011 reaches `DECIDED` with an `APPROVED` ₹4,000 recommendation and `MANUAL_REVIEW_RECOMMENDED` handling.
-- [ ] The degraded component, attempts, failure code, reduced completeness/confidence, and effect on handling are visible.
-- [ ] The API does not return a 500 for the expected degradation.
-- [ ] Audit persistence failure rolls back terminal completion, while engineering-log failure does not alter a valid domain transaction.
+- [x] Provider timeouts start at 30 seconds per Textract page and 90 seconds per Bedrock request and are configurable.
+- [x] Textract and Bedrock start with concurrency limits of two and at most three provider attempts.
+- [x] Retryable failures use persisted exponential backoff with jitter.
+- [x] Deterministic invalid inputs, policy contradictions, and schema/semantic failures are not retried indefinitely.
+- [x] Critical OCR, identity, policy, and audit failures cannot produce automatic approval.
+- [x] Evaluation-only fault injection is inaccessible to production request schemas and application modules.
+- [x] TC011 injects only the named non-critical `ANOMALY_ENRICHMENT` failure.
+- [x] TC011 reaches `DECIDED` with an `APPROVED` ₹4,000 recommendation and `MANUAL_REVIEW_RECOMMENDED` handling.
+- [x] The degraded component, attempts, failure code, reduced completeness/confidence, and effect on handling are visible.
+- [x] The API does not return a 500 for the expected degradation.
+- [x] Audit persistence failure rolls back terminal completion, while engineering-log failure does not alter a valid domain transaction.
+
+### Implementation evidence
+
+- Runtime settings now control provider timeouts, concurrency, the three-attempt durable work budget, and the exponential backoff/jitter schedule. Botocore performs one request per leased attempt so retries are never hidden outside PostgreSQL.
+- Typed OCR and Bedrock transport failures retain retryability. Model validation and unsafe-policy failures are terminal, while unknown programming or persistence failures still propagate instead of being silently reclassified.
+- `component_failures` and the claim quality projection retain the TC011 component, criticality, attempts, failure code, retryability, completeness, confidence, and handling effect in the same authoritative transaction as the decision and audit event.
+- The only fault injector lives under `infrastructure/fixtures`; the production claim schema forbids `simulate_component_failure`.
+- `tests/integration/test_tc011_degradation.py` proves the complete TC011 API and database result and injects an engineering-event sink failure after commit. The existing audit-failure integration test proves terminal rollback.
 
 ---
 
