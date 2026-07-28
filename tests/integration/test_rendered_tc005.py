@@ -103,9 +103,7 @@ async def test_rendered_tc005_rejects_until_exact_diabetes_eligibility_date(
     prescription = _document_image(
         "PRESCRIPTION\nPatient: Vikram Joshi\nDiagnosis: Type 2 Diabetes Mellitus"
     )
-    bill = _document_image(
-        "HOSPITAL BILL\nPatient: Vikram Joshi\nDate: 2024-10-15\nTotal 3000"
-    )
+    bill = _document_image("HOSPITAL BILL\nPatient: Vikram Joshi\nDate: 2024-10-15\nTotal 3000")
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

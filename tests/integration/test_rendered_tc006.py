@@ -74,10 +74,7 @@ class Tc006RecordedOcr:
                     document_version_id=page.document_version_id,
                     page_number=1,
                     kind=OcrObservationKind.EXPENSE_FIELD,
-                    text=(
-                        "Priya Singh Root Canal Treatment 8000 "
-                        "Teeth Whitening 4000 Total 12000"
-                    ),
+                    text=("Priya Singh Root Canal Treatment 8000 Teeth Whitening 4000 Total 12000"),
                     confidence=0.99,
                     region=NormalizedRegion(x=0.05, y=0.1, width=0.9, height=0.3),
                     source_id="recorded-expense-1",
@@ -200,16 +197,12 @@ async def test_rendered_tc006_partially_approves_only_covered_dental_item(
         "teeth_whitening",
     ]
     whitening = next(
-        result
-        for result in trace.rule_results
-        if result.reason_code == "DENTAL_LINE_ITEM_EXCLUDED"
+        result for result in trace.rule_results if result.reason_code == "DENTAL_LINE_ITEM_EXCLUDED"
     )
     assert whitening.policy_path == "/opd_categories/dental/excluded_procedures/0"
     assert whitening.evidence_refs == trace.casefile.content.line_item_facts[1].evidence_refs
     category_limit = next(
-        result
-        for result in trace.rule_results
-        if result.reason_code == "WITHIN_CATEGORY_LIMIT"
+        result for result in trace.rule_results if result.reason_code == "WITHIN_CATEGORY_LIMIT"
     )
     assert category_limit.inputs["eligible_paise"] == 800_000
     assert category_limit.inputs["general_limit_paise"] == 500_000
@@ -342,9 +335,7 @@ def _candidate(
 
 
 def _observation_id(document_version_id: UUID) -> str:
-    return sha256(
-        f"{document_version_id}:{DocumentRole.HOSPITAL_BILL.value}".encode()
-    ).hexdigest()
+    return sha256(f"{document_version_id}:{DocumentRole.HOSPITAL_BILL.value}".encode()).hexdigest()
 
 
 async def _document_version(factory, claim_id: UUID) -> UUID:

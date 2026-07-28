@@ -45,13 +45,9 @@ def test_compiles_deterministic_assignment_policy_ir() -> None:
     root_canal = first.ir.dental_procedure_rules["root_canal_treatment"]
     whitening = first.ir.dental_procedure_rules["teeth_whitening"]
     assert root_canal.covered
-    assert root_canal.source_pointer == (
-        "/opd_categories/dental/covered_procedures/0"
-    )
+    assert root_canal.source_pointer == ("/opd_categories/dental/covered_procedures/0")
     assert not whitening.covered
-    assert whitening.source_pointer == (
-        "/opd_categories/dental/excluded_procedures/0"
-    )
+    assert whitening.source_pointer == ("/opd_categories/dental/excluded_procedures/0")
     obesity = first.ir.clinical_exclusion_rules["obesity"]
     bariatric = first.ir.clinical_exclusion_rules["bariatric_treatment"]
     assert obesity.source_pointer == "/exclusions/conditions/5"

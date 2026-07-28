@@ -229,8 +229,7 @@ async def test_rendered_tc012_rejects_grounded_obesity_treatment_exclusion(
     treatment_supporting = [
         candidate
         for candidate in trace.casefile.content.evidence.candidates
-        if candidate.candidate_id
-        in trace.casefile.content.clinical_treatment.evidence_refs
+        if candidate.candidate_id in trace.casefile.content.clinical_treatment.evidence_refs
     ]
     assert treatment_supporting
     assert all(
@@ -241,9 +240,7 @@ async def test_rendered_tc012_rejects_grounded_obesity_treatment_exclusion(
     exclusion = trace.rule_results[-1]
     assert exclusion.reason_code == "EXCLUDED_CONDITION"
     assert exclusion.policy_path == "/exclusions/conditions/5"
-    assert exclusion.evidence_refs == (
-        *trace.casefile.content.clinical_condition.evidence_refs,
-    )
+    assert exclusion.evidence_refs == (*trace.casefile.content.clinical_condition.evidence_refs,)
     supporting = [
         candidate
         for candidate in trace.casefile.content.evidence.candidates

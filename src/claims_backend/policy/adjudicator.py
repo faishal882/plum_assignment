@@ -314,9 +314,7 @@ def _valid_pre_authorization(
     )
     valid_from = _iso_date(authorization.valid_from.value, "authorization valid from")
     valid_to = _iso_date(authorization.valid_to.value, "authorization valid to")
-    patient = _string(
-        _known_fact(casefile.patient_identity, "patient identity").value
-    ).casefold()
+    patient = _string(_known_fact(casefile.patient_identity, "patient identity").value).casefold()
     matches = (
         role_present
         and _string(authorization.patient_name.value).casefold() == patient
@@ -371,10 +369,7 @@ def _require_grounded_clinical_evidence(
 ) -> None:
     if casefile.evidence is None:
         raise UnsafeCasefileError("Clinical exclusion evidence is not grounded.")
-    candidates = {
-        candidate.candidate_id: candidate
-        for candidate in casefile.evidence.candidates
-    }
+    candidates = {candidate.candidate_id: candidate for candidate in casefile.evidence.candidates}
     supporting = [candidates.get(reference) for reference in fact.evidence_refs]
     if not supporting or any(candidate is None for candidate in supporting):
         raise UnsafeCasefileError("Clinical exclusion evidence is not grounded.")
@@ -410,11 +405,7 @@ def _evaluate_dental_line_items(
                 f"Dental procedure has no deterministic policy rule: {item.concept}."
             )
         adjustment = 0 if rule.covered else -item.amount_paise
-        reason_code = (
-            "DENTAL_LINE_ITEM_COVERED"
-            if rule.covered
-            else "DENTAL_LINE_ITEM_EXCLUDED"
-        )
+        reason_code = "DENTAL_LINE_ITEM_COVERED" if rule.covered else "DENTAL_LINE_ITEM_EXCLUDED"
         results.append(
             _result(
                 len(results) + 1,

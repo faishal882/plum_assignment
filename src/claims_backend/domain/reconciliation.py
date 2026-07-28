@@ -172,8 +172,7 @@ def _reconcile_fact(
     canonical_values = {
         canonical
         for candidate in candidates
-        if (canonical := _canonical_fact_value(fact_path, candidate.normalized_value))
-        is not None
+        if (canonical := _canonical_fact_value(fact_path, candidate.normalized_value)) is not None
     }
     if not canonical_values:
         state = ReconciledFactState.UNKNOWN

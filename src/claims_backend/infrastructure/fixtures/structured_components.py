@@ -179,9 +179,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
     async def seed_tc001_triage(self, claim_id: UUID, claim_version: int) -> None:
@@ -388,9 +386,7 @@ class StructuredComponentFixtureAdapter:
                         prescription_preview_sha256,
                         Readability.READABLE,
                     ),
-                    identity_observations=(
-                        _identity("Rajesh Kumar", confidence=0.99),
-                    ),
+                    identity_observations=(_identity("Rajesh Kumar", confidence=0.99),),
                 ),
                 TriageDocumentResult(
                     client_document_id="F008",
@@ -399,9 +395,7 @@ class StructuredComponentFixtureAdapter:
                         bill_preview_sha256,
                         Readability.READABLE,
                     ),
-                    identity_observations=(
-                        _identity("Rajesh Kumar", confidence=0.99),
-                    ),
+                    identity_observations=(_identity("Rajesh Kumar", confidence=0.99),),
                 ),
             )
         )
@@ -422,9 +416,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
     async def seed_rendered_tc005_triage(
@@ -444,9 +436,7 @@ class StructuredComponentFixtureAdapter:
                         prescription_preview_sha256,
                         Readability.READABLE,
                     ),
-                    identity_observations=(
-                        _identity("Vikram Joshi", confidence=0.99),
-                    ),
+                    identity_observations=(_identity("Vikram Joshi", confidence=0.99),),
                 ),
                 TriageDocumentResult(
                     client_document_id="F010",
@@ -455,9 +445,7 @@ class StructuredComponentFixtureAdapter:
                         bill_preview_sha256,
                         Readability.READABLE,
                     ),
-                    identity_observations=(
-                        _identity("Vikram Joshi", confidence=0.99),
-                    ),
+                    identity_observations=(_identity("Vikram Joshi", confidence=0.99),),
                 ),
             )
         )
@@ -478,9 +466,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
     async def seed_rendered_tc006_triage(
@@ -499,9 +485,7 @@ class StructuredComponentFixtureAdapter:
                         bill_preview_sha256,
                         Readability.READABLE,
                     ),
-                    identity_observations=(
-                        _identity("Priya Singh", confidence=0.99),
-                    ),
+                    identity_observations=(_identity("Priya Singh", confidence=0.99),),
                 ),
             )
         )
@@ -522,9 +506,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
     async def seed_rendered_tc012_triage(
@@ -574,9 +556,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
 

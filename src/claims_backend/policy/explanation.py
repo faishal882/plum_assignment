@@ -13,34 +13,27 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
     dental_items = tuple(
         result
         for result in proposal.rule_results
-        if result.reason_code
-        in {"DENTAL_LINE_ITEM_COVERED", "DENTAL_LINE_ITEM_EXCLUDED"}
+        if result.reason_code in {"DENTAL_LINE_ITEM_COVERED", "DENTAL_LINE_ITEM_EXCLUDED"}
     )
     if dental_items:
         line_items = tuple(
             MemberLineItemExplanation(
                 concept=_required_string(result.inputs.get("concept")),
                 label=_required_string(result.inputs.get("label")),
-                claimed_paise=_required_integer(
-                    result.inputs.get("line_item_paise")
-                ),
+                claimed_paise=_required_integer(result.inputs.get("line_item_paise")),
                 approved_paise=(
                     _required_integer(result.inputs.get("line_item_paise"))
                     if result.reason_code == "DENTAL_LINE_ITEM_COVERED"
                     else 0
                 ),
                 status=(
-                    "APPROVED"
-                    if result.reason_code == "DENTAL_LINE_ITEM_COVERED"
-                    else "REJECTED"
+                    "APPROVED" if result.reason_code == "DENTAL_LINE_ITEM_COVERED" else "REJECTED"
                 ),
                 reason_code=result.reason_code,
             )
             for result in dental_items
         )
-        excluded = tuple(
-            item for item in line_items if item.status == "REJECTED"
-        )
+        excluded = tuple(item for item in line_items if item.status == "REJECTED")
         excluded_paise = sum(item.claimed_paise for item in excluded)
         return MemberExplanation(
             summary=(
@@ -59,23 +52,13 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         )
 
     exclusion = next(
-        (
-            result
-            for result in proposal.rule_results
-            if result.reason_code == "EXCLUDED_CONDITION"
-        ),
+        (result for result in proposal.rule_results if result.reason_code == "EXCLUDED_CONDITION"),
         None,
     )
-    if (
-        proposal.recommendation is AdjudicationRecommendation.REJECTED
-        and exclusion is not None
-    ):
+    if proposal.recommendation is AdjudicationRecommendation.REJECTED and exclusion is not None:
         label = _required_string(exclusion.inputs.get("exclusion_label"))
         return MemberExplanation(
-            summary=(
-                f"This claim is excluded because {label} "
-                "are not covered by the policy."
-            ),
+            summary=(f"This claim is excluded because {label} are not covered by the policy."),
             deductions=(
                 MemberDeduction(
                     code=exclusion.reason_code,
@@ -86,17 +69,10 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         )
 
     waiting = next(
-        (
-            result
-            for result in proposal.rule_results
-            if result.reason_code == "WAITING_PERIOD"
-        ),
+        (result for result in proposal.rule_results if result.reason_code == "WAITING_PERIOD"),
         None,
     )
-    if (
-        proposal.recommendation is AdjudicationRecommendation.REJECTED
-        and waiting is not None
-    ):
+    if proposal.recommendation is AdjudicationRecommendation.REJECTED and waiting is not None:
         condition = _required_string(waiting.inputs.get("condition")).replace("_", " ")
         eligible_from = _required_string(waiting.inputs.get("eligible_from"))
         waiting_days = _required_integer(waiting.inputs.get("waiting_days"))
@@ -110,11 +86,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         )
 
     pre_authorization = next(
-        (
-            result
-            for result in proposal.rule_results
-            if result.reason_code == "PRE_AUTH_MISSING"
-        ),
+        (result for result in proposal.rule_results if result.reason_code == "PRE_AUTH_MISSING"),
         None,
     )
     if (
@@ -122,12 +94,8 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         and pre_authorization is not None
     ):
         treatment = _required_string(pre_authorization.inputs.get("treatment"))
-        eligible = _required_integer(
-            pre_authorization.inputs.get("eligible_paise")
-        )
-        threshold = _required_integer(
-            pre_authorization.inputs.get("threshold_paise")
-        )
+        eligible = _required_integer(pre_authorization.inputs.get("eligible_paise"))
+        threshold = _required_integer(pre_authorization.inputs.get("threshold_paise"))
         return MemberExplanation(
             summary=(
                 f"{treatment} expenses of {_format_rupees(eligible)} require "
@@ -144,11 +112,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         )
 
     category_limit = next(
-        (
-            result
-            for result in proposal.rule_results
-            if result.reason_code == "PER_CLAIM_EXCEEDED"
-        ),
+        (result for result in proposal.rule_results if result.reason_code == "PER_CLAIM_EXCEEDED"),
         None,
     )
     if (
@@ -186,9 +150,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         deduction = -copay.adjustment_paise
         label = f"{percent}% {category.replace('_', ' ')} co-pay"
         return MemberExplanation(
-            summary=(
-                f"{_format_rupees(proposal.approved_paise)} approved after a {label}."
-            ),
+            summary=(f"{_format_rupees(proposal.approved_paise)} approved after a {label}."),
             deductions=(
                 MemberDeduction(
                     code=copay.reason_code,
@@ -200,8 +162,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
 
     return MemberExplanation(
         summary=(
-            f"{_format_rupees(proposal.approved_paise)} "
-            f"{proposal.recommendation.value.casefold()}."
+            f"{_format_rupees(proposal.approved_paise)} {proposal.recommendation.value.casefold()}."
         ),
         deductions=(),
     )

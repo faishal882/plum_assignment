@@ -89,6 +89,38 @@ def test_unknown_and_conflicting_material_facts_return_specific_corrections() ->
     ]
 
 
+def test_conflicting_pre_authorization_preserves_candidates_for_review() -> None:
+    first = _candidate(
+        candidate_id="c" * 64,
+        fact_path="document.pre_authorization.reference",
+        value="PA-123",
+        normalized_value="PA-123",
+        observation_id="3" * 64,
+        page=1,
+    )
+    conflicting = _candidate(
+        candidate_id="d" * 64,
+        fact_path="document.pre_authorization.reference",
+        value="PA-456",
+        normalized_value="PA-456",
+        observation_id="4" * 64,
+        page=2,
+    )
+
+    result = reconcile_evidence(
+        (conflicting, first),
+        material_fact_paths=("document.pre_authorization.reference",),
+    )
+
+    assert not result.sufficiency.sufficient
+    assert result.facts[0].state is ReconciledFactState.CONFLICT
+    assert result.facts[0].candidate_ids == ("c" * 64, "d" * 64)
+    assert result.candidates == (first, conflicting)
+    correction = result.sufficiency.corrective_actions[0]
+    assert correction.code == "CONFLICTING_MATERIAL_FACT"
+    assert correction.requested_action == "REVIEW"
+
+
 def test_null_snapshot_candidate_remains_explicitly_unknown() -> None:
     candidate = ProvenancedEvidenceCandidate(
         candidate_id="9" * 64,
@@ -142,12 +174,8 @@ def test_conflicting_treatment_dates_require_correction() -> None:
     )
 
     assert result.facts[0].state is ReconciledFactState.CONFLICT
-    assert result.sufficiency.corrective_actions[0].code == (
-        "CONFLICTING_TREATMENT_DATE"
-    )
-    assert result.sufficiency.corrective_actions[0].requested_action == (
-        "CORRECT_DOCUMENT"
-    )
+    assert result.sufficiency.corrective_actions[0].code == ("CONFLICTING_TREATMENT_DATE")
+    assert result.sufficiency.corrective_actions[0].requested_action == ("CORRECT_DOCUMENT")
 
 
 def test_clinical_exclusion_concepts_normalize_without_broad_neighbor_matching() -> None:
@@ -216,12 +244,8 @@ def test_conflicting_clinical_conditions_require_correction_not_rejection() -> N
     )
 
     assert result.facts[0].state is ReconciledFactState.CONFLICT
-    assert result.sufficiency.corrective_actions[0].code == (
-        "CONFLICTING_CLINICAL_EVIDENCE"
-    )
-    assert result.sufficiency.corrective_actions[0].requested_action == (
-        "CORRECT_DOCUMENT"
-    )
+    assert result.sufficiency.corrective_actions[0].code == ("CONFLICTING_CLINICAL_EVIDENCE")
+    assert result.sufficiency.corrective_actions[0].requested_action == ("CORRECT_DOCUMENT")
 
 
 def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:

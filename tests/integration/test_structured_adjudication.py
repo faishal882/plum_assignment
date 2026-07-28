@@ -206,9 +206,7 @@ async def test_tc007_and_tc008_structured_tracers(
 ) -> None:
     engine = create_async_engine(migrated_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    await SetupDataApplication(
-        PostgresSetupImportRepository(factory)
-    ).import_sources(
+    await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
         POLICY_BYTES,
         source_name="policy_terms.json",
         member_data_bytes=json.dumps(
@@ -230,9 +228,7 @@ async def test_tc007_and_tc008_structured_tracers(
         ).encode(),
         member_data_source_name=f"{case_id}-member-facts.json",
     )
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path)
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
@@ -303,10 +299,7 @@ async def test_tc007_and_tc008_structured_tracers(
         "currency": "INR",
     }
     assert body["explanation"]["deductions"][0]["code"] == expected_reason
-    assert all(
-        fragment in body["explanation"]["summary"]
-        for fragment in summary_fragments
-    )
+    assert all(fragment in body["explanation"]["summary"] for fragment in summary_fragments)
     trace = await processor.inspect_trace(claim_id)
     assert trace is not None
     assert trace.rule_results[-1].reason_code == expected_reason

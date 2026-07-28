@@ -386,9 +386,7 @@ def _evaluate_pre_authorization_case(
         update={
             "category_rules": {
                 **compilation.ir.category_rules,
-                "DIAGNOSTIC": diagnostic.model_copy(
-                    update={"limit_paise": 2_000_000}
-                ),
+                "DIAGNOSTIC": diagnostic.model_copy(update={"limit_paise": 2_000_000}),
             }
         }
     )
@@ -512,9 +510,7 @@ def _evaluate_limit_case(
             update={
                 "category_rules": {
                     **policy.category_rules,
-                    "CONSULTATION": category.model_copy(
-                        update={"limit_paise": limit_paise}
-                    ),
+                    "CONSULTATION": category.model_copy(update={"limit_paise": limit_paise}),
                 }
             }
         )

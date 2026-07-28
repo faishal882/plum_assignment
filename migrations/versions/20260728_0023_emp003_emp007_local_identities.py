@@ -62,10 +62,7 @@ def upgrade() -> None:
     )
     op.bulk_insert(
         member_links,
-        [
-            {"user_id": user_id, "member_id": member_id}
-            for user_id, _, member_id in _MEMBERS
-        ],
+        [{"user_id": user_id, "member_id": member_id} for user_id, _, member_id in _MEMBERS],
     )
 
 
@@ -77,9 +74,9 @@ def downgrade() -> None:
             ).bindparams(user_id=user_id)
         )
         op.execute(
-            sa.text(
-                "DELETE FROM user_roles WHERE user_id = CAST(:user_id AS uuid)"
-            ).bindparams(user_id=user_id)
+            sa.text("DELETE FROM user_roles WHERE user_id = CAST(:user_id AS uuid)").bindparams(
+                user_id=user_id
+            )
         )
         op.execute(
             sa.text("DELETE FROM users WHERE id = CAST(:user_id AS uuid)").bindparams(

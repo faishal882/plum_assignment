@@ -392,9 +392,7 @@ def _build_ir(
                 source_pointer=f"/waiting_periods/specific_conditions/{condition}",
                 days=days,
             )
-            for condition, days in sorted(
-                source.waiting_periods.specific_conditions.items()
-            )
+            for condition, days in sorted(source.waiting_periods.specific_conditions.items())
         },
     )
     dental_source = source.opd_categories.get("dental")

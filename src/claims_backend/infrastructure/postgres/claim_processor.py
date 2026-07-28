@@ -216,9 +216,7 @@ class PostgresClaimProcessor:
                     "submission": claim_version.submission,
                 }
             )
-            member_snapshot_sha256 = _canonical_sha256(
-                _member_snapshot(member_version)
-            )
+            member_snapshot_sha256 = _canonical_sha256(_member_snapshot(member_version))
             candidates = [
                 _snapshot_candidate(
                     fact_path="claim.claimed_amount",
@@ -270,9 +268,7 @@ class PostgresClaimProcessor:
                                 fact_path="patient.name",
                                 value=identity.value,
                                 producer="STRUCTURED_FIXTURE",
-                                producer_version=(
-                                    f"structured-fixture-v{evidence.schema_version}"
-                                ),
+                                producer_version=(f"structured-fixture-v{evidence.schema_version}"),
                                 source_type=EvidenceSourceType.STRUCTURED_FIXTURE,
                                 source_ref=source_ref,
                                 source_sha256=fixture.payload_sha256,
@@ -350,16 +346,12 @@ class PostgresClaimProcessor:
                     claimed_paise=claim.claimed_paise,
                     currency=claim.currency,
                     eligibility_evidence_ref=f"member-version:{member_version.id}",
-                    document_roles=tuple(
-                        document.role.value for document in evidence.documents
-                    ),
+                    document_roles=tuple(document.role.value for document in evidence.documents),
                     document_role_evidence_refs=tuple(
                         f"structured-fixture:{fixture.id}:{document.evidence_id}"
                         for document in evidence.documents
                     ),
-                    ytd_used_paise=(
-                        None if utilization is None else utilization.used_paise
-                    ),
+                    ytd_used_paise=(None if utilization is None else utilization.used_paise),
                     utilization_evidence_ref=(
                         None if utilization is None else f"utilization:{utilization.id}"
                     ),
@@ -520,8 +512,7 @@ class PostgresClaimProcessor:
         )
         all_candidates = tuple(document_candidates) + trusted_candidates
         if claim.category == "DENTAL" and not any(
-            candidate.fact_path.startswith("billing.line_items.")
-            for candidate in all_candidates
+            candidate.fact_path.startswith("billing.line_items.") for candidate in all_candidates
         ):
             return CasefilePreparationResult(
                 reference=None,
@@ -541,8 +532,7 @@ class PostgresClaimProcessor:
             material_fact_paths=_material_fact_paths(
                 claim.category,
                 pre_authorization_present=any(
-                    triage.role == DocumentRole.PRE_AUTHORIZATION.value
-                    for triage in triage_rows
+                    triage.role == DocumentRole.PRE_AUTHORIZATION.value for triage in triage_rows
                 ),
             ),
         )
@@ -554,12 +544,8 @@ class PostgresClaimProcessor:
             and fact.state is ReconciledFactState.CONFLICT
         )
         if authorization_conflicts:
-            preserved_candidates = sum(
-                len(fact.candidate_ids) for fact in authorization_conflicts
-            )
-            paths = ", ".join(
-                fact.fact_path for fact in authorization_conflicts
-            )
+            preserved_candidates = sum(len(fact.candidate_ids) for fact in authorization_conflicts)
+            paths = ", ".join(fact.fact_path for fact in authorization_conflicts)
             return CasefilePreparationResult(
                 reference=None,
                 action=EarlyGateResult(
@@ -1429,9 +1415,7 @@ def _member_snapshot(member_version: MemberVersionRow) -> dict[str, object]:
         "gender": member_version.gender,
         "relationship": member_version.relationship,
         "join_date": (
-            None
-            if member_version.join_date is None
-            else member_version.join_date.isoformat()
+            None if member_version.join_date is None else member_version.join_date.isoformat()
         ),
         "dependent_ids": member_version.dependent_ids,
         "source_pointer": member_version.source_pointer,
@@ -1465,9 +1449,7 @@ def _material_fact_paths(
         "patient.name",
         "treatment.date",
     )
-    category_paths = (
-        common if category == "DENTAL" else (*common, "clinical.condition")
-    )
+    category_paths = common if category == "DENTAL" else (*common, "clinical.condition")
     if not pre_authorization_present:
         return category_paths
     return (
