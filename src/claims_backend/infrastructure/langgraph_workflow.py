@@ -37,6 +37,7 @@ _NODE_COMPONENTS = {
     "commit_decision": "persistence",
     "triage_documents": "identity",
     "render_documents": "document_intelligence",
+    "discover_documents": "textract",
     "ocr_documents": "textract",
     "extract_evidence": "bedrock",
     "reconcile_casefile": "reconciliation",
@@ -65,6 +66,7 @@ class WorkflowState(TypedDict):
     affected_documents: list[dict[str, str]]
     identity_conflict: list[dict[str, str]]
     rendered_page_count: int
+    discovery_observation_count: int
     ocr_observation_count: int
     evidence_candidate_count: int
     extraction_completed: bool
@@ -95,6 +97,7 @@ class WorkflowUpdate(TypedDict, total=False):
     affected_documents: list[dict[str, str]]
     identity_conflict: list[dict[str, str]]
     rendered_page_count: int
+    discovery_observation_count: int
     ocr_observation_count: int
     evidence_candidate_count: int
     extraction_completed: bool
@@ -166,6 +169,10 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     self._node("render_documents", self._render_documents),
                 )
                 builder.add_node(
+                    "discover_documents",
+                    self._node("discover_documents", self._discover_documents),
+                )
+                builder.add_node(
                     "ocr_documents",
                     self._node("ocr_documents", self._ocr_documents),
                 )
@@ -188,6 +195,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     {
                         "freeze_casefile": "freeze_casefile",
                         "triage_documents": "triage_documents",
+                        "render_documents": "render_documents",
                         "finalize": "finalize",
                     },
                 )
@@ -208,8 +216,10 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     {
                         "commit_member_action": "commit_member_action",
                         "ocr_documents": "ocr_documents",
+                        "discover_documents": "discover_documents",
                     },
                 )
+                builder.add_edge("discover_documents", "triage_documents")
                 builder.add_edge("ocr_documents", "extract_evidence")
                 builder.add_conditional_edges(
                     "extract_evidence",
@@ -262,6 +272,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "affected_documents": [],
                     "identity_conflict": [],
                     "rendered_page_count": 0,
+                    "discovery_observation_count": 0,
                     "ocr_observation_count": 0,
                     "evidence_candidate_count": 0,
                     "extraction_completed": False,
@@ -734,6 +745,26 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
             "effect_count": state["effect_count"] + int(created),
         }
 
+    async def _discover_documents(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("discover_documents")
+        observation_count = await self._required_processor().discover_documents(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"discovery-ocr-completed:v{state['claim_version']}",
+            "DISCOVERY_OCR_COMPLETED",
+            {
+                "rendered_page_count": state["rendered_page_count"],
+                "observation_count": observation_count,
+            },
+        )
+        await self._after_effect("discover_documents")
+        return {
+            "discovery_observation_count": observation_count,
+            "effect_count": state["effect_count"] + int(created),
+        }
+
     async def _extract_evidence(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("extract_evidence")
         candidate_count = await self._required_processor().extract_evidence(
@@ -868,11 +899,13 @@ def _work_lease(state: WorkflowState) -> WorkLease:
 
 def _after_media_inspection(
     state: WorkflowState,
-) -> Literal["freeze_casefile", "triage_documents", "finalize"]:
+) -> Literal["freeze_casefile", "triage_documents", "render_documents", "finalize"]:
     if state["route"] == ProcessingRoute.STRUCTURED_ADJUDICATION.value:
         return "freeze_casefile"
     if state["route"] == ProcessingRoute.EARLY_TRIAGE.value:
         return "triage_documents"
+    if state["route"] == ProcessingRoute.DOCUMENT_INTELLIGENCE.value:
+        return "render_documents"
     return "finalize"
 
 
@@ -884,8 +917,14 @@ def _after_triage(
 
 def _after_rendering(
     state: WorkflowState,
-) -> Literal["commit_member_action", "ocr_documents"]:
-    return "commit_member_action" if state["action_required"] else "ocr_documents"
+) -> Literal["commit_member_action", "discover_documents", "ocr_documents"]:
+    if state["action_required"]:
+        return "commit_member_action"
+    if state["route"] == ProcessingRoute.DOCUMENT_INTELLIGENCE.value and (
+        state["discovery_observation_count"] == 0
+    ):
+        return "discover_documents"
+    return "ocr_documents"
 
 
 def _after_extraction(

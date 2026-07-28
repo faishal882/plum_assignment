@@ -9,6 +9,7 @@ class ProcessingRoute(StrEnum):
     NONE = "NONE"
     STRUCTURED_ADJUDICATION = "STRUCTURED_ADJUDICATION"
     EARLY_TRIAGE = "EARLY_TRIAGE"
+    DOCUMENT_INTELLIGENCE = "DOCUMENT_INTELLIGENCE"
 
 
 @dataclass(frozen=True, slots=True)

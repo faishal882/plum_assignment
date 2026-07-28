@@ -7,7 +7,32 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from claims_backend.application.intelligence import (
+    OcrApplication,
+    OcrProvider,
+    PageArtifactApplication,
+)
 from claims_backend.config import Settings
+from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
+from claims_backend.infrastructure.aws.textract import TextractAdapter, create_textract_client
+from claims_backend.infrastructure.fixtures.recorded_intelligence import (
+    RecordedDiscoveryOcrProvider,
+    RecordedDocumentModelTransport,
+)
+from claims_backend.infrastructure.page_artifacts import (
+    LocalPageArtifactReader,
+    LocalPageArtifactStore,
+)
+from claims_backend.infrastructure.page_renderer import LocalPageRenderer
+from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
+from claims_backend.infrastructure.postgres.ocr import PostgresOcrRepository
+from claims_backend.infrastructure.postgres.page_artifacts import PostgresPageArtifactRepository
+from claims_backend.infrastructure.postgres.structured_model import (
+    PostgresStructuredModelRepository,
+)
+from claims_backend.model.application import StructuredModelApplication
+from claims_backend.model.routing import ModelRouter
+from claims_backend.model.transport import StructuredModelTransport
 from claims_backend.observability import (
     Observability,
     ObservabilityConfig,
@@ -63,4 +88,61 @@ def create_process_runtime(
         session_factory=session_factory,
         observability=resolved_observability,
         _owns_observability=owned_observability,
+    )
+
+
+def create_claim_processor(runtime: ProcessRuntime) -> PostgresClaimProcessor:
+    """Construct the complete profile-selected intelligence pipeline.
+
+    The local profile has no AWS construction path; the live profile can only
+    exist after the authorization check performed by ``Settings``.
+    """
+    settings = runtime.settings
+    settings.data_root.mkdir(parents=True, exist_ok=True)
+    pages = PostgresPageArtifactRepository(runtime.session_factory)
+    ocr_repository = PostgresOcrRepository(runtime.session_factory)
+    evidence = PostgresStructuredModelRepository(runtime.session_factory)
+    if runtime.profile is ExecutionProfile.LIVE_INTELLIGENCE:
+        ocr_provider: OcrProvider = TextractAdapter(
+            create_textract_client(
+                region=settings.aws_region,
+                read_timeout_seconds=settings.textract_timeout_seconds,
+            ),
+            concurrency_limit=settings.textract_concurrency_limit,
+            observability=runtime.observability,
+        )
+        model_transport: StructuredModelTransport = ChatBedrockConverseTransport.from_settings(
+            settings,
+            observability=runtime.observability,
+        )
+    else:
+        ocr_provider = RecordedDiscoveryOcrProvider()
+        model_transport = RecordedDocumentModelTransport()
+    return PostgresClaimProcessor(
+        runtime.session_factory,
+        page_artifacts=PageArtifactApplication(
+            LocalPageRenderer(
+                settings.data_root,
+                max_page_bytes=settings.max_textract_page_bytes,
+                render_dpi=settings.page_render_dpi,
+            ),
+            LocalPageArtifactStore(settings.data_root),
+            pages,
+        ),
+        page_repository=pages,
+        ocr=OcrApplication(
+            LocalPageArtifactReader(settings.data_root),
+            ocr_provider,
+            ocr_repository,
+        ),
+        ocr_repository=ocr_repository,
+        structured_model=StructuredModelApplication(
+            ModelRouter.default(
+                region=settings.bedrock_region,
+                model_id=settings.bedrock_model_id,
+            ),
+            model_transport,
+            evidence,
+        ),
+        evidence_repository=evidence,
     )

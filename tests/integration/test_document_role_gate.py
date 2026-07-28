@@ -21,12 +21,15 @@ from claims_backend.infrastructure.postgres.models import (
     CasefileRow,
     DecisionRecordRow,
     DocumentTriageResultRow,
+    ProcessingFixtureRow,
     RuleResultRow,
 )
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
+from claims_backend.runtime.composition import create_process_runtime
+from claims_backend.worker.application import create_claim_worker
 
 
 @pytest.mark.asyncio
@@ -123,6 +126,63 @@ async def test_tc001_stops_after_two_prescriptions_and_requests_hospital_bill(
                     {"claim_id": claim_id},
                 )
 
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_public_claim_processes_without_processing_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(
+        database_url=migrated_database_url,
+        data_root=tmp_path / "documents",
+        log_root=tmp_path / "logs",
+        observability_enabled=True,
+    )
+    app = create_app(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "public-no-fixture-tc001",
+            },
+            data={"metadata": json.dumps(_metadata())},
+            files=[
+                ("files", ("first.jpg", _jpeg_bytes(), "image/jpeg")),
+                ("files", ("second.jpg", _jpeg_bytes(), "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+
+        async with app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+
+        runtime = create_process_runtime(settings, process_name="worker")
+        worker = create_claim_worker(runtime)
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+
+    assert projection.status_code == 200
+    assert projection.json()["lifecycle_status"] == "ACTION_REQUIRED"
+    assert projection.json()["action"]["code"] == "MISSING_REQUIRED_DOCUMENT"
+    assert (tmp_path / "logs" / "worker.jsonl").exists()
+    assert (tmp_path / "logs" / "worker.jsonl").read_text().strip()
+
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+        assert await session.scalar(select(func.count()).select_from(DocumentTriageResultRow)) == 2
     await app.state.engine.dispose()
 
 

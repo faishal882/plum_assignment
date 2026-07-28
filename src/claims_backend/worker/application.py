@@ -4,13 +4,12 @@ from datetime import timedelta
 from claims_backend.application.work import WorkerService
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkflow
-from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
 from claims_backend.observability import EngineeringLogEvent
-from claims_backend.runtime.composition import ProcessRuntime
+from claims_backend.runtime.composition import ProcessRuntime, create_claim_processor
 
 
 @dataclass(slots=True)
@@ -59,7 +58,7 @@ def create_claim_worker(runtime: ProcessRuntime) -> ClaimWorker:
     workflow = LangGraphClaimWorkflow(
         settings.database_url,
         repository,
-        processor=PostgresClaimProcessor(runtime.session_factory),
+        processor=create_claim_processor(runtime),
         observability=runtime.observability,
     )
     processor = ClaimWorkflowProcessor(repository, workflow)

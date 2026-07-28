@@ -133,7 +133,11 @@ class PostgresClaimProcessor:
                     ProcessingFixtureRow.claim_version == workflow_run.claim_version,
                 )
             )
-        return ProcessingRoute.NONE if route is None else ProcessingRoute(route)
+        if route is not None:
+            return ProcessingRoute(route)
+        if self._page_artifacts is not None and self._ocr is not None and self._structured_model:
+            return ProcessingRoute.DOCUMENT_INTELLIGENCE
+        return ProcessingRoute.NONE
 
     async def inspect_media(self, workflow_run: WorkflowRun) -> dict[str, object]:
         async with self._session_factory() as session:
@@ -882,11 +886,7 @@ class PostgresClaimProcessor:
             claim.handling_status = (
                 "MANUAL_REVIEW"
                 if anomaly_signals
-                else (
-                    "MANUAL_REVIEW_RECOMMENDED"
-                    if component_failure is not None
-                    else None
-                )
+                else ("MANUAL_REVIEW_RECOMMENDED" if component_failure is not None else None)
             )
             claim.processing_quality = processing_quality
             claim.review_task_id = review_task_id
@@ -960,8 +960,7 @@ class PostgresClaimProcessor:
         self,
         workflow_run: WorkflowRun,
     ) -> EarlyGateResult:
-        now = datetime.now(UTC)
-        async with self._session_factory.begin() as session:
+        async with self._session_factory() as session:
             fixture = (
                 await session.scalars(
                     select(ProcessingFixtureRow).where(
@@ -970,8 +969,85 @@ class PostgresClaimProcessor:
                         ProcessingFixtureRow.route == ProcessingRoute.EARLY_TRIAGE.value,
                     )
                 )
+            ).one_or_none()
+        if fixture is not None:
+            return await self._commit_triage(
+                workflow_run,
+                TriageModelOutput.model_validate(fixture.payload),
+                model_route="fixture-fast-triage-v1",
+                producer="fixture-fast-triage",
+            )
+        if self._structured_model is not None:
+            return await self._triage_from_discovery(workflow_run)
+        raise ProcessingInvariantError("Document triage is not configured.")
+
+    async def _triage_from_discovery(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> EarlyGateResult:
+        if self._structured_model is None or self._ocr_repository is None:
+            raise ProcessingInvariantError("Discovery triage is not configured.")
+        async with self._session_factory() as session:
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
             ).one()
-            output = TriageModelOutput.model_validate(fixture.payload)
+            snapshots = claim_version.submission["documents"]
+        if not isinstance(snapshots, list):
+            raise ProcessingInvariantError("Claim document snapshot is invalid.")
+        documents: list[dict[str, object]] = []
+        for snapshot in sorted(
+            (item for item in snapshots if isinstance(item, dict)),
+            key=lambda item: int(str(item["upload_index"])),
+        ):
+            document_version_id = UUID(str(snapshot["document_version_id"]))
+            observations = await self._ocr_repository.list_observations(document_version_id)
+            if not observations:
+                raise ProcessingInvariantError("Discovery OCR observations are missing.")
+            documents.append(
+                {
+                    "client_document_id": str(snapshot["client_document_id"]),
+                    "document_version_id": str(document_version_id),
+                    "observations": [item.model_dump(mode="json") for item in observations],
+                }
+            )
+        result = await self._structured_model.fast_triage(
+            [
+                ("system", "Classify each submitted claim document from discovery OCR."),
+                (
+                    "human",
+                    json.dumps(
+                        {"documents": documents},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ),
+            ]
+        )
+        return await self._commit_triage(
+            workflow_run,
+            result.output,
+            model_route=(
+                f"{result.config.route.value}:{result.config.model_id}:"
+                f"{result.config.prompt_version}"
+            ),
+            producer="recorded-fast-triage",
+        )
+
+    async def _commit_triage(
+        self,
+        workflow_run: WorkflowRun,
+        output: TriageModelOutput,
+        *,
+        model_route: str,
+        producer: str,
+    ) -> EarlyGateResult:
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
             claim = (
                 await session.scalars(select(ClaimRow).where(ClaimRow.id == workflow_run.claim_id))
             ).one()
@@ -1024,7 +1100,7 @@ class PostgresClaimProcessor:
                 snapshot = snapshot_by_client_id[item.client_document_id]
                 item_candidates = [
                     IdentityCandidate(
-                        producer="fixture-fast-triage",
+                        producer=producer,
                         producer_version="v1",
                         client_document_id=item.client_document_id,
                         document_version_id=UUID(str(snapshot["document_version_id"])),
@@ -1056,7 +1132,7 @@ class PostgresClaimProcessor:
                         identity_observations=[
                             candidate.model_dump(mode="json") for candidate in item_candidates
                         ],
-                        model_route="fixture-fast-triage-v1",
+                        model_route=model_route,
                         schema_version=output.schema_version,
                         created_at=now,
                     )
@@ -1332,8 +1408,6 @@ class PostgresClaimProcessor:
         ):
             client_document_id = str(snapshot["client_document_id"])
             triage = triage_by_client_id.get(client_document_id)
-            if triage is None:
-                raise ProcessingInvariantError("Document triage provenance is incomplete.")
             source = SourceDocument(
                 document_id=UUID(str(snapshot["document_id"])),
                 document_version_id=UUID(str(snapshot["document_version_id"])),
@@ -1347,7 +1421,8 @@ class PostgresClaimProcessor:
             try:
                 artifacts = await self._page_artifacts.process(source)
             except RenderedPageTooLargeError as error:
-                role_label = triage.role.replace("_", " ").lower()
+                observed_role = "UNKNOWN" if triage is None else triage.role
+                role_label = "document" if triage is None else triage.role.replace("_", " ").lower()
                 action = EarlyGateResult(
                     action_required=True,
                     code="PAGE_TOO_LARGE_FOR_OCR",
@@ -1357,11 +1432,11 @@ class PostgresClaimProcessor:
                         "Please replace it with a clearer or smaller document."
                     ),
                     observed_roles=tuple(row.role for row in triage_rows),
-                    required_roles=(triage.role,),
+                    required_roles=(observed_role,),
                     affected_documents=(
                         AffectedDocument(
                             client_document_id=client_document_id,
-                            observed_role=triage.role,
+                            observed_role=observed_role,
                             requested_action="REPLACE",
                         ),
                     ),
@@ -1372,6 +1447,35 @@ class PostgresClaimProcessor:
                 )
             rendered_page_count += len(artifacts)
         return PagePreparationResult(rendered_page_count=rendered_page_count)
+
+    async def discover_documents(self, workflow_run: WorkflowRun) -> int:
+        """Persist bounded role-agnostic OCR before triage assigns a document role."""
+        if self._ocr is None or self._page_repository is None:
+            raise ProcessingInvariantError("Discovery OCR pipeline is not configured.")
+        async with self._session_factory() as session:
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            snapshots = claim_version.submission["documents"]
+        if not isinstance(snapshots, list):
+            raise ProcessingInvariantError("Claim document snapshot is invalid.")
+        observation_count = 0
+        for snapshot in sorted(
+            (item for item in snapshots if isinstance(item, dict)),
+            key=lambda item: int(str(item["upload_index"])),
+        ):
+            document_version_id = UUID(str(snapshot["document_version_id"]))
+            artifacts = await self._page_repository.list_for_document_version(document_version_id)
+            if not artifacts:
+                raise ProcessingInvariantError("Rendered page artifacts are missing.")
+            observations = await self._ocr.process(artifacts, DocumentRole.UNKNOWN)
+            observation_count += len(observations)
+        return observation_count
 
     async def ocr_documents(self, workflow_run: WorkflowRun) -> int:
         if self._ocr is None or self._page_repository is None:
