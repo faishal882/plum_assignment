@@ -29,5 +29,30 @@ def migrated_database_url(postgres_database_url: str) -> Iterator[str]:
                 "RESTART IDENTITY CASCADE"
             )
         )
+        connection.execute(
+            text(
+                """
+                UPDATE users
+                SET username = CASE id
+                    WHEN '00000000-0000-0000-0000-000000000001' THEN 'member.emp001'
+                    WHEN '00000000-0000-0000-0000-000000000002' THEN 'member.emp002'
+                    WHEN '00000000-0000-0000-0000-000000000101' THEN 'reviewer.local'
+                    WHEN '00000000-0000-0000-0000-000000000102' THEN 'operator.local'
+                END,
+                normalized_username = CASE id
+                    WHEN '00000000-0000-0000-0000-000000000001' THEN 'member.emp001'
+                    WHEN '00000000-0000-0000-0000-000000000002' THEN 'member.emp002'
+                    WHEN '00000000-0000-0000-0000-000000000101' THEN 'reviewer.local'
+                    WHEN '00000000-0000-0000-0000-000000000102' THEN 'operator.local'
+                END
+                WHERE id IN (
+                    '00000000-0000-0000-0000-000000000001',
+                    '00000000-0000-0000-0000-000000000002',
+                    '00000000-0000-0000-0000-000000000101',
+                    '00000000-0000-0000-0000-000000000102'
+                )
+                """
+            )
+        )
     yield postgres_database_url
     engine.dispose()
