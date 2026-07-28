@@ -63,6 +63,24 @@ Durable decisions that apply across all phases:
 - **Data boundary**: Backend v1 supports arbitrary real-format PDF, JPEG, and PNG documents, but
   testing is limited to synthetic or de-identified content.
 
+## Current implementation progress
+
+This status is intentionally narrower than the acceptance checklists below. It records only
+verified completed slices; unchecked acceptance criteria remain work to do.
+
+- [x] Shared typed runtime settings and execution-profile safeguards (`a59a2e9`, `f32fa14`).
+- [x] Standalone `claims-worker run-once` and `claims-worker run-loop` commands (`d68f2ef`,
+  `57d4846`).
+- [x] Public no-fixture TC001-style action-required tracer using recorded discovery OCR
+  (`7b6c6fa`).
+- [x] Worker lease heartbeat, bounded shutdown behavior, and recovery-safe fencing (`f554bdc`).
+- [x] Public `PROCESSING_FAILED` projection for terminal worker failure (`f9a3077`).
+- [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
+- [ ] Operational no-fixture clean-decision tracer and all remaining recorded cases.
+- [ ] Pinned execution-contract persistence and recovery from persisted provider/model versions.
+- [ ] Complete Phoenix claim-session correlation and evaluation metrics.
+- [ ] Explicit live AWS complete tracer, versioned alias compatibility, and closure artifacts.
+
 ---
 
 ## Phase 1: Safe runtime and execution-profile selection
