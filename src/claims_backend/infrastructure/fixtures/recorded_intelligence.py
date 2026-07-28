@@ -32,11 +32,10 @@ class RecordedDiscoveryOcrProvider:
     provider_name = "RECORDED_DISCOVERY_OCR"
     provider_version = "recorded-discovery-v1"
 
-    # Hash of the synthetic blank JPEG used by the public operational tracer.
+    # Hashes of synthetic JPEGs used by the public operational tracers.
     _records = {
-        "ffa497df34d973fa2b30e1cf77d691291f9baa7c219c65fed798a0ccdd893676": (
-            "Synthetic recorded prescription document."
-        )
+        "ffa497df34d973fa2b30e1cf77d691291f9baa7c219c65fed798a0ccdd893676": "PRESCRIPTION",
+        "7d61a3141cfc31ff61dff349120e26e493713bbdcc954d039841d5c0b69c34fb": "HOSPITAL_BILL",
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
@@ -44,8 +43,8 @@ class RecordedDiscoveryOcrProvider:
             raise RecordedInputUnavailableError(
                 "Recorded discovery OCR accepts only the UNKNOWN discovery role."
             )
-        text = self._records.get(page.original_sha256)
-        if text is None:
+        document_kind = self._records.get(page.original_sha256)
+        if document_kind is None:
             raise RecordedInputUnavailableError(
                 "No recorded discovery OCR result exists for this document hash."
             )
@@ -65,7 +64,7 @@ class RecordedDiscoveryOcrProvider:
                     document_version_id=page.document_version_id,
                     page_number=page.page_number,
                     kind=OcrObservationKind.LINE,
-                    text=text,
+                    text=f"Synthetic recorded {document_kind} document.",
                     confidence=0.99,
                     region=NormalizedRegion(x=0.05, y=0.1, width=0.9, height=0.2),
                     source_id="recorded-discovery-line-1",
@@ -75,7 +74,7 @@ class RecordedDiscoveryOcrProvider:
 
 
 class RecordedDocumentModelTransport:
-    """Recorded local triage responses derived only from submitted OCR inputs."""
+    """Recorded local responses derived only from bounded OCR observations."""
 
     def invoke(
         self,
@@ -84,12 +83,13 @@ class RecordedDocumentModelTransport:
         messages: list[tuple[str, str]],
     ) -> ModelInvocation:
         del schema
-        if config.route is not ModelRoute.FAST_TRIAGE:
-            raise RecordedInputUnavailableError(
-                "No recorded complex-extraction result exists for this input."
-            )
         if len(messages) != 2 or messages[1][0] != "human":
-            raise RecordedInputUnavailableError("Recorded triage input is invalid.")
+            raise RecordedInputUnavailableError("Recorded model input is invalid.")
+        if config.route is ModelRoute.COMPLEX_EXTRACTION:
+            raw_output = _complex_extraction(messages[1][1])
+            return _invocation(raw_output)
+        if config.route is not ModelRoute.FAST_TRIAGE:
+            raise RecordedInputUnavailableError("Recorded model route is unsupported.")
         payload = cast(dict[str, object], json.loads(messages[1][1]))
         documents = payload.get("documents")
         if not isinstance(documents, list) or not documents:
@@ -107,10 +107,11 @@ class RecordedDocumentModelTransport:
                 sort_keys=True,
                 separators=(",", ":"),
             )
+            role = _role_from_observations(observations)
             output_documents.append(
                 {
                     "client_document_id": client_document_id,
-                    "role": DocumentRole.PRESCRIPTION.value,
+                    "role": role.value,
                     "readability": {
                         "status": "READABLE",
                         "preview": {
@@ -122,13 +123,72 @@ class RecordedDocumentModelTransport:
                     "identity_observations": [],
                 }
             )
-        raw_output: dict[str, object] = {"schema_version": 2, "documents": output_documents}
-        request_key = json.dumps(raw_output, sort_keys=True, separators=(",", ":")).encode()
-        return ModelInvocation(
-            raw_output=raw_output,
-            provider_request_id=f"recorded-{sha256(request_key).hexdigest()[:24]}",
-            input_tokens=0,
-            output_tokens=0,
-            latency_ms=0,
-            stop_reason="RECORDED",
+        raw_output = {"schema_version": 2, "documents": output_documents}
+        return _invocation(raw_output)
+
+
+def _invocation(raw_output: dict[str, object]) -> ModelInvocation:
+    request_key = json.dumps(raw_output, sort_keys=True, separators=(",", ":")).encode()
+    return ModelInvocation(
+        raw_output=raw_output,
+        provider_request_id=f"recorded-{sha256(request_key).hexdigest()[:24]}",
+        input_tokens=0,
+        output_tokens=0,
+        latency_ms=0,
+        stop_reason="RECORDED",
+    )
+
+
+def _role_from_observations(observations: list[object]) -> DocumentRole:
+    text = json.dumps(observations, sort_keys=True).upper()
+    if "HOSPITAL_BILL" in text:
+        return DocumentRole.HOSPITAL_BILL
+    if "PRESCRIPTION" in text:
+        return DocumentRole.PRESCRIPTION
+    return DocumentRole.UNKNOWN
+
+
+def _complex_extraction(message: str) -> dict[str, object]:
+    payload = cast(dict[str, object], json.loads(message))
+    observations = payload.get("ocr_observations")
+    if not isinstance(observations, list) or not observations:
+        raise RecordedInputUnavailableError("Recorded extraction input has no observations.")
+    role = _role_from_observations(observations)
+    observation_id = (
+        observations[0].get("observation_id") if isinstance(observations[0], dict) else None
+    )
+    if not isinstance(observation_id, str):
+        raise RecordedInputUnavailableError("Recorded extraction observation is invalid.")
+    values = (
+        (
+            ("patient.name", "Rajesh Kumar"),
+            ("treatment.date", "2024-11-01"),
+            ("clinical.condition", "Synthetic Consultation"),
         )
+        if role is DocumentRole.PRESCRIPTION
+        else (
+            ("patient.name", "Rajesh Kumar"),
+            ("treatment.date", "2024-11-01"),
+            ("billing.total", "1500.00"),
+            ("provider.name", "Synthetic Hospital"),
+        )
+        if role is DocumentRole.HOSPITAL_BILL
+        else ()
+    )
+    if not values:
+        raise RecordedInputUnavailableError(
+            "No recorded extraction result exists for this OCR input."
+        )
+    return {
+        "schema_version": "complex-extraction-v1",
+        "candidates": [
+            {
+                "fact_path": path,
+                "value": value,
+                "normalized_value": value,
+                "evidence_refs": [observation_id],
+                "confidence": 0.99,
+            }
+            for path, value in values
+        ],
+    }
