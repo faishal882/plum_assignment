@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.16,<2",
     "boto3>=1.40,<2",
     "fastapi>=0.116,<1",
+    "langchain-aws>=1,<2",
     "langgraph>=1,<2",
     "langgraph-checkpoint-postgres>=3,<4",
     "pillow>=11,<13",
