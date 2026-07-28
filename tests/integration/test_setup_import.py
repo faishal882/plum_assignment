@@ -3,7 +3,8 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.application.setup_import import SetupDataApplication
@@ -48,6 +49,33 @@ async def test_imports_exact_policy_source_and_is_idempotent(
         assert await session.scalar(select(func.count()).select_from(PolicySourceRow)) == 1
         assert await session.scalar(select(func.count()).select_from(SetupImportRow)) == 1
         assert await session.scalar(select(func.count()).select_from(MemberVersionRow)) == 12
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_database_rejects_policy_source_mutation(
+    migrated_database_url: str,
+) -> None:
+    engine = create_async_engine(migrated_database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    application = SetupDataApplication(PostgresSetupImportRepository(session_factory))
+    receipt = await application.import_sources(POLICY_BYTES, source_name=POLICY_PATH.name)
+
+    with pytest.raises(DBAPIError):
+        async with session_factory.begin() as session:
+            await session.execute(
+                text(
+                    """
+                    UPDATE policy_sources
+                    SET source_bytes = :changed
+                    WHERE source_sha256 = :source_sha256
+                    """
+                ),
+                {
+                    "changed": b"changed",
+                    "source_sha256": receipt.policy_source_sha256,
+                },
+            )
     await engine.dispose()
 
 
@@ -140,6 +168,46 @@ async def test_imports_history_and_utilization_without_inventing_missing_facts(
         utilization = (await session.scalars(select(UtilizationSnapshotRow))).one()
         assert history.amount_paise == 120_050
         assert utilization.used_paise == 500_000
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_invalid_member_data_relationship_becomes_a_finding(
+    migrated_database_url: str,
+) -> None:
+    member_data_bytes = json.dumps(
+        {
+            "policy_id": "PLUM_GHI_2024",
+            "as_of_date": "2024-11-03",
+            "claim_history": [
+                {
+                    "history_claim_id": "UNKNOWN-1",
+                    "member_id": "NOT-A-MEMBER",
+                    "treatment_date": "2024-10-30",
+                    "amount": "100.00",
+                    "currency": "INR",
+                }
+            ],
+            "utilization": [],
+        }
+    ).encode()
+    engine = create_async_engine(migrated_database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    application = SetupDataApplication(PostgresSetupImportRepository(session_factory))
+
+    receipt = await application.import_sources(
+        POLICY_BYTES,
+        source_name=POLICY_PATH.name,
+        member_data_bytes=member_data_bytes,
+        member_data_source_name="member-data.json",
+    )
+
+    assert receipt.history_records_created == 0
+    assert any(
+        finding.code == "UNKNOWN_MEMBER_REFERENCE"
+        and finding.subject_id == "NOT-A-MEMBER"
+        for finding in receipt.findings
+    )
     await engine.dispose()
 
 
