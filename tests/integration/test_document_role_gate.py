@@ -1,6 +1,7 @@
 import asyncio
 import json
 from io import BytesIO
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -10,6 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 
 from claims_backend.api.app import create_app
+from claims_backend.application.setup_import import SetupDataApplication
 from claims_backend.application.work import WorkerService
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.config import Settings
@@ -25,12 +27,17 @@ from claims_backend.infrastructure.postgres.models import (
     ProcessingFixtureRow,
     RuleResultRow,
 )
+from claims_backend.infrastructure.postgres.setup_import_repository import (
+    PostgresSetupImportRepository,
+)
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
 from claims_backend.runtime.composition import create_process_runtime
 from claims_backend.worker.application import create_claim_worker
+
+_POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
 
 
 @pytest.mark.asyncio
@@ -188,6 +195,49 @@ async def test_public_claim_processes_without_processing_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_public_claim_decides_without_processing_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_decision_utilization(app.state.session_factory)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "public-no-fixture-decision",
+            },
+            data={"metadata": json.dumps(_metadata())},
+            files=[
+                ("files", ("prescription.jpg", _jpeg_bytes(), "image/jpeg")),
+                ("files", ("bill.jpg", _bill_jpeg_bytes(), "image/jpeg")),
+            ],
+        )
+        claim_id = UUID(submitted.json()["claim_id"])
+        runtime = create_process_runtime(settings, process_name="worker")
+        worker = create_claim_worker(runtime)
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+
+    assert projection.status_code == 200
+    assert projection.json()["lifecycle_status"] == "DECIDED"
+    assert projection.json()["adjudication"]["approved_amount"] == "1350.00"
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_worker_loop_processes_claim_submitted_after_startup(
     migrated_database_url: str,
     tmp_path,
@@ -265,3 +315,35 @@ def _jpeg_bytes() -> bytes:
     output = BytesIO()
     Image.new("RGB", (64, 64), "white").save(output, format="JPEG")
     return output.getvalue()
+
+
+def _bill_jpeg_bytes() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (64, 64), (30, 90, 180)).save(output, format="JPEG")
+    return output.getvalue()
+
+
+async def _import_decision_utilization(factory) -> None:
+    member_data = json.dumps(
+        {
+            "policy_id": "PLUM_GHI_2024",
+            "as_of_date": "2024-11-01",
+            "claim_history": [],
+            "utilization": [
+                {
+                    "member_id": "EMP001",
+                    "period_start": "2024-04-01",
+                    "period_end": "2025-03-31",
+                    "used_amount": "5000.00",
+                    "currency": "INR",
+                    "as_of_date": "2024-11-01",
+                }
+            ],
+        }
+    ).encode()
+    await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
+        _POLICY_BYTES,
+        source_name="policy_terms.json",
+        member_data_bytes=member_data,
+        member_data_source_name="recorded-decision-member-facts.json",
+    )
