@@ -1,0 +1,87 @@
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
+from claims_backend.domain.claims import ClaimCategory
+
+
+class DocumentManifestItemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    upload_index: int = Field(ge=0)
+    client_document_id: str = Field(min_length=1, max_length=128)
+
+
+class ClaimMetadataRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    member_id: str = Field(min_length=1, max_length=64)
+    policy_id: str = Field(min_length=1, max_length=64)
+    claim_category: ClaimCategory
+    treatment_date: date
+    claimed_amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: Literal["INR"]
+    documents: list[DocumentManifestItemRequest] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_document_manifest(self) -> "ClaimMetadataRequest":
+        indexes = [document.upload_index for document in self.documents]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("document upload indexes must be unique")
+        if sorted(indexes) != list(range(len(indexes))):
+            raise ValueError("document upload indexes must be contiguous and start at zero")
+
+        document_ids = [document.client_document_id.casefold() for document in self.documents]
+        if len(document_ids) != len(set(document_ids)):
+            raise ValueError("client document identifiers must be unique")
+        return self
+
+
+class ProgressResponse(BaseModel):
+    current_stage: str
+    is_terminal: bool
+
+
+class ClaimReceiptResponse(BaseModel):
+    claim_id: UUID
+    version: int
+    lifecycle_status: str
+    status_url: str
+
+
+class ClaimResponse(BaseModel):
+    claim_id: UUID
+    version: int
+    member_id: str
+    policy_id: str
+    claim_category: str
+    treatment_date: date
+    claimed_amount: Decimal
+    currency: str
+    lifecycle_status: str
+    progress: ProgressResponse
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("claimed_amount")
+    def serialize_claimed_amount(self, amount: Decimal) -> str:
+        return f"{amount:.2f}"
+
+
+class ErrorDetailResponse(BaseModel):
+    location: list[str | int] | None = None
+    message: str
+    type: str | None = None
+
+
+class ErrorBodyResponse(BaseModel):
+    code: str
+    message: str
+    details: list[ErrorDetailResponse] = Field(default_factory=list)
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorBodyResponse
