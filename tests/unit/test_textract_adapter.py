@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import UUID
 
 import boto3
@@ -16,7 +16,7 @@ from claims_backend.domain.ocr import (
     OcrTimeoutError,
     TextractProfile,
 )
-from claims_backend.infrastructure.aws.textract import TextractAdapter
+from claims_backend.infrastructure.aws.textract import TextractAdapter, create_textract_client
 
 
 def test_textract_profiles_send_page_bytes_and_map_project_observations() -> None:
@@ -137,6 +137,24 @@ def test_textract_timeout_is_a_retryable_typed_failure() -> None:
 
     assert captured.value.code == "TEXTRACT_TIMEOUT"
     assert captured.value.retryable is True
+
+
+def test_textract_client_applies_configured_timeout_and_attempt_limit() -> None:
+    factory = Mock()
+
+    create_textract_client(
+        region="ap-south-1",
+        read_timeout_seconds=31,
+        max_attempts=3,
+        client_factory=factory,
+    )
+
+    factory.assert_called_once()
+    assert factory.call_args.args == ("textract",)
+    assert factory.call_args.kwargs["region_name"] == "ap-south-1"
+    provider_config = factory.call_args.kwargs["config"]
+    assert provider_config.read_timeout == 31
+    assert provider_config.retries["total_max_attempts"] == 3
 
 
 def _client():

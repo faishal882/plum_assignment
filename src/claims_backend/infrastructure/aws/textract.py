@@ -1,8 +1,11 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from hashlib import sha256
-from typing import Protocol
+from threading import BoundedSemaphore
+from typing import Protocol, cast
 
+import boto3  # type: ignore[import-untyped]
+from botocore.config import Config as BotoConfig  # type: ignore[import-untyped]
 from botocore.exceptions import (  # type: ignore[import-untyped]
     BotoCoreError,
     ClientError,
@@ -50,8 +53,11 @@ class TextractAdapter:
     provider_name = "AMAZON_TEXTRACT"
     provider_version = "boto3-textract-v1"
 
-    def __init__(self, client: TextractClient) -> None:
+    def __init__(self, client: TextractClient, *, concurrency_limit: int = 2) -> None:
+        if concurrency_limit <= 0:
+            raise ValueError("concurrency_limit must be greater than zero")
         self._client = client
+        self._permit = BoundedSemaphore(concurrency_limit)
 
     def analyze(
         self,
@@ -59,7 +65,8 @@ class TextractAdapter:
         role: DocumentRole,
     ) -> OcrPageResult:
         try:
-            return self._analyze(page, role)
+            with self._permit:
+                return self._analyze(page, role)
         except (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError) as error:
             raise OcrTimeoutError("Textract request timed out.") from error
         except ClientError as error:
@@ -97,7 +104,6 @@ class TextractAdapter:
                 retryable=True,
                 provider_code=type(error).__name__,
             ) from error
-
     def _analyze(
         self,
         page: RenderedPage,
@@ -134,6 +140,37 @@ class TextractAdapter:
                 )
             ),
         )
+
+
+def create_textract_client(
+    *,
+    region: str,
+    read_timeout_seconds: int = 30,
+    max_attempts: int = 3,
+    client_factory: Callable[..., object] | None = None,
+) -> TextractClient:
+    if not region:
+        raise ValueError("region cannot be empty")
+    if read_timeout_seconds <= 0:
+        raise ValueError("read_timeout_seconds must be greater than zero")
+    if not 0 < max_attempts <= 3:
+        raise ValueError("max_attempts must be between one and three")
+    factory = client_factory or boto3.client
+    return cast(
+        TextractClient,
+        factory(
+            "textract",
+            region_name=region,
+            config=BotoConfig(
+                connect_timeout=30,
+                read_timeout=read_timeout_seconds,
+                retries={
+                    "total_max_attempts": max_attempts,
+                    "mode": "standard",
+                },
+            ),
+        ),
+    )
 
 
 def _profile(role: DocumentRole) -> TextractProfile:

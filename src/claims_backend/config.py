@@ -16,8 +16,16 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_MAX_TEXTRACT_PAGE_BYTES",
     "CLAIMS_PAGE_RENDER_DPI",
     "CLAIMS_AWS_REGION",
+    "CLAIMS_TEXTRACT_TIMEOUT_SECONDS",
+    "CLAIMS_TEXTRACT_CONCURRENCY_LIMIT",
     "CLAIMS_BEDROCK_REGION",
     "CLAIMS_BEDROCK_MODEL_ID",
+    "CLAIMS_BEDROCK_TIMEOUT_SECONDS",
+    "CLAIMS_BEDROCK_CONCURRENCY_LIMIT",
+    "CLAIMS_PROVIDER_MAX_ATTEMPTS",
+    "CLAIMS_RETRY_BASE_SECONDS",
+    "CLAIMS_RETRY_MAX_SECONDS",
+    "CLAIMS_RETRY_JITTER_RATIO",
 )
 
 
@@ -45,8 +53,16 @@ class Settings:
     max_textract_page_bytes: int = 5 * 1024 * 1024
     page_render_dpi: int = 180
     aws_region: str = "ap-south-1"
+    textract_timeout_seconds: int = 30
+    textract_concurrency_limit: int = 2
     bedrock_region: str = "us-west-2"
     bedrock_model_id: str = "qwen.qwen3-235b-a22b-2507-v1:0"
+    bedrock_timeout_seconds: int = 90
+    bedrock_concurrency_limit: int = 2
+    provider_max_attempts: int = 3
+    retry_base_seconds: int = 2
+    retry_max_seconds: int = 60
+    retry_jitter_ratio: float = 0.25
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -57,9 +73,22 @@ class Settings:
             ("upload_chunk_bytes", self.upload_chunk_bytes),
             ("max_textract_page_bytes", self.max_textract_page_bytes),
             ("page_render_dpi", self.page_render_dpi),
+            ("textract_timeout_seconds", self.textract_timeout_seconds),
+            ("textract_concurrency_limit", self.textract_concurrency_limit),
+            ("bedrock_timeout_seconds", self.bedrock_timeout_seconds),
+            ("bedrock_concurrency_limit", self.bedrock_concurrency_limit),
+            ("provider_max_attempts", self.provider_max_attempts),
+            ("retry_base_seconds", self.retry_base_seconds),
+            ("retry_max_seconds", self.retry_max_seconds),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
+        if self.provider_max_attempts > 3:
+            raise ValueError("provider_max_attempts cannot exceed three")
+        if self.retry_max_seconds < self.retry_base_seconds:
+            raise ValueError("retry_max_seconds cannot be less than retry_base_seconds")
+        if not 0 <= self.retry_jitter_ratio <= 1:
+            raise ValueError("retry_jitter_ratio must be between 0 and 1")
         if not self.aws_region or not self.bedrock_region or not self.bedrock_model_id:
             raise ValueError("AWS and Bedrock configuration cannot be empty")
 
@@ -84,8 +113,28 @@ class Settings:
             max_textract_page_bytes=_environment_integer(values, "CLAIMS_MAX_TEXTRACT_PAGE_BYTES"),
             page_render_dpi=_environment_integer(values, "CLAIMS_PAGE_RENDER_DPI"),
             aws_region=_environment_value(values, "CLAIMS_AWS_REGION"),
+            textract_timeout_seconds=_environment_integer(
+                values, "CLAIMS_TEXTRACT_TIMEOUT_SECONDS"
+            ),
+            textract_concurrency_limit=_environment_integer(
+                values, "CLAIMS_TEXTRACT_CONCURRENCY_LIMIT"
+            ),
             bedrock_region=_environment_value(values, "CLAIMS_BEDROCK_REGION"),
             bedrock_model_id=_environment_value(values, "CLAIMS_BEDROCK_MODEL_ID"),
+            bedrock_timeout_seconds=_environment_integer(
+                values, "CLAIMS_BEDROCK_TIMEOUT_SECONDS"
+            ),
+            bedrock_concurrency_limit=_environment_integer(
+                values, "CLAIMS_BEDROCK_CONCURRENCY_LIMIT"
+            ),
+            provider_max_attempts=_environment_bounded_integer(
+                values,
+                "CLAIMS_PROVIDER_MAX_ATTEMPTS",
+                maximum=3,
+            ),
+            retry_base_seconds=_environment_integer(values, "CLAIMS_RETRY_BASE_SECONDS"),
+            retry_max_seconds=_environment_integer(values, "CLAIMS_RETRY_MAX_SECONDS"),
+            retry_jitter_ratio=_environment_ratio(values, "CLAIMS_RETRY_JITTER_RATIO"),
         )
 
 
@@ -121,4 +170,27 @@ def _environment_integer(values: Mapping[str, str | None], name: str) -> int:
         raise ConfigurationError(f"{name} must be an integer") from error
     if value <= 0:
         raise ConfigurationError(f"{name} must be greater than zero")
+    return value
+
+
+def _environment_bounded_integer(
+    values: Mapping[str, str | None],
+    name: str,
+    *,
+    maximum: int,
+) -> int:
+    value = _environment_integer(values, name)
+    if value > maximum:
+        raise ConfigurationError(f"{name} cannot exceed {maximum}")
+    return value
+
+
+def _environment_ratio(values: Mapping[str, str | None], name: str) -> float:
+    raw = _environment_value(values, name)
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ConfigurationError(f"{name} must be a number") from error
+    if not 0 <= value <= 1:
+        raise ConfigurationError(f"{name} must be between 0 and 1")
     return value

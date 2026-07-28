@@ -15,8 +15,16 @@ _ENVIRONMENT = {
     "CLAIMS_MAX_TEXTRACT_PAGE_BYTES": "500",
     "CLAIMS_PAGE_RENDER_DPI": "144",
     "CLAIMS_AWS_REGION": "ap-southeast-2",
+    "CLAIMS_TEXTRACT_TIMEOUT_SECONDS": "31",
+    "CLAIMS_TEXTRACT_CONCURRENCY_LIMIT": "3",
     "CLAIMS_BEDROCK_REGION": "us-west-2",
     "CLAIMS_BEDROCK_MODEL_ID": "qwen.test-model-v1:0",
+    "CLAIMS_BEDROCK_TIMEOUT_SECONDS": "91",
+    "CLAIMS_BEDROCK_CONCURRENCY_LIMIT": "4",
+    "CLAIMS_PROVIDER_MAX_ATTEMPTS": "3",
+    "CLAIMS_RETRY_BASE_SECONDS": "2",
+    "CLAIMS_RETRY_MAX_SECONDS": "40",
+    "CLAIMS_RETRY_JITTER_RATIO": "0.2",
 }
 
 
@@ -39,8 +47,16 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.max_textract_page_bytes == 500
     assert settings.page_render_dpi == 144
     assert settings.aws_region == "ap-southeast-2"
+    assert settings.textract_timeout_seconds == 31
+    assert settings.textract_concurrency_limit == 3
     assert settings.bedrock_region == "us-west-2"
     assert settings.bedrock_model_id == "qwen.test-model-v1:0"
+    assert settings.bedrock_timeout_seconds == 91
+    assert settings.bedrock_concurrency_limit == 4
+    assert settings.provider_max_attempts == 3
+    assert settings.retry_base_seconds == 2
+    assert settings.retry_max_seconds == 40
+    assert settings.retry_jitter_ratio == 0.2
 
 
 def test_process_environment_overrides_env_file(
@@ -69,6 +85,14 @@ def test_missing_or_invalid_configuration_fails_at_startup(
     invalid_file = _write_env(tmp_path, invalid)
     with pytest.raises(ConfigurationError, match="CLAIMS_MAX_DOCUMENTS must be an integer"):
         Settings.from_env(invalid_file)
+
+    invalid_ratio = {**_ENVIRONMENT, "CLAIMS_RETRY_JITTER_RATIO": "1.1"}
+    invalid_ratio_file = _write_env(tmp_path, invalid_ratio)
+    with pytest.raises(
+        ConfigurationError,
+        match="CLAIMS_RETRY_JITTER_RATIO must be between 0 and 1",
+    ):
+        Settings.from_env(invalid_ratio_file)
 
 
 def _clear_configuration(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
 from unittest.mock import Mock, patch
 
 from claims_backend.domain.extraction import (
@@ -43,7 +45,10 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
         "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
         return_value=model,
     ) as constructor:
-        result = ChatBedrockConverseTransport().invoke(
+        result = ChatBedrockConverseTransport(
+            read_timeout_seconds=91,
+            max_attempts=3,
+        ).invoke(
             config,
             ComplexExtractionOutput,
             [
@@ -56,6 +61,9 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     assert constructor.call_args.kwargs["model"] == "qwen.qwen3-235b-a22b-2507-v1:0"
     assert constructor.call_args.kwargs["region_name"] == "us-west-2"
     assert constructor.call_args.kwargs["temperature"] == 0
+    provider_config = constructor.call_args.kwargs["config"]
+    assert provider_config.read_timeout == 91
+    assert provider_config.retries["total_max_attempts"] == 3
     model.with_structured_output.assert_called_once_with(
         ComplexExtractionOutput,
         method="function_calling",
@@ -70,3 +78,67 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     assert result.output_tokens == 8
     assert result.stop_reason == "end_turn"
     assert result.latency_ms >= 0
+
+
+def test_bedrock_transport_bounds_concurrent_provider_calls() -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
+    ).resolve(ModelRoute.COMPLEX_EXTRACTION)
+    parsed = ComplexExtractionOutput.model_validate(
+        {"schema_version": "complex-extraction-v1", "candidates": []}
+    )
+    release = Event()
+    two_started = Event()
+    lock = Lock()
+    active = 0
+    maximum_active = 0
+
+    def invoke(_: object) -> dict[str, object]:
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+            if active == 2:
+                two_started.set()
+        assert release.wait(timeout=2)
+        with lock:
+            active -= 1
+        return {
+            "parsed": parsed,
+            "raw": Mock(
+                response_metadata={"ResponseMetadata": {"RequestId": "request-1"}},
+                usage_metadata={"input_tokens": 1, "output_tokens": 1},
+            ),
+            "parsing_error": None,
+        }
+
+    runnable = Mock()
+    runnable.invoke.side_effect = invoke
+    model = Mock()
+    model.with_structured_output.return_value = runnable
+    transport = ChatBedrockConverseTransport(concurrency_limit=2)
+
+    with (
+        patch(
+            "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
+            return_value=model,
+        ),
+        ThreadPoolExecutor(max_workers=3) as pool,
+    ):
+        futures = [
+            pool.submit(
+                transport.invoke,
+                config,
+                ComplexExtractionOutput,
+                [("human", "synthetic")],
+            )
+            for _ in range(3)
+        ]
+        assert two_started.wait(timeout=2)
+        assert maximum_active == 2
+        release.set()
+        for future in futures:
+            future.result(timeout=2)
+
+    assert maximum_active == 2

@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from threading import BoundedSemaphore
 from time import monotonic
 from typing import cast
 
@@ -12,6 +13,29 @@ from claims_backend.model.transport import ModelInvocation
 
 
 class ChatBedrockConverseTransport:
+    def __init__(
+        self,
+        *,
+        connect_timeout_seconds: int = 30,
+        read_timeout_seconds: int = 90,
+        max_attempts: int = 3,
+        concurrency_limit: int = 2,
+    ) -> None:
+        for name, value in (
+            ("connect_timeout_seconds", connect_timeout_seconds),
+            ("read_timeout_seconds", read_timeout_seconds),
+            ("max_attempts", max_attempts),
+            ("concurrency_limit", concurrency_limit),
+        ):
+            if value <= 0:
+                raise ValueError(f"{name} must be greater than zero")
+        if max_attempts > 3:
+            raise ValueError("max_attempts cannot exceed three")
+        self._connect_timeout_seconds = connect_timeout_seconds
+        self._read_timeout_seconds = read_timeout_seconds
+        self._max_attempts = max_attempts
+        self._permit = BoundedSemaphore(concurrency_limit)
+
     def invoke(
         self,
         config: ModelRouteConfig,
@@ -23,9 +47,12 @@ class ChatBedrockConverseTransport:
             region_name=config.region,
             temperature=config.temperature,
             config=BotoConfig(
-                connect_timeout=30,
-                read_timeout=90,
-                retries={"max_attempts": 2, "mode": "standard"},
+                connect_timeout=self._connect_timeout_seconds,
+                read_timeout=self._read_timeout_seconds,
+                retries={
+                    "total_max_attempts": self._max_attempts,
+                    "mode": "standard",
+                },
             ),
         )
         structured = model.with_structured_output(
@@ -34,7 +61,8 @@ class ChatBedrockConverseTransport:
             include_raw=True,
         )
         started = monotonic()
-        raw_result = structured.invoke(messages)
+        with self._permit:
+            raw_result = structured.invoke(messages)
         latency_ms = max(0, round((monotonic() - started) * 1000))
         result = _mapping(raw_result)
         if result.get("parsing_error") is not None:
