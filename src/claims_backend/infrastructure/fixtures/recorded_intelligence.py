@@ -95,6 +95,19 @@ class RecordedDiscoveryOcrProvider:
             patient_name="Vikram Joshi",
             content={"date": "2024-10-15", "total": 3000},
         ),
+        "7baa52debefd2f42120ccb649ffc37a52ee27dfba15159d22b424112b78beb4c": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Priya Singh",
+            content={
+                "date": "2024-10-15",
+                "hospital_name": "Smile Dental Clinic",
+                "line_items": [
+                    {"description": "Root Canal Treatment", "amount": 8000},
+                    {"description": "Teeth Whitening", "amount": 4000},
+                ],
+                "total": 12000,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
