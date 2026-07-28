@@ -177,10 +177,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
                 ),
                 MemberDeduction(
                     code=copay.reason_code,
-                    label=(
-                        f"{copay_percent}% "
-                        f"{category.replace('_', ' ')} co-pay"
-                    ),
+                    label=(f"{copay_percent}% {category.replace('_', ' ')} co-pay"),
                     amount_paise=-copay.adjustment_paise,
                 ),
             ),

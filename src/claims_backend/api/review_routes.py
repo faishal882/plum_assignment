@@ -85,9 +85,7 @@ async def resolve_review_task(
                 reason_code=request.reason_code,
                 reason_note=request.reason_note,
                 amended_paise=(
-                    None
-                    if request.amended_amount is None
-                    else int(request.amended_amount * 100)
+                    None if request.amended_amount is None else int(request.amended_amount * 100)
                 ),
             ),
             principal,

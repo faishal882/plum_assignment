@@ -339,9 +339,7 @@ async def test_tc010_persists_ordered_discount_and_copay_trace(
         ).encode(),
         member_data_source_name="tc010-member-facts.json",
     )
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path)
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
@@ -400,10 +398,7 @@ async def test_tc010_persists_ordered_discount_and_copay_trace(
         "currency": "INR",
     }
     assert body["explanation"] == {
-        "summary": (
-            "₹3,240.00 approved after a 20% network discount and "
-            "10% consultation co-pay."
-        ),
+        "summary": ("₹3,240.00 approved after a 20% network discount and 10% consultation co-pay."),
         "deductions": [
             {
                 "code": "NETWORK_DISCOUNT_APPLIED",
@@ -421,16 +416,16 @@ async def test_tc010_persists_ordered_discount_and_copay_trace(
     assert trace is not None
     assert trace.casefile.content.provider_name is not None
     assert trace.casefile.content.provider_name.value == "apollo hospitals"
-    assert [
-        result.reason_code for result in trace.rule_results[-3:]
-    ] == [
+    assert [result.reason_code for result in trace.rule_results[-3:]] == [
         "NETWORK_DISCOUNT_APPLIED",
         "CATEGORY_COPAY_APPLIED",
         "FINAL_APPROVED",
     ]
-    assert [
-        result.amount_after_paise for result in trace.rule_results[-3:]
-    ] == [360_000, 324_000, 324_000]
+    assert [result.amount_after_paise for result in trace.rule_results[-3:]] == [
+        360_000,
+        324_000,
+        324_000,
+    ]
 
     await app.state.engine.dispose()
     await engine.dispose()

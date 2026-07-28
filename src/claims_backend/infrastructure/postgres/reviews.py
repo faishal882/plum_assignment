@@ -54,15 +54,11 @@ class PostgresReviewRepository:
 
     async def get_task(self, task_id: UUID) -> ReviewTaskDetail | None:
         async with self._session_factory() as session:
-            task = await session.scalar(
-                select(ReviewTaskRow).where(ReviewTaskRow.id == task_id)
-            )
+            task = await session.scalar(select(ReviewTaskRow).where(ReviewTaskRow.id == task_id))
             if task is None:
                 return None
             decision = await session.scalar(
-                select(DecisionRecordRow).where(
-                    DecisionRecordRow.id == task.decision_record_id
-                )
+                select(DecisionRecordRow).where(DecisionRecordRow.id == task.decision_record_id)
             )
             if decision is None:
                 raise ReviewTaskNotFoundError
@@ -78,17 +74,17 @@ class PostgresReviewRepository:
             ).all()
         content = {} if casefile is None else casefile.content
         evidence_value = content.get("evidence")
-        evidence = (
-            evidence_value
-            if isinstance(evidence_value, dict)
-            else {}
-        )
+        evidence = evidence_value if isinstance(evidence_value, dict) else {}
         facts = evidence.get("facts")
-        conflicts = tuple(
-            dict(item)
-            for item in facts
-            if isinstance(item, dict) and item.get("state") == "CONFLICT"
-        ) if isinstance(facts, list) else ()
+        conflicts = (
+            tuple(
+                dict(item)
+                for item in facts
+                if isinstance(item, dict) and item.get("state") == "CONFLICT"
+            )
+            if isinstance(facts, list)
+            else ()
+        )
         rendered_rules = tuple(_rule_value(row) for row in rules)
         return ReviewTaskDetail(
             summary=_summary(task),
@@ -101,9 +97,7 @@ class PostgresReviewRepository:
                 if item["amount_before_paise"] != item["amount_after_paise"]
                 or str(item["rule_id"]).startswith("amount.")
             ),
-            failures=tuple(
-                item for item in rendered_rules if item["status"] == "FAIL"
-            ),
+            failures=tuple(item for item in rendered_rules if item["status"] == "FAIL"),
         )
 
     async def resolve(
@@ -117,16 +111,12 @@ class PostgresReviewRepository:
         now = datetime.now(UTC)
         async with self._session_factory.begin() as session:
             task = await session.scalar(
-                select(ReviewTaskRow)
-                .where(ReviewTaskRow.id == task_id)
-                .with_for_update()
+                select(ReviewTaskRow).where(ReviewTaskRow.id == task_id).with_for_update()
             )
             if task is None:
                 raise ReviewTaskNotFoundError
             existing = await session.scalar(
-                select(ReviewResolutionRow).where(
-                    ReviewResolutionRow.task_id == task.id
-                )
+                select(ReviewResolutionRow).where(ReviewResolutionRow.task_id == task.id)
             )
             if existing is not None:
                 if (
@@ -144,9 +134,7 @@ class PostgresReviewRepository:
             if task.status != ReviewTaskStatus.OPEN.value:
                 raise ReviewTaskNotOpenError
             claim = await session.scalar(
-                select(ClaimRow)
-                .where(ClaimRow.id == task.claim_id)
-                .with_for_update()
+                select(ClaimRow).where(ClaimRow.id == task.claim_id).with_for_update()
             )
             if claim is None:
                 raise ReviewTaskNotFoundError
@@ -265,9 +253,7 @@ def _apply_resolution(
     claim.handling_status = str(after["handling_status"])
     recommendation = after["adjudication_recommendation"]
     amount = after["approved_paise"]
-    claim.adjudication_recommendation = (
-        None if recommendation is None else str(recommendation)
-    )
+    claim.adjudication_recommendation = None if recommendation is None else str(recommendation)
     claim.approved_paise = None if amount is None else int(str(amount))
     if command.action is ReviewAction.REQUEST_DOCUMENT:
         claim.current_action = {

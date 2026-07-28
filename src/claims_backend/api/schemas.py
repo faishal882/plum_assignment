@@ -218,15 +218,9 @@ class ReviewCommandRequest(BaseModel):
 
     @model_validator(mode="after")
     def amend_requires_amount(self) -> "ReviewCommandRequest":
-        if (
-            self.action is ReviewAction.AMEND
-            and self.amended_amount is None
-        ):
+        if self.action is ReviewAction.AMEND and self.amended_amount is None:
             raise ValueError("AMEND requires amended_amount")
-        if (
-            self.action is not ReviewAction.AMEND
-            and self.amended_amount is not None
-        ):
+        if self.action is not ReviewAction.AMEND and self.amended_amount is not None:
             raise ValueError("amended_amount is valid only for AMEND")
         return self
 

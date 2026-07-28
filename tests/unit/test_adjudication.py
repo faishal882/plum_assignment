@@ -315,8 +315,7 @@ def test_tc010_applies_network_discount_before_copay() -> None:
     financial_steps = [
         result
         for result in proposal.rule_results
-        if result.reason_code
-        in {"NETWORK_DISCOUNT_APPLIED", "CATEGORY_COPAY_APPLIED"}
+        if result.reason_code in {"NETWORK_DISCOUNT_APPLIED", "CATEGORY_COPAY_APPLIED"}
     ]
     assert [result.reason_code for result in financial_steps] == [
         "NETWORK_DISCOUNT_APPLIED",
@@ -341,13 +340,9 @@ def test_tc010_applies_network_discount_before_copay() -> None:
     assert all(result.evidence_refs for result in financial_steps)
     explanation = render_member_explanation(proposal)
     assert explanation.summary == (
-        "₹3,240.00 approved after a 20% network discount and "
-        "10% consultation co-pay."
+        "₹3,240.00 approved after a 20% network discount and 10% consultation co-pay."
     )
-    assert [
-        (deduction.code, deduction.amount_paise)
-        for deduction in explanation.deductions
-    ] == [
+    assert [(deduction.code, deduction.amount_paise) for deduction in explanation.deductions] == [
         ("NETWORK_DISCOUNT_APPLIED", 90_000),
         ("CATEGORY_COPAY_APPLIED", 36_000),
     ]
@@ -359,8 +354,7 @@ def test_tc010_applies_network_discount_before_copay() -> None:
     amount_steps = [
         result
         for result in proposal.rule_results
-        if result.rule_id.startswith("amount.")
-        or result.rule_id == "final.recommendation"
+        if result.rule_id.startswith("amount.") or result.rule_id == "final.recommendation"
     ]
     assert all(result.inputs.get("operation") for result in amount_steps)
 
@@ -650,16 +644,8 @@ def _evaluate_limit_case(
                     **policy.category_rules,
                     "CONSULTATION": category.model_copy(
                         update={
-                            **(
-                                {}
-                                if limit_paise is None
-                                else {"limit_paise": limit_paise}
-                            ),
-                            **(
-                                {}
-                                if copay_percent is None
-                                else {"copay_percent": copay_percent}
-                            ),
+                            **({} if limit_paise is None else {"limit_paise": limit_paise}),
+                            **({} if copay_percent is None else {"copay_percent": copay_percent}),
                         }
                     ),
                 }

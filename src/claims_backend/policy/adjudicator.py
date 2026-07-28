@@ -313,11 +313,7 @@ def _network_discount_result(
     percent: int,
 ) -> RuleResult | None:
     provider = casefile.provider_name
-    if (
-        provider is None
-        or provider.state is not FactState.KNOWN
-        or percent == 0
-    ):
+    if provider is None or provider.state is not FactState.KNOWN or percent == 0:
         return None
     provider_name = _string(provider.value)
     network_names = {name.casefold(): name for name in policy.network_hospitals}

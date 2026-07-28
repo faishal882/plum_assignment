@@ -63,7 +63,7 @@ async def test_persists_versioned_overlay_and_idempotent_compilation(
     assert inspected == first
     assert first.version == 1
     assert first.overlay_id == "assignment-overlay"
-    assert first.overlay_version == 1
+    assert first.overlay_version == 2
     assert first.compiler_version == COMPILER_VERSION
     assert first.status is PolicyVersionStatus.COMPILED
     assert first.ir_sha256 is not None

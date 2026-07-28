@@ -61,14 +61,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute(
-        sa.text(
-            "DELETE FROM user_member_links WHERE user_id = CAST(:user_id AS uuid)"
-        ).bindparams(user_id=_MEMBER_ID)
+        sa.text("DELETE FROM user_member_links WHERE user_id = CAST(:user_id AS uuid)").bindparams(
+            user_id=_MEMBER_ID
+        )
     )
     op.execute(
-        sa.text(
-            "DELETE FROM user_roles WHERE user_id = CAST(:user_id AS uuid)"
-        ).bindparams(user_id=_MEMBER_ID)
+        sa.text("DELETE FROM user_roles WHERE user_id = CAST(:user_id AS uuid)").bindparams(
+            user_id=_MEMBER_ID
+        )
     )
     op.execute(
         sa.text("DELETE FROM users WHERE id = CAST(:user_id AS uuid)").bindparams(

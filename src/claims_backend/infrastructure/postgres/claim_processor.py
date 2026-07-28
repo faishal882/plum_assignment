@@ -205,8 +205,7 @@ class PostgresClaimProcessor:
                     select(ClaimHistoryRow)
                     .where(
                         ClaimHistoryRow.member_id == member_version.member_id,
-                        ClaimHistoryRow.setup_import_id
-                        == member_version.setup_import_id,
+                        ClaimHistoryRow.setup_import_id == member_version.setup_import_id,
                         ClaimHistoryRow.treatment_date == claim.treatment_date,
                     )
                     .order_by(
@@ -465,8 +464,7 @@ class PostgresClaimProcessor:
                     select(ClaimHistoryRow)
                     .where(
                         ClaimHistoryRow.member_id == member_version.member_id,
-                        ClaimHistoryRow.setup_import_id
-                        == member_version.setup_import_id,
+                        ClaimHistoryRow.setup_import_id == member_version.setup_import_id,
                         ClaimHistoryRow.treatment_date == claim.treatment_date,
                     )
                     .order_by(
@@ -835,22 +833,14 @@ class PostgresClaimProcessor:
                     actor_username_snapshot=claim.owner_username_snapshot,
                     claim_id=claim.id,
                     sequence=audit_sequence,
-                    event_type=(
-                        "CLAIM_REVIEW_STARTED"
-                        if anomaly_signals
-                        else "CLAIM_DECIDED"
-                    ),
+                    event_type=("CLAIM_REVIEW_STARTED" if anomaly_signals else "CLAIM_DECIDED"),
                     payload={
                         "decision_record_id": str(decision.id),
                         "casefile_id": str(casefile.id),
                         "recommendation": proposal.recommendation.value,
                         "approved_paise": proposal.approved_paise,
                         "canonical_hash": proposal.canonical_hash,
-                        "review_task_id": (
-                            None
-                            if review_task_id is None
-                            else str(review_task_id)
-                        ),
+                        "review_task_id": (None if review_task_id is None else str(review_task_id)),
                         "signal_codes": list(anomaly_signals),
                     },
                     created_at=now,

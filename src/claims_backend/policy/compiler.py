@@ -452,9 +452,7 @@ def _build_ir(
         dental_procedure_rules=dental_procedure_rules,
         clinical_exclusion_rules=clinical_exclusion_rules,
         network_hospitals=tuple(source.network_hospitals),
-        same_day_claim_review_threshold=(
-            overlay.clarifications.same_day_claim_review_threshold
-        ),
+        same_day_claim_review_threshold=(overlay.clarifications.same_day_claim_review_threshold),
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",

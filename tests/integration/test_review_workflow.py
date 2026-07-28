@@ -42,9 +42,7 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     engine = create_async_engine(migrated_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     await _import_tc009_history(factory)
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path)
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
@@ -70,9 +68,7 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
             processor=processor,
         )
         await runtime.setup()
-        assert await WorkerService(
-            PostgresWorkScheduler(app.state.session_factory)
-        ).run_once(
+        assert await WorkerService(PostgresWorkScheduler(app.state.session_factory)).run_once(
             "tc009-worker",
             ClaimWorkflowProcessor(workflows, runtime).process,
         )
@@ -176,9 +172,11 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
         )
 
     assert trace is not None
-    assert [
-        item.history_claim_id for item in trace.casefile.content.same_day_history
-    ] == ["CLM_0081", "CLM_0082", "CLM_0083"]
+    assert [item.history_claim_id for item in trace.casefile.content.same_day_history] == [
+        "CLM_0081",
+        "CLM_0082",
+        "CLM_0083",
+    ]
     assert all(
         item.evidence_ref.startswith("claim-history:")
         for item in trace.casefile.content.same_day_history
@@ -240,9 +238,7 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     assert conflicting.status_code == 409
     assert conflicting.json()["error"]["code"] == "REVIEW_TASK_NOT_OPEN"
     assert reused_key.status_code == 409
-    assert reused_key.json()["error"]["code"] == (
-        "REVIEW_IDEMPOTENCY_KEY_REUSED"
-    )
+    assert reused_key.json()["error"]["code"] == ("REVIEW_IDEMPOTENCY_KEY_REUSED")
 
     final = final_projection.json()
     assert final["lifecycle_status"] == "DECIDED"
@@ -277,9 +273,7 @@ async def test_review_actions_apply_only_their_allowed_transition(
     engine = create_async_engine(migrated_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     await _import_tc009_history(factory)
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path)
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         claim_id, task_id = await _create_tc009_review(
@@ -354,9 +348,7 @@ async def test_concurrent_review_commands_produce_one_resolution(
     engine = create_async_engine(migrated_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     await _import_tc009_history(factory)
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path)
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         claim_id, task_id = await _create_tc009_review(
@@ -434,9 +426,7 @@ async def _create_tc009_review(
         processor=PostgresClaimProcessor(app.state.session_factory),
     )
     await runtime.setup()
-    assert await WorkerService(
-        PostgresWorkScheduler(app.state.session_factory)
-    ).run_once(
+    assert await WorkerService(PostgresWorkScheduler(app.state.session_factory)).run_once(
         f"tc009-{suffix}-worker",
         ClaimWorkflowProcessor(workflows, runtime).process,
     )
