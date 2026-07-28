@@ -5,6 +5,8 @@ from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
+from claims_backend.runtime.profiles import ExecutionProfile, resolve_execution_profile
+
 _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_DATABASE_URL",
     "CLAIMS_DATA_ROOT",
@@ -33,6 +35,11 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_LOG_MAX_BYTES",
     "CLAIMS_LOG_BACKUP_COUNT",
     "CLAIMS_EXECUTION_PROFILE",
+    "CLAIMS_RUN_LIVE_AWS",
+    "CLAIMS_WORKER_ID",
+    "CLAIMS_WORKER_POLL_SECONDS",
+    "CLAIMS_WORKER_LEASE_SECONDS",
+    "CLAIMS_WORKER_SHUTDOWN_SECONDS",
     "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT",
     "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY",
 )
@@ -78,7 +85,12 @@ class Settings:
     log_root: Path = Path("data/logs")
     log_max_bytes: int = 5 * 1024 * 1024
     log_backup_count: int = 5
-    execution_profile: str = "LOCAL"
+    execution_profile: ExecutionProfile = ExecutionProfile.RECORDED_LOCAL
+    run_live_aws: bool = False
+    worker_id: str = "claims-worker-local"
+    worker_poll_seconds: int = 1
+    worker_lease_seconds: int = 300
+    worker_shutdown_seconds: int = 120
     observability_capture_content: bool = False
     observability_synthetic_only: bool = False
 
@@ -100,6 +112,9 @@ class Settings:
             ("retry_max_seconds", self.retry_max_seconds),
             ("log_max_bytes", self.log_max_bytes),
             ("log_backup_count", self.log_backup_count),
+            ("worker_poll_seconds", self.worker_poll_seconds),
+            ("worker_lease_seconds", self.worker_lease_seconds),
+            ("worker_shutdown_seconds", self.worker_shutdown_seconds),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
@@ -113,21 +128,18 @@ class Settings:
             raise ValueError("AWS and Bedrock configuration cannot be empty")
         if not self.phoenix_endpoint or not self.phoenix_project:
             raise ValueError("Phoenix configuration cannot be empty")
-        if self.execution_profile not in {
-            "LOCAL",
-            "UNIT",
-            "STRUCTURED_COMPONENT",
-            "RENDERED_RECORDED",
-            "LIVE_INTELLIGENCE",
-        }:
-            raise ValueError("execution_profile is unsupported")
+        if not self.worker_id.strip():
+            raise ValueError("worker_id cannot be empty")
+        profile = resolve_execution_profile(
+            str(self.execution_profile),
+            run_live_aws=self.run_live_aws,
+        )
+        object.__setattr__(self, "execution_profile", profile)
         if self.observability_capture_content and (
-            self.execution_profile != "LIVE_INTELLIGENCE"
+            self.execution_profile is not ExecutionProfile.LIVE_INTELLIGENCE
             or not self.observability_synthetic_only
         ):
-            raise ValueError(
-                "Observability content capture requires synthetic live intelligence."
-            )
+            raise ValueError("Observability content capture requires synthetic live intelligence.")
 
     @classmethod
     def from_env(cls, env_file: Path | None = None) -> "Settings":
@@ -158,9 +170,7 @@ class Settings:
             ),
             bedrock_region=_environment_value(values, "CLAIMS_BEDROCK_REGION"),
             bedrock_model_id=_environment_value(values, "CLAIMS_BEDROCK_MODEL_ID"),
-            bedrock_timeout_seconds=_environment_integer(
-                values, "CLAIMS_BEDROCK_TIMEOUT_SECONDS"
-            ),
+            bedrock_timeout_seconds=_environment_integer(values, "CLAIMS_BEDROCK_TIMEOUT_SECONDS"),
             bedrock_concurrency_limit=_environment_integer(
                 values, "CLAIMS_BEDROCK_CONCURRENCY_LIMIT"
             ),
@@ -172,15 +182,24 @@ class Settings:
             retry_base_seconds=_environment_integer(values, "CLAIMS_RETRY_BASE_SECONDS"),
             retry_max_seconds=_environment_integer(values, "CLAIMS_RETRY_MAX_SECONDS"),
             retry_jitter_ratio=_environment_ratio(values, "CLAIMS_RETRY_JITTER_RATIO"),
-            observability_enabled=_environment_boolean(
-                values, "CLAIMS_OBSERVABILITY_ENABLED"
-            ),
+            observability_enabled=_environment_boolean(values, "CLAIMS_OBSERVABILITY_ENABLED"),
             phoenix_endpoint=_environment_value(values, "CLAIMS_PHOENIX_ENDPOINT"),
             phoenix_project=_environment_value(values, "CLAIMS_PHOENIX_PROJECT"),
             log_root=Path(_environment_value(values, "CLAIMS_LOG_ROOT")),
             log_max_bytes=_environment_integer(values, "CLAIMS_LOG_MAX_BYTES"),
             log_backup_count=_environment_integer(values, "CLAIMS_LOG_BACKUP_COUNT"),
-            execution_profile=_environment_value(values, "CLAIMS_EXECUTION_PROFILE"),
+            execution_profile=resolve_execution_profile(
+                _environment_value(values, "CLAIMS_EXECUTION_PROFILE"),
+                run_live_aws=_environment_boolean(values, "CLAIMS_RUN_LIVE_AWS"),
+            ),
+            run_live_aws=_environment_boolean(values, "CLAIMS_RUN_LIVE_AWS"),
+            worker_id=_environment_value(values, "CLAIMS_WORKER_ID"),
+            worker_poll_seconds=_environment_integer(values, "CLAIMS_WORKER_POLL_SECONDS"),
+            worker_lease_seconds=_environment_integer(values, "CLAIMS_WORKER_LEASE_SECONDS"),
+            worker_shutdown_seconds=_environment_integer(
+                values,
+                "CLAIMS_WORKER_SHUTDOWN_SECONDS",
+            ),
             observability_capture_content=_environment_boolean(
                 values, "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT"
             ),

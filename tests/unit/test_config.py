@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from claims_backend.config import ConfigurationError, Settings
+from claims_backend.runtime.profiles import ExecutionProfile, ProfileAuthorizationError
 
 _ENVIRONMENT = {
     "CLAIMS_DATABASE_URL": "postgresql+psycopg://local/test",
@@ -32,6 +33,11 @@ _ENVIRONMENT = {
     "CLAIMS_LOG_MAX_BYTES": "4096",
     "CLAIMS_LOG_BACKUP_COUNT": "3",
     "CLAIMS_EXECUTION_PROFILE": "LOCAL",
+    "CLAIMS_RUN_LIVE_AWS": "0",
+    "CLAIMS_WORKER_ID": "config-test-worker",
+    "CLAIMS_WORKER_POLL_SECONDS": "3",
+    "CLAIMS_WORKER_LEASE_SECONDS": "301",
+    "CLAIMS_WORKER_SHUTDOWN_SECONDS": "121",
     "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT": "0",
     "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY": "0",
 }
@@ -72,7 +78,12 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.log_root == Path("local-logs")
     assert settings.log_max_bytes == 4096
     assert settings.log_backup_count == 3
-    assert settings.execution_profile == "LOCAL"
+    assert settings.execution_profile is ExecutionProfile.RECORDED_LOCAL
+    assert settings.run_live_aws is False
+    assert settings.worker_id == "config-test-worker"
+    assert settings.worker_poll_seconds == 3
+    assert settings.worker_lease_seconds == 301
+    assert settings.worker_shutdown_seconds == 121
     assert settings.observability_capture_content is False
     assert settings.observability_synthetic_only is False
 
@@ -119,6 +130,40 @@ def test_missing_or_invalid_configuration_fails_at_startup(
         match="CLAIMS_OBSERVABILITY_ENABLED must be 0 or 1",
     ):
         Settings.from_env(invalid_boolean_file)
+
+
+def test_live_profile_requires_explicit_paid_aws_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_configuration(monkeypatch)
+    live = {
+        **_ENVIRONMENT,
+        "CLAIMS_EXECUTION_PROFILE": "LIVE_INTELLIGENCE",
+        "CLAIMS_RUN_LIVE_AWS": "0",
+    }
+
+    with pytest.raises(ProfileAuthorizationError, match="CLAIMS_RUN_LIVE_AWS=1"):
+        Settings.from_env(_write_env(tmp_path, live))
+
+    live["CLAIMS_RUN_LIVE_AWS"] = "1"
+    settings = Settings.from_env(_write_env(tmp_path, live))
+
+    assert settings.execution_profile is ExecutionProfile.LIVE_INTELLIGENCE
+    assert settings.run_live_aws is True
+
+
+def test_paid_aws_authorization_does_not_enable_live_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_configuration(monkeypatch)
+    recorded = {**_ENVIRONMENT, "CLAIMS_RUN_LIVE_AWS": "1"}
+
+    settings = Settings.from_env(_write_env(tmp_path, recorded))
+
+    assert settings.execution_profile is ExecutionProfile.RECORDED_LOCAL
+    assert settings.run_live_aws is True
 
 
 def _clear_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
