@@ -18,6 +18,15 @@ class FrozenCasefileRef:
 
 
 @dataclass(frozen=True, slots=True)
+class EarlyGateResult:
+    action_required: bool
+    code: str | None
+    message: str | None
+    observed_roles: tuple[str, ...]
+    required_roles: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CasefileTrace:
     id: UUID
     content_hash: str

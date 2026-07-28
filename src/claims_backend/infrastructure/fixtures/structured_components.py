@@ -12,6 +12,8 @@ from claims_backend.domain.evidence import (
     Readability,
     StructuredDocumentEvidence,
     StructuredEvidencePayload,
+    TriageDocumentResult,
+    TriageModelOutput,
 )
 from claims_backend.infrastructure.postgres.models import ProcessingFixtureRow
 
@@ -58,6 +60,43 @@ class StructuredComponentFixtureAdapter:
                     claim_version=claim_version,
                     route="STRUCTURED_ADJUDICATION",
                     payload=payload.model_dump(mode="json"),
+                    payload_sha256=sha256(canonical).hexdigest(),
+                    created_at=datetime.now(UTC),
+                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
+            )
+
+    async def seed_tc001_triage(self, claim_id: UUID, claim_version: int) -> None:
+        output = TriageModelOutput(
+            documents=(
+                TriageDocumentResult(
+                    client_document_id="F001",
+                    role=DocumentRole.PRESCRIPTION,
+                    readability=Readability.READABLE,
+                    identity_observations=(),
+                ),
+                TriageDocumentResult(
+                    client_document_id="F002",
+                    role=DocumentRole.PRESCRIPTION,
+                    readability=Readability.READABLE,
+                    identity_observations=(),
+                ),
+            )
+        )
+        canonical = json.dumps(
+            output.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        async with self._session_factory.begin() as session:
+            await session.execute(
+                insert(ProcessingFixtureRow)
+                .values(
+                    id=uuid4(),
+                    claim_id=claim_id,
+                    claim_version=claim_version,
+                    route="EARLY_TRIAGE",
+                    payload=output.model_dump(mode="json"),
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )

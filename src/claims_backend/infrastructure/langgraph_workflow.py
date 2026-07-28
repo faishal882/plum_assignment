@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 
 from claims_backend.application.processing import ClaimProcessor
 from claims_backend.application.workflow import WorkflowRepository, WorkflowRuntime
-from claims_backend.domain.processing import ProcessingRoute
+from claims_backend.domain.processing import EarlyGateResult, ProcessingRoute
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import WorkflowRun, WorkflowRunStatus
 
@@ -30,6 +30,11 @@ class WorkflowState(TypedDict):
     casefile_id: str
     casefile_hash: str
     proposal_hash: str
+    action_required: bool
+    action_code: str
+    action_message: str
+    observed_roles: list[str]
+    required_roles: list[str]
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -49,6 +54,11 @@ class WorkflowUpdate(TypedDict, total=False):
     casefile_id: str
     casefile_hash: str
     proposal_hash: str
+    action_required: bool
+    action_code: str
+    action_message: str
+    observed_roles: list[str]
+    required_roles: list[str]
     terminal_committed: bool
     effect_count: int
 
@@ -94,18 +104,30 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 builder.add_node("freeze_casefile", self._freeze_casefile)
                 builder.add_node("adjudicate", self._adjudicate)
                 builder.add_node("commit_decision", self._commit_decision)
+                builder.add_node("triage_documents", self._triage_documents)
+                builder.add_node("commit_member_action", self._commit_member_action)
                 builder.add_edge("load_claim", "media_inspect")
                 builder.add_conditional_edges(
                     "media_inspect",
                     _after_media_inspection,
                     {
                         "freeze_casefile": "freeze_casefile",
+                        "triage_documents": "triage_documents",
                         "finalize": "finalize",
                     },
                 )
                 builder.add_edge("freeze_casefile", "adjudicate")
                 builder.add_edge("adjudicate", "commit_decision")
                 builder.add_edge("commit_decision", END)
+                builder.add_conditional_edges(
+                    "triage_documents",
+                    _after_triage,
+                    {
+                        "commit_member_action": "commit_member_action",
+                        "finalize": "finalize",
+                    },
+                )
+                builder.add_edge("commit_member_action", END)
             builder.add_edge(START, "load_claim")
             builder.add_edge("finalize", END)
             graph = builder.compile(
@@ -132,6 +154,11 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "casefile_id": "",
                     "casefile_hash": "",
                     "proposal_hash": "",
+                    "action_required": False,
+                    "action_code": "",
+                    "action_message": "",
+                    "observed_roles": [],
+                    "required_roles": [],
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -255,6 +282,48 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         await self._after_effect("commit_decision")
         return {"terminal_committed": True}
 
+    async def _triage_documents(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("triage_documents")
+        result = await self._required_processor().triage_documents(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"document-triage-completed:v{state['claim_version']}",
+            "DOCUMENT_TRIAGE_COMPLETED",
+            {
+                "action_required": result.action_required,
+                "observed_document_roles": list(result.observed_roles),
+                "required_document_roles": list(result.required_roles),
+            },
+        )
+        await self._after_effect("triage_documents")
+        return {
+            "action_required": result.action_required,
+            "action_code": result.code or "",
+            "action_message": result.message or "",
+            "observed_roles": list(result.observed_roles),
+            "required_roles": list(result.required_roles),
+            "effect_count": state["effect_count"] + int(created),
+        }
+
+    async def _commit_member_action(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("commit_member_action")
+        run = _workflow_run(state, self.graph_name, self.graph_version)
+        await self._required_processor().commit_member_action(
+            run,
+            _work_lease(state),
+            EarlyGateResult(
+                action_required=state["action_required"],
+                code=state["action_code"],
+                message=state["action_message"],
+                observed_roles=tuple(state["observed_roles"]),
+                required_roles=tuple(state["required_roles"]),
+            ),
+        )
+        await self._after_effect("commit_member_action")
+        return {"terminal_committed": True}
+
     def _required_processor(self) -> ClaimProcessor:
         if self._processor is None:
             raise WorkflowIncompleteError
@@ -311,10 +380,18 @@ def _work_lease(state: WorkflowState) -> WorkLease:
 
 def _after_media_inspection(
     state: WorkflowState,
-) -> Literal["freeze_casefile", "finalize"]:
+) -> Literal["freeze_casefile", "triage_documents", "finalize"]:
     if state["route"] == ProcessingRoute.STRUCTURED_ADJUDICATION.value:
         return "freeze_casefile"
+    if state["route"] == ProcessingRoute.EARLY_TRIAGE.value:
+        return "triage_documents"
     return "finalize"
+
+
+def _after_triage(
+    state: WorkflowState,
+) -> Literal["commit_member_action", "finalize"]:
+    return "commit_member_action" if state["action_required"] else "finalize"
 
 
 def _checkpoint_url(database_url: str) -> str:

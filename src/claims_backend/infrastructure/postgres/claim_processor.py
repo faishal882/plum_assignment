@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from claims_backend.domain.adjudication import (
@@ -11,12 +12,13 @@ from claims_backend.domain.adjudication import (
     FactState,
     RuleResult,
 )
-from claims_backend.domain.evidence import StructuredEvidencePayload
+from claims_backend.domain.evidence import StructuredEvidencePayload, TriageModelOutput
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
     CasefileTrace,
     ClaimProcessingTrace,
     DecisionTrace,
+    EarlyGateResult,
     FrozenCasefileRef,
     ProcessingRoute,
 )
@@ -29,7 +31,10 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimVersionRow,
     ClaimWorkItemRow,
     DecisionRecordRow,
+    DocumentRow,
+    DocumentTriageResultRow,
     DocumentVersionRow,
+    MemberActionRow,
     MemberVersionRow,
     PolicyVersionRow,
     ProcessingFixtureRow,
@@ -325,6 +330,227 @@ class PostgresClaimProcessor:
                     payload={
                         "decision_record_id": str(decision.id),
                         "canonical_hash": proposal.canonical_hash,
+                    },
+                    created_at=now,
+                )
+            )
+            work_item.status = "COMPLETED"
+            work_item.lease_owner = None
+            work_item.lease_token = None
+            work_item.lease_until = None
+            work_item.updated_at = now
+            run.status = "COMPLETED"
+            run.completed_at = now
+            run.updated_at = now
+            await session.flush()
+
+    async def triage_documents(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> EarlyGateResult:
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
+            fixture = (
+                await session.scalars(
+                    select(ProcessingFixtureRow).where(
+                        ProcessingFixtureRow.claim_id == workflow_run.claim_id,
+                        ProcessingFixtureRow.claim_version == workflow_run.claim_version,
+                        ProcessingFixtureRow.route == ProcessingRoute.EARLY_TRIAGE.value,
+                    )
+                )
+            ).one()
+            output = TriageModelOutput.model_validate(fixture.payload)
+            claim = (
+                await session.scalars(select(ClaimRow).where(ClaimRow.id == workflow_run.claim_id))
+            ).one()
+            if claim.policy_version_id is None:
+                raise ProcessingInvariantError
+            policy_version = (
+                await session.scalars(
+                    select(PolicyVersionRow).where(PolicyVersionRow.id == claim.policy_version_id)
+                )
+            ).one()
+            if policy_version.ir is None:
+                raise ProcessingInvariantError
+            policy = PolicyIR.model_validate(policy_version.ir)
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            snapshot_documents = claim_version.submission["documents"]
+            if not isinstance(snapshot_documents, list):
+                raise ProcessingInvariantError
+            snapshot_by_client_id = {
+                str(item["client_document_id"]): item
+                for item in snapshot_documents
+                if isinstance(item, dict)
+            }
+            output_ids = [item.client_document_id for item in output.documents]
+            if len(output_ids) != len(set(output_ids)) or set(output_ids) != set(
+                snapshot_by_client_id
+            ):
+                raise ProcessingInvariantError(
+                    "Triage output must cover each submitted document exactly once."
+                )
+            documents = (
+                await session.scalars(select(DocumentRow).where(DocumentRow.claim_id == claim.id))
+            ).all()
+            document_by_client_id = {
+                document.client_document_id: document for document in documents
+            }
+            for item in output.documents:
+                snapshot = snapshot_by_client_id[item.client_document_id]
+                await session.execute(
+                    insert(DocumentTriageResultRow)
+                    .values(
+                        id=uuid4(),
+                        claim_id=claim.id,
+                        claim_version=workflow_run.claim_version,
+                        document_id=document_by_client_id[item.client_document_id].id,
+                        document_version_id=UUID(str(snapshot["document_version_id"])),
+                        client_document_id=item.client_document_id,
+                        role=item.role.value,
+                        readability=item.readability.value,
+                        identity_observations=[
+                            observation.model_dump(mode="json")
+                            for observation in item.identity_observations
+                        ],
+                        model_route="fixture-fast-triage-v1",
+                        schema_version=output.schema_version,
+                        created_at=now,
+                    )
+                    .on_conflict_do_nothing(
+                        constraint=("document_triage_results_claim_version_document_uq")
+                    )
+                )
+
+            observed = tuple(item.role.value for item in output.documents)
+            required = policy.document_requirements[claim.category].required
+            missing = tuple(role for role in required if role not in set(observed))
+            message = None
+            code = None
+            if missing:
+                code = "MISSING_REQUIRED_DOCUMENT"
+                if observed == ("PRESCRIPTION", "PRESCRIPTION") and missing == ("HOSPITAL_BILL",):
+                    message = (
+                        "You uploaded two prescriptions. Please upload the required hospital bill."
+                    )
+                else:
+                    message = (
+                        f"Uploaded roles: {', '.join(observed)}. "
+                        f"Please upload: {', '.join(missing)}."
+                    )
+            return EarlyGateResult(
+                action_required=bool(missing),
+                code=code,
+                message=message,
+                observed_roles=observed,
+                required_roles=missing,
+            )
+
+    async def commit_member_action(
+        self,
+        workflow_run: WorkflowRun,
+        lease: WorkLease,
+        result: EarlyGateResult,
+    ) -> None:
+        if not result.action_required or result.code is None or result.message is None:
+            raise ProcessingInvariantError("No member action is available to commit.")
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
+            existing = await session.scalar(
+                select(MemberActionRow).where(
+                    MemberActionRow.claim_id == workflow_run.claim_id,
+                    MemberActionRow.claim_version == workflow_run.claim_version,
+                )
+            )
+            if existing is not None:
+                return
+            work_item = await session.scalar(
+                select(ClaimWorkItemRow)
+                .where(
+                    ClaimWorkItemRow.id == lease.work_item_id,
+                    ClaimWorkItemRow.status == "LEASED",
+                    ClaimWorkItemRow.lease_owner == lease.worker_id,
+                    ClaimWorkItemRow.lease_token == lease.lease_token,
+                    ClaimWorkItemRow.lease_until == lease.lease_until,
+                    ClaimWorkItemRow.lease_until > now,
+                )
+                .with_for_update()
+            )
+            run = await session.scalar(
+                select(WorkflowRunRow).where(WorkflowRunRow.id == workflow_run.id).with_for_update()
+            )
+            claim = await session.scalar(
+                select(ClaimRow)
+                .where(
+                    ClaimRow.id == workflow_run.claim_id,
+                    ClaimRow.current_version == workflow_run.claim_version,
+                )
+                .with_for_update()
+            )
+            if work_item is None or run is None or claim is None:
+                raise ProcessingInvariantError
+            action = MemberActionRow(
+                id=uuid4(),
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                code=result.code,
+                message=result.message,
+                observed_document_roles=list(result.observed_roles),
+                required_document_roles=list(result.required_roles),
+                created_at=now,
+            )
+            session.add(action)
+            claim.lifecycle_status = "ACTION_REQUIRED"
+            claim.adjudication_recommendation = None
+            claim.approved_paise = None
+            claim.member_explanation = None
+            claim.current_action = {
+                "code": result.code,
+                "message": result.message,
+                "observed_document_roles": list(result.observed_roles),
+                "required_document_roles": list(result.required_roles),
+            }
+            claim.updated_at = now
+            audit_sequence = (
+                await session.scalar(
+                    select(func.max(AuditEventRow.sequence)).where(
+                        AuditEventRow.claim_id == claim.id
+                    )
+                )
+                or 0
+            ) + 1
+            session.add(
+                AuditEventRow(
+                    id=uuid4(),
+                    actor_user_id=claim.owner_user_id,
+                    actor_username_snapshot=claim.owner_username_snapshot,
+                    claim_id=claim.id,
+                    sequence=audit_sequence,
+                    event_type="CLAIM_ACTION_REQUIRED",
+                    payload={
+                        "member_action_id": str(action.id),
+                        "code": result.code,
+                        "observed_document_roles": list(result.observed_roles),
+                        "required_document_roles": list(result.required_roles),
+                    },
+                    created_at=now,
+                )
+            )
+            session.add(
+                WorkflowEffectRow(
+                    id=uuid4(),
+                    workflow_run_id=run.id,
+                    effect_key=f"member-action-committed:v{workflow_run.claim_version}",
+                    effect_type="MEMBER_ACTION_COMMITTED",
+                    payload={
+                        "member_action_id": str(action.id),
+                        "code": result.code,
                     },
                     created_at=now,
                 )
