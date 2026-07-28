@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -12,7 +13,17 @@ from claims_backend.domain.adjudication import (
     FactState,
     RuleStatus,
 )
-from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
+from claims_backend.domain.evidence import NormalizedRegion
+from claims_backend.domain.reconciliation import (
+    EvidenceCandidateSource,
+    EvidenceSourceType,
+    ProvenancedEvidenceCandidate,
+    reconcile_evidence,
+)
+from claims_backend.policy.adjudicator import (
+    DeterministicPolicyAdjudicator,
+    UnsafeCasefileError,
+)
 from claims_backend.policy.compiler import PolicyCompiler
 
 POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
@@ -128,6 +139,44 @@ def test_waiting_period_boundary_day_before_day_of_and_day_after(
     assert day_after.rule_results[2].reason_code == "WAITING_PERIOD_SATISFIED"
 
 
+def test_tc012_rejects_grounded_obesity_exclusion_before_amount_limits() -> None:
+    proposal = _evaluate_clinical_case(
+        condition="obesity",
+        treatment="bariatric_treatment",
+        amount_paise=800_000,
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.REJECTED
+    assert proposal.approved_paise == 0
+    exclusion = proposal.rule_results[-1]
+    assert exclusion.reason_code == "EXCLUDED_CONDITION"
+    assert exclusion.policy_path == "/exclusions/conditions/5"
+    assert exclusion.evidence_refs == ("c" * 64,)
+    assert exclusion.inputs["matched_concept"] == "obesity"
+
+
+def test_ungrounded_clinical_label_cannot_trigger_exclusion() -> None:
+    with pytest.raises(UnsafeCasefileError, match="grounded"):
+        _evaluate_clinical_case(
+            condition="obesity",
+            treatment="bariatric_treatment",
+            amount_paise=800_000,
+            source_type=EvidenceSourceType.CLAIM_SNAPSHOT,
+        )
+
+
+def test_neighboring_covered_condition_does_not_match_exclusion() -> None:
+    proposal = _evaluate_clinical_case(
+        condition="viral fever",
+        treatment="nutrition counselling",
+        amount_paise=300_000,
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.APPROVED
+    assert proposal.approved_paise == 270_000
+    assert all(result.reason_code != "EXCLUDED_CONDITION" for result in proposal.rule_results)
+
+
 def _evaluate_waiting_case(
     *,
     join_date: date,
@@ -198,3 +247,130 @@ def _evaluate_waiting_case(
         ),
     )
     return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
+
+
+def _evaluate_clinical_case(
+    *,
+    condition: str,
+    treatment: str,
+    amount_paise: int,
+    source_type: EvidenceSourceType = EvidenceSourceType.DOCUMENT,
+):
+    compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
+    assert compilation.ir is not None
+    condition_candidate = _clinical_candidate(
+        "c" * 64,
+        "clinical.condition",
+        condition,
+        source_type,
+    )
+    treatment_candidate = _clinical_candidate(
+        "d" * 64,
+        "clinical.treatment",
+        treatment,
+        source_type,
+    )
+    evidence = reconcile_evidence(
+        (condition_candidate, treatment_candidate),
+        material_fact_paths=("clinical.condition",),
+    )
+    casefile = ClaimCasefile(
+        schema_version=4,
+        claim_id=UUID("00000000-0000-0000-0000-000000001212"),
+        claim_version=1,
+        member_id="EMP009",
+        member_version_id=UUID("00000000-0000-0000-0000-000000001209"),
+        member_snapshot_sha256="9" * 64,
+        policy_version_id=UUID("00000000-0000-0000-0000-000000001202"),
+        category="CONSULTATION",
+        claimed_paise=amount_paise,
+        currency="INR",
+        eligibility=EvidenceFact(
+            state=FactState.KNOWN,
+            value=True,
+            evidence_refs=("member:active",),
+        ),
+        document_roles=EvidenceFact(
+            state=FactState.KNOWN,
+            value=["PRESCRIPTION", "HOSPITAL_BILL"],
+            evidence_refs=("document:prescription", "document:bill"),
+        ),
+        billed_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=amount_paise,
+            evidence_refs=("document:bill-total",),
+        ),
+        claimed_amount=EvidenceFact(
+            state=FactState.KNOWN,
+            value=amount_paise,
+            evidence_refs=("claim:amount",),
+        ),
+        treatment_date=EvidenceFact(
+            state=FactState.KNOWN,
+            value="2024-10-18",
+            evidence_refs=("claim:treatment-date",),
+        ),
+        member_join_date=EvidenceFact(
+            state=FactState.KNOWN,
+            value="2024-04-01",
+            evidence_refs=("member:join-date",),
+        ),
+        patient_identity=EvidenceFact(
+            state=FactState.KNOWN,
+            value="anita desai",
+            evidence_refs=("member:name",),
+        ),
+        clinical_condition=EvidenceFact(
+            state=FactState.KNOWN,
+            value=condition,
+            evidence_refs=(condition_candidate.candidate_id,),
+        ),
+        clinical_treatment=EvidenceFact(
+            state=FactState.KNOWN,
+            value=treatment,
+            evidence_refs=(treatment_candidate.candidate_id,),
+        ),
+        ytd_used_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=0,
+            evidence_refs=("utilization:zero",),
+        ),
+        evidence=evidence,
+    )
+    return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
+
+
+def _clinical_candidate(
+    candidate_id: str,
+    fact_path: str,
+    value: str,
+    source_type: EvidenceSourceType,
+) -> ProvenancedEvidenceCandidate:
+    source = (
+        EvidenceCandidateSource(
+            source_type=EvidenceSourceType.DOCUMENT,
+            source_ref=f"ocr:{candidate_id}",
+            source_sha256="e" * 64,
+            observation_id="e" * 64,
+            document_version_id=UUID("00000000-0000-0000-0000-000000001223"),
+            page=1,
+            region=NormalizedRegion(x=0.1, y=0.1, width=0.8, height=0.1),
+        )
+        if source_type is EvidenceSourceType.DOCUMENT
+        else EvidenceCandidateSource(
+            source_type=source_type,
+            source_ref="untrusted:model-label",
+            source_sha256="e" * 64,
+        )
+    )
+    return ProvenancedEvidenceCandidate(
+        candidate_id=candidate_id,
+        fact_path=fact_path,
+        value=value,
+        normalized_value=value,
+        producer="BEDROCK",
+        producer_version="qwen-live",
+        schema_version="complex-extraction-v1",
+        confidence=0.99,
+        sources=(source,),
+    )
