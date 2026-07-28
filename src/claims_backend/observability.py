@@ -10,6 +10,7 @@ from pathlib import Path
 from time import monotonic
 from typing import cast
 
+from openinference.semconv.resource import ResourceAttributes
 from openinference.semconv.trace import (
     OpenInferenceSpanKindValues,
     SpanAttributes,
@@ -279,7 +280,7 @@ def create_observability(
         {
             "service.name": f"plum-claims-{process_name}",
             "service.version": config.service_version,
-            "phoenix.project.name": config.project_name,
+            ResourceAttributes.PROJECT_NAME: config.project_name,
         }
     )
     provider = TracerProvider(resource=resource)
