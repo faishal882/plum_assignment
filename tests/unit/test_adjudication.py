@@ -260,6 +260,45 @@ def test_tc008_rejects_eligible_consultation_amount_above_category_limit() -> No
         "precedence": "CATEGORY_OVER_GENERAL",
         "outcome": "REJECT",
     }
+    explanation = render_member_explanation(proposal)
+    assert "₹7,500.00" in explanation.summary
+    assert "₹5,000.00" in explanation.summary
+    assert explanation.deductions[0].code == "PER_CLAIM_EXCEEDED"
+
+
+def test_category_limit_boundary_is_inclusive() -> None:
+    below = _evaluate_limit_case(amount_paise=499_999)
+    equal = _evaluate_limit_case(amount_paise=500_000)
+    above = _evaluate_limit_case(amount_paise=500_001)
+
+    assert below.recommendation is AdjudicationRecommendation.APPROVED
+    assert equal.recommendation is AdjudicationRecommendation.APPROVED
+    assert above.recommendation is AdjudicationRecommendation.REJECTED
+
+
+@settings(max_examples=30)
+@given(
+    amount_paise=st.integers(min_value=0, max_value=1_000_000),
+    lower_limit_paise=st.integers(min_value=0, max_value=500_000),
+    extra_limit_paise=st.integers(min_value=0, max_value=500_000),
+)
+def test_decreasing_category_limit_cannot_increase_approved_amount(
+    amount_paise: int,
+    lower_limit_paise: int,
+    extra_limit_paise: int,
+) -> None:
+    higher_limit_paise = lower_limit_paise + extra_limit_paise
+
+    lower = _evaluate_limit_case(
+        amount_paise=amount_paise,
+        limit_paise=lower_limit_paise,
+    )
+    higher = _evaluate_limit_case(
+        amount_paise=amount_paise,
+        limit_paise=higher_limit_paise,
+    )
+
+    assert lower.approved_paise <= higher.approved_paise
 
 
 def _evaluate_waiting_case(
@@ -459,9 +498,26 @@ def _evaluate_pre_authorization_case(
     return DeterministicPolicyAdjudicator().evaluate(casefile, policy)
 
 
-def _evaluate_limit_case(*, amount_paise: int):
+def _evaluate_limit_case(
+    *,
+    amount_paise: int,
+    limit_paise: int | None = None,
+):
     compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
     assert compilation.ir is not None
+    policy = compilation.ir
+    if limit_paise is not None:
+        category = policy.category_rules["CONSULTATION"]
+        policy = policy.model_copy(
+            update={
+                "category_rules": {
+                    **policy.category_rules,
+                    "CONSULTATION": category.model_copy(
+                        update={"limit_paise": limit_paise}
+                    ),
+                }
+            }
+        )
     casefile = ClaimCasefile(
         claim_id=UUID("00000000-0000-0000-0000-000000000808"),
         claim_version=1,
@@ -492,7 +548,7 @@ def _evaluate_limit_case(*, amount_paise: int):
             evidence_refs=("utilization:zero",),
         ),
     )
-    return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
+    return DeterministicPolicyAdjudicator().evaluate(casefile, policy)
 
 
 def _evaluate_clinical_case(

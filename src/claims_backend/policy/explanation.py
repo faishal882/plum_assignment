@@ -143,6 +143,35 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
             ),
         )
 
+    category_limit = next(
+        (
+            result
+            for result in proposal.rule_results
+            if result.reason_code == "PER_CLAIM_EXCEEDED"
+        ),
+        None,
+    )
+    if (
+        proposal.recommendation is AdjudicationRecommendation.REJECTED
+        and category_limit is not None
+    ):
+        eligible = _required_integer(category_limit.inputs.get("eligible_paise"))
+        limit = _required_integer(category_limit.inputs.get("limit_paise"))
+        return MemberExplanation(
+            summary=(
+                f"The eligible claim expense is {_format_rupees(eligible)}, "
+                f"which exceeds the applicable per-claim limit of "
+                f"{_format_rupees(limit)}."
+            ),
+            deductions=(
+                MemberDeduction(
+                    code=category_limit.reason_code,
+                    label="Applicable per-claim category limit exceeded.",
+                    amount_paise=eligible,
+                ),
+            ),
+        )
+
     copay = next(
         (
             result
