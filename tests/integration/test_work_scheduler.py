@@ -153,6 +153,66 @@ async def test_expired_lease_is_reclaimed_with_a_new_fencing_token(
 
 
 @pytest.mark.asyncio
+async def test_lease_renewal_requires_current_owner_and_fencing_token(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "renew-lease")
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    lease = (await scheduler.lease("renewing-worker", 1, timedelta(minutes=5)))[0]
+    clock.advance(timedelta(minutes=1))
+    renewed = await scheduler.renew(lease, timedelta(minutes=5))
+    assert renewed.lease_token == lease.lease_token
+    assert renewed.lease_until > lease.lease_until
+
+    clock.advance(timedelta(minutes=5, seconds=1))
+    with pytest.raises(LeaseLostError):
+        await scheduler.renew(lease, timedelta(minutes=5))
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_renews_active_work_lease(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "heartbeat-lease")
+
+    scheduler = PostgresWorkScheduler(app.state.session_factory)
+    entered = asyncio.Event()
+    observed = []
+
+    async def handler(lease):
+        observed.append(lease)
+        entered.set()
+        await asyncio.sleep(0.12)
+        return WorkCompleted()
+
+    task = asyncio.create_task(
+        WorkerService(scheduler, lease_ttl=timedelta(milliseconds=90)).run_once(
+            "heartbeat-worker", handler
+        )
+    )
+    await entered.wait()
+    await asyncio.sleep(0.06)
+    async with app.state.session_factory() as session:
+        row = await session.get(ClaimWorkItemRow, observed[0].work_item_id)
+    assert row is not None
+    assert row.lease_until is not None
+    assert row.lease_until > observed[0].lease_until
+    assert await task
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_retry_is_durable_and_not_leaseable_until_its_due_time(
     migrated_database_url: str,
     tmp_path,

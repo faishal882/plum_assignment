@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -17,6 +18,8 @@ class WorkScheduler(Protocol):
     ) -> tuple[WorkLease, ...]: ...
 
     async def complete(self, lease: WorkLease) -> None: ...
+
+    async def renew(self, lease: WorkLease, ttl: timedelta) -> WorkLease: ...
 
     async def retry(
         self,
@@ -80,7 +83,13 @@ class WorkerService:
             return False
 
         lease = leases[0]
-        outcome = await handler(lease)
+        heartbeat_stop = asyncio.Event()
+        heartbeat = asyncio.create_task(self._heartbeat(lease, heartbeat_stop))
+        try:
+            outcome = await handler(lease)
+        finally:
+            heartbeat_stop.set()
+            await heartbeat
         if isinstance(outcome, WorkCompleted):
             await self._scheduler.complete(lease)
         elif isinstance(outcome, WorkRetry):
@@ -92,3 +101,12 @@ class WorkerService:
         elif isinstance(outcome, WorkFailed):
             await self._scheduler.fail(lease, outcome.failure_code)
         return True
+
+    async def _heartbeat(self, lease: WorkLease, stop_event: asyncio.Event) -> None:
+        interval = max(self._lease_ttl.total_seconds() / 3, 0.01)
+        while True:
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                return
+            except TimeoutError:
+                await self._scheduler.renew(lease, self._lease_ttl)

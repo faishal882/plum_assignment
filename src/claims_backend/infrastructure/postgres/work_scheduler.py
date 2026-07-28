@@ -180,7 +180,6 @@ class PostgresWorkScheduler(WorkScheduler):
                     ClaimWorkItemRow.status == WorkStatus.LEASED.value,
                     ClaimWorkItemRow.lease_owner == lease.worker_id,
                     ClaimWorkItemRow.lease_token == lease.lease_token,
-                    ClaimWorkItemRow.lease_until == lease.lease_until,
                     ClaimWorkItemRow.lease_until > now,
                 )
                 .values(
@@ -194,6 +193,41 @@ class PostgresWorkScheduler(WorkScheduler):
             )
             if completed_id is None:
                 raise LeaseLostError
+
+    async def renew(self, lease: WorkLease, ttl: timedelta) -> WorkLease:
+        _validate_lease_request(lease.worker_id, 1, ttl)
+        now = _aware_utc(self._clock())
+        renewed_until = now + ttl
+        async with self._session_factory.begin() as session:
+            row = (
+                await session.scalars(
+                    update(ClaimWorkItemRow)
+                    .where(
+                        ClaimWorkItemRow.id == lease.work_item_id,
+                        ClaimWorkItemRow.status == WorkStatus.LEASED.value,
+                        ClaimWorkItemRow.lease_owner == lease.worker_id,
+                        ClaimWorkItemRow.lease_token == lease.lease_token,
+                        ClaimWorkItemRow.lease_until > now,
+                    )
+                    .values(lease_until=renewed_until, updated_at=now)
+                    .returning(ClaimWorkItemRow)
+                )
+            ).one_or_none()
+            if row is None:
+                raise LeaseLostError
+        return WorkLease(
+            work_item_id=lease.work_item_id,
+            claim_id=lease.claim_id,
+            claim_version=lease.claim_version,
+            operation_key=lease.operation_key,
+            worker_id=lease.worker_id,
+            lease_token=lease.lease_token,
+            leased_at=lease.leased_at,
+            lease_until=renewed_until,
+            available_at=lease.available_at,
+            attempt_number=lease.attempt_number,
+            max_attempts=lease.max_attempts,
+        )
 
     async def retry(
         self,
@@ -216,7 +250,6 @@ class PostgresWorkScheduler(WorkScheduler):
                         ClaimWorkItemRow.status == WorkStatus.LEASED.value,
                         ClaimWorkItemRow.lease_owner == lease.worker_id,
                         ClaimWorkItemRow.lease_token == lease.lease_token,
-                        ClaimWorkItemRow.lease_until == lease.lease_until,
                         ClaimWorkItemRow.lease_until > now,
                     )
                     .with_for_update()
@@ -247,7 +280,6 @@ class PostgresWorkScheduler(WorkScheduler):
                     ClaimWorkItemRow.status == WorkStatus.LEASED.value,
                     ClaimWorkItemRow.lease_owner == lease.worker_id,
                     ClaimWorkItemRow.lease_token == lease.lease_token,
-                    ClaimWorkItemRow.lease_until == lease.lease_until,
                     ClaimWorkItemRow.lease_until > now,
                 )
                 .values(

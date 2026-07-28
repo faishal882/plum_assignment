@@ -708,7 +708,6 @@ class PostgresClaimProcessor:
                     ClaimWorkItemRow.status == "LEASED",
                     ClaimWorkItemRow.lease_owner == lease.worker_id,
                     ClaimWorkItemRow.lease_token == lease.lease_token,
-                    ClaimWorkItemRow.lease_until == lease.lease_until,
                     ClaimWorkItemRow.lease_until > now,
                 )
                 .with_for_update()
@@ -1253,7 +1252,6 @@ class PostgresClaimProcessor:
                     ClaimWorkItemRow.status == "LEASED",
                     ClaimWorkItemRow.lease_owner == lease.worker_id,
                     ClaimWorkItemRow.lease_token == lease.lease_token,
-                    ClaimWorkItemRow.lease_until == lease.lease_until,
                     ClaimWorkItemRow.lease_until > now,
                 )
                 .with_for_update()

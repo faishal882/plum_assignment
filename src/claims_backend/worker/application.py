@@ -51,7 +51,28 @@ class ClaimWorker:
     async def run_loop(self, stop_event: asyncio.Event) -> None:
         """Poll durable work without retaining a transaction while idle."""
         while not stop_event.is_set():
-            processed = await self.run_once()
+            active = asyncio.create_task(self.run_once())
+            stopping = asyncio.create_task(stop_event.wait())
+            done, _ = await asyncio.wait(
+                {active, stopping},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if stopping in done:
+                if not active.done():
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(active),
+                            timeout=self.runtime.settings.worker_shutdown_seconds,
+                        )
+                    except TimeoutError:
+                        active.cancel()
+                        await asyncio.gather(active, return_exceptions=True)
+                else:
+                    await active
+                return
+            stopping.cancel()
+            await asyncio.gather(stopping, return_exceptions=True)
+            processed = await active
             if processed:
                 continue
             try:
