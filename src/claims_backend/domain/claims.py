@@ -16,6 +16,35 @@ class ClaimLifecycle(StrEnum):
     RECEIVED = "RECEIVED"
     QUEUED = "QUEUED"
     ACTION_REQUIRED = "ACTION_REQUIRED"
+    DECIDED = "DECIDED"
+
+
+@dataclass(frozen=True, slots=True)
+class MemberDeduction:
+    code: str
+    label: str
+    amount_paise: int
+
+
+@dataclass(frozen=True, slots=True)
+class MemberExplanation:
+    summary: str
+    deductions: tuple[MemberDeduction, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MemberAdjudication:
+    recommendation: str
+    approved_paise: int
+    currency: str
+
+
+@dataclass(frozen=True, slots=True)
+class MemberAction:
+    code: str
+    message: str
+    observed_document_roles: tuple[str, ...]
+    required_document_roles: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +77,9 @@ class Claim:
     claimed_paise: int
     currency: str
     lifecycle: ClaimLifecycle
+    adjudication: MemberAdjudication | None
+    explanation: MemberExplanation | None
+    action: MemberAction | None
     created_at: datetime
     updated_at: datetime
 

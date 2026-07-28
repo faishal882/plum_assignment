@@ -1,0 +1,428 @@
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from claims_backend.domain.adjudication import (
+    AdjudicationProposal,
+    ClaimCasefile,
+    EvidenceFact,
+    FactState,
+    RuleResult,
+)
+from claims_backend.domain.evidence import StructuredEvidencePayload
+from claims_backend.domain.policy import PolicyIR
+from claims_backend.domain.processing import (
+    CasefileTrace,
+    ClaimProcessingTrace,
+    DecisionTrace,
+    FrozenCasefileRef,
+    ProcessingRoute,
+)
+from claims_backend.domain.work import WorkLease
+from claims_backend.domain.workflow import WorkflowRun
+from claims_backend.infrastructure.postgres.models import (
+    AuditEventRow,
+    CasefileRow,
+    ClaimRow,
+    ClaimVersionRow,
+    ClaimWorkItemRow,
+    DecisionRecordRow,
+    DocumentVersionRow,
+    MemberVersionRow,
+    PolicyVersionRow,
+    ProcessingFixtureRow,
+    RuleResultRow,
+    UtilizationSnapshotRow,
+    WorkflowEffectRow,
+    WorkflowRunRow,
+)
+from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
+
+
+class ProcessingInvariantError(RuntimeError):
+    pass
+
+
+class PostgresClaimProcessor:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+        self._adjudicator = DeterministicPolicyAdjudicator()
+
+    async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
+        async with self._session_factory() as session:
+            route = await session.scalar(
+                select(ProcessingFixtureRow.route).where(
+                    ProcessingFixtureRow.claim_id == workflow_run.claim_id,
+                    ProcessingFixtureRow.claim_version == workflow_run.claim_version,
+                )
+            )
+        return ProcessingRoute.NONE if route is None else ProcessingRoute(route)
+
+    async def inspect_media(self, workflow_run: WorkflowRun) -> dict[str, object]:
+        async with self._session_factory() as session:
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            documents = claim_version.submission["documents"]
+            if not isinstance(documents, list) or not documents:
+                raise ProcessingInvariantError("Claim version has no document snapshot.")
+            media_types: list[str] = []
+            for document in documents:
+                if not isinstance(document, dict):
+                    raise ProcessingInvariantError
+                version_id = UUID(str(document["document_version_id"]))
+                stored = await session.get(DocumentVersionRow, version_id)
+                if stored is None or stored.sha256 != document["sha256"]:
+                    raise ProcessingInvariantError("Sealed document metadata changed.")
+                media_types.append(stored.media_type)
+        return {
+            "document_count": len(media_types),
+            "media_types": media_types,
+            "status": "SAFE",
+        }
+
+    async def freeze_casefile(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> FrozenCasefileRef:
+        async with self._session_factory.begin() as session:
+            existing = await session.scalar(
+                select(CasefileRow).where(
+                    CasefileRow.claim_id == workflow_run.claim_id,
+                    CasefileRow.claim_version == workflow_run.claim_version,
+                )
+            )
+            if existing is not None:
+                return FrozenCasefileRef(existing.id, existing.content_hash)
+
+            claim = (
+                await session.scalars(select(ClaimRow).where(ClaimRow.id == workflow_run.claim_id))
+            ).one()
+            if claim.policy_version_id is None or claim.member_version_id is None:
+                raise ProcessingInvariantError("Claim snapshot pins are incomplete.")
+            fixture = (
+                await session.scalars(
+                    select(ProcessingFixtureRow).where(
+                        ProcessingFixtureRow.claim_id == workflow_run.claim_id,
+                        ProcessingFixtureRow.claim_version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            evidence = StructuredEvidencePayload.model_validate(fixture.payload)
+            member_version = (
+                await session.scalars(
+                    select(MemberVersionRow).where(MemberVersionRow.id == claim.member_version_id)
+                )
+            ).one()
+            utilization = await session.scalar(
+                select(UtilizationSnapshotRow)
+                .where(
+                    UtilizationSnapshotRow.member_id == member_version.member_id,
+                    UtilizationSnapshotRow.setup_import_id == member_version.setup_import_id,
+                )
+                .order_by(UtilizationSnapshotRow.as_of_date.desc())
+                .limit(1)
+            )
+            billed = [
+                document for document in evidence.documents if document.billed_paise is not None
+            ]
+            if len(billed) != 1:
+                raise ProcessingInvariantError(
+                    "Structured adjudication requires one reconciled bill."
+                )
+            casefile = ClaimCasefile(
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                member_id=claim.member_id,
+                member_version_id=member_version.id,
+                policy_version_id=claim.policy_version_id,
+                category=claim.category,
+                claimed_paise=claim.claimed_paise,
+                currency=claim.currency,
+                eligibility=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value=True,
+                    evidence_refs=(f"member-version:{member_version.id}",),
+                ),
+                document_roles=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value=[document.role.value for document in evidence.documents],
+                    evidence_refs=tuple(
+                        f"fixture:{document.evidence_id}" for document in evidence.documents
+                    ),
+                ),
+                billed_paise=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value=billed[0].billed_paise,
+                    evidence_refs=(f"fixture:{billed[0].evidence_id}",),
+                ),
+                ytd_used_paise=EvidenceFact(
+                    state=(FactState.UNKNOWN if utilization is None else FactState.KNOWN),
+                    value=None if utilization is None else utilization.used_paise,
+                    evidence_refs=(
+                        ()
+                        if utilization is None
+                        else (f"utilization:{utilization.as_of_date.isoformat()}",)
+                    ),
+                ),
+            )
+            row = CasefileRow(
+                id=uuid4(),
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                policy_version_id=claim.policy_version_id,
+                member_version_id=member_version.id,
+                content=casefile.model_dump(mode="json"),
+                content_hash=casefile.canonical_hash(),
+                created_at=datetime.now(UTC),
+            )
+            session.add(row)
+            await session.flush((row,))
+            return FrozenCasefileRef(row.id, row.content_hash)
+
+    async def evaluate_casefile(self, casefile_id: UUID) -> str:
+        async with self._session_factory() as session:
+            _, proposal = await self._evaluate(session, casefile_id)
+        return proposal.canonical_hash
+
+    async def commit_decision(
+        self,
+        workflow_run: WorkflowRun,
+        lease: WorkLease,
+        casefile_id: UUID,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
+            existing = await session.scalar(
+                select(DecisionRecordRow).where(
+                    DecisionRecordRow.claim_id == workflow_run.claim_id,
+                    DecisionRecordRow.claim_version == workflow_run.claim_version,
+                )
+            )
+            if existing is not None:
+                return
+            work_item = await session.scalar(
+                select(ClaimWorkItemRow)
+                .where(
+                    ClaimWorkItemRow.id == lease.work_item_id,
+                    ClaimWorkItemRow.status == "LEASED",
+                    ClaimWorkItemRow.lease_owner == lease.worker_id,
+                    ClaimWorkItemRow.lease_token == lease.lease_token,
+                    ClaimWorkItemRow.lease_until == lease.lease_until,
+                    ClaimWorkItemRow.lease_until > now,
+                )
+                .with_for_update()
+            )
+            if work_item is None:
+                raise ProcessingInvariantError("Work lease was lost before decision commit.")
+            run = await session.scalar(
+                select(WorkflowRunRow).where(WorkflowRunRow.id == workflow_run.id).with_for_update()
+            )
+            claim = await session.scalar(
+                select(ClaimRow)
+                .where(
+                    ClaimRow.id == workflow_run.claim_id,
+                    ClaimRow.current_version == workflow_run.claim_version,
+                )
+                .with_for_update()
+            )
+            if run is None or claim is None:
+                raise ProcessingInvariantError
+            casefile, proposal = await self._evaluate(session, casefile_id)
+            if claim.policy_version_id != casefile.policy_version_id:
+                raise ProcessingInvariantError("Pinned policy changed.")
+
+            decision = DecisionRecordRow(
+                id=uuid4(),
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                casefile_id=casefile.id,
+                policy_version_id=casefile.policy_version_id,
+                recommendation=proposal.recommendation.value,
+                lifecycle_status="DECIDED",
+                approved_paise=proposal.approved_paise,
+                currency=proposal.currency,
+                engine_version="deterministic-adjudicator-v1",
+                canonical_hash=proposal.canonical_hash,
+                created_at=now,
+            )
+            session.add(decision)
+            await session.flush((decision,))
+            session.add_all(
+                [
+                    RuleResultRow(
+                        id=uuid4(),
+                        decision_record_id=decision.id,
+                        sequence=result.sequence,
+                        rule_id=result.rule_id,
+                        status=result.status.value,
+                        reason_code=result.reason_code,
+                        policy_path=result.policy_path,
+                        evidence_refs=list(result.evidence_refs),
+                        inputs=result.inputs,
+                        amount_before_paise=result.amount_before_paise,
+                        adjustment_paise=result.adjustment_paise,
+                        amount_after_paise=result.amount_after_paise,
+                        created_at=now,
+                    )
+                    for result in proposal.rule_results
+                ]
+            )
+            claim.lifecycle_status = "DECIDED"
+            claim.adjudication_recommendation = proposal.recommendation.value
+            claim.approved_paise = proposal.approved_paise
+            claim.current_action = None
+            claim.member_explanation = {
+                "summary": "₹1,350.00 approved after a 10% consultation co-pay.",
+                "deductions": [
+                    {
+                        "code": "CATEGORY_COPAY_APPLIED",
+                        "label": "10% consultation co-pay",
+                        "amount_paise": 15_000,
+                    }
+                ],
+            }
+            claim.updated_at = now
+            audit_sequence = (
+                await session.scalar(
+                    select(func.max(AuditEventRow.sequence)).where(
+                        AuditEventRow.claim_id == claim.id
+                    )
+                )
+                or 0
+            ) + 1
+            session.add(
+                AuditEventRow(
+                    id=uuid4(),
+                    actor_user_id=claim.owner_user_id,
+                    actor_username_snapshot=claim.owner_username_snapshot,
+                    claim_id=claim.id,
+                    sequence=audit_sequence,
+                    event_type="CLAIM_DECIDED",
+                    payload={
+                        "decision_record_id": str(decision.id),
+                        "casefile_id": str(casefile.id),
+                        "recommendation": proposal.recommendation.value,
+                        "approved_paise": proposal.approved_paise,
+                        "canonical_hash": proposal.canonical_hash,
+                    },
+                    created_at=now,
+                )
+            )
+            session.add(
+                WorkflowEffectRow(
+                    id=uuid4(),
+                    workflow_run_id=run.id,
+                    effect_key=f"decision-committed:v{workflow_run.claim_version}",
+                    effect_type="DECISION_COMMITTED",
+                    payload={
+                        "decision_record_id": str(decision.id),
+                        "canonical_hash": proposal.canonical_hash,
+                    },
+                    created_at=now,
+                )
+            )
+            work_item.status = "COMPLETED"
+            work_item.lease_owner = None
+            work_item.lease_token = None
+            work_item.lease_until = None
+            work_item.updated_at = now
+            run.status = "COMPLETED"
+            run.completed_at = now
+            run.updated_at = now
+            await session.flush()
+
+    async def inspect_trace(self, claim_id: UUID) -> ClaimProcessingTrace | None:
+        async with self._session_factory() as session:
+            row = (
+                await session.execute(
+                    select(
+                        CasefileRow,
+                        DecisionRecordRow,
+                        ClaimWorkItemRow.status,
+                        WorkflowRunRow.status,
+                    )
+                    .join(
+                        DecisionRecordRow,
+                        DecisionRecordRow.casefile_id == CasefileRow.id,
+                    )
+                    .join(
+                        ClaimWorkItemRow,
+                        ClaimWorkItemRow.claim_id == CasefileRow.claim_id,
+                    )
+                    .join(
+                        WorkflowRunRow,
+                        WorkflowRunRow.work_item_id == ClaimWorkItemRow.id,
+                    )
+                    .where(CasefileRow.claim_id == claim_id)
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            casefile, decision, work_status, workflow_status = row
+            rules = (
+                await session.scalars(
+                    select(RuleResultRow)
+                    .where(RuleResultRow.decision_record_id == decision.id)
+                    .order_by(RuleResultRow.sequence)
+                )
+            ).all()
+        return ClaimProcessingTrace(
+            casefile=CasefileTrace(casefile.id, casefile.content_hash),
+            decision=DecisionTrace(
+                decision.id,
+                decision.recommendation,
+                decision.approved_paise,
+                decision.canonical_hash,
+            ),
+            rule_results=tuple(_rule_result(row) for row in rules),
+            work_status=work_status,
+            workflow_status=workflow_status,
+        )
+
+    async def _evaluate(
+        self,
+        session: AsyncSession,
+        casefile_id: UUID,
+    ) -> tuple[CasefileRow, AdjudicationProposal]:
+        casefile = (
+            await session.scalars(select(CasefileRow).where(CasefileRow.id == casefile_id))
+        ).one()
+        policy_version = (
+            await session.scalars(
+                select(PolicyVersionRow).where(PolicyVersionRow.id == casefile.policy_version_id)
+            )
+        ).one()
+        if policy_version.ir is None:
+            raise ProcessingInvariantError("Pinned policy has no compiled IR.")
+        proposal = self._adjudicator.evaluate(
+            ClaimCasefile.model_validate(casefile.content),
+            PolicyIR.model_validate(policy_version.ir),
+        )
+        if proposal.policy_ir_sha256 != policy_version.ir_sha256:
+            raise ProcessingInvariantError("Compiled policy hash does not match.")
+        return casefile, proposal
+
+
+def _rule_result(row: RuleResultRow) -> RuleResult:
+    return RuleResult.model_validate(
+        {
+            "sequence": row.sequence,
+            "rule_id": row.rule_id,
+            "status": row.status,
+            "reason_code": row.reason_code,
+            "policy_path": row.policy_path,
+            "evidence_refs": row.evidence_refs,
+            "inputs": row.inputs,
+            "amount_before_paise": row.amount_before_paise,
+            "adjustment_paise": row.adjustment_paise,
+            "amount_after_paise": row.amount_after_paise,
+        }
+    )

@@ -15,6 +15,10 @@ from claims_backend.api.schemas import (
     ClaimMetadataRequest,
     ClaimReceiptResponse,
     ClaimResponse,
+    MemberActionResponse,
+    MemberAdjudicationResponse,
+    MemberDeductionResponse,
+    MemberExplanationResponse,
     ProgressResponse,
     ReplaceDocumentCommandRequest,
     ReplacementDocumentResponse,
@@ -40,6 +44,7 @@ from claims_backend.application.documents import (
 )
 from claims_backend.domain.claims import (
     Claim,
+    ClaimLifecycle,
     DocumentManifestItem,
     ReplaceDocument,
     SubmitClaim,
@@ -229,7 +234,11 @@ async def apply_claim_action(
     )
 
 
-@router.get("/{claim_id}", response_model=ClaimResponse)
+@router.get(
+    "/{claim_id}",
+    response_model=ClaimResponse,
+    response_model_exclude_none=True,
+)
 async def get_claim(
     claim_id: UUID,
     application: ClaimsApplicationDependency,
@@ -321,7 +330,44 @@ def _to_response(claim: Claim) -> ClaimResponse:
         claimed_amount=Decimal(claim.claimed_paise) / 100,
         currency=claim.currency,
         lifecycle_status=claim.lifecycle.value,
-        progress=ProgressResponse(current_stage=claim.lifecycle.value, is_terminal=False),
+        progress=ProgressResponse(
+            current_stage=claim.lifecycle.value,
+            is_terminal=claim.lifecycle is ClaimLifecycle.DECIDED,
+        ),
+        adjudication=(
+            None
+            if claim.adjudication is None
+            else MemberAdjudicationResponse(
+                recommendation=claim.adjudication.recommendation,
+                approved_amount=Decimal(claim.adjudication.approved_paise) / 100,
+                currency=claim.adjudication.currency,
+            )
+        ),
+        explanation=(
+            None
+            if claim.explanation is None
+            else MemberExplanationResponse(
+                summary=claim.explanation.summary,
+                deductions=[
+                    MemberDeductionResponse(
+                        code=deduction.code,
+                        label=deduction.label,
+                        amount=Decimal(deduction.amount_paise) / 100,
+                    )
+                    for deduction in claim.explanation.deductions
+                ],
+            )
+        ),
+        action=(
+            None
+            if claim.action is None
+            else MemberActionResponse(
+                code=claim.action.code,
+                message=claim.action.message,
+                observed_document_roles=list(claim.action.observed_document_roles),
+                required_document_roles=list(claim.action.required_document_roles),
+            )
+        ),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

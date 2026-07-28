@@ -1,7 +1,7 @@
 from typing import Protocol
 from uuid import UUID
 
-from claims_backend.application.work import WorkCompleted
+from claims_backend.application.work import WorkCommitted, WorkCompleted
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import WorkflowEffect, WorkflowRun, WorkflowRunStatus
 
@@ -37,7 +37,13 @@ class WorkflowRuntime(Protocol):
 
     async def setup(self) -> None: ...
 
-    async def run(self, workflow_run: WorkflowRun, *, resume: bool) -> None: ...
+    async def run(
+        self,
+        workflow_run: WorkflowRun,
+        lease: WorkLease,
+        *,
+        resume: bool,
+    ) -> bool: ...
 
 
 class ClaimWorkflowProcessor:
@@ -49,7 +55,7 @@ class ClaimWorkflowProcessor:
         self._repository = repository
         self._runtime = runtime
 
-    async def process(self, lease: WorkLease) -> WorkCompleted:
+    async def process(self, lease: WorkLease) -> WorkCompleted | WorkCommitted:
         workflow_run = await self._repository.get_or_create(
             lease,
             self._runtime.graph_name,
@@ -60,6 +66,8 @@ class ClaimWorkflowProcessor:
 
         resume = workflow_run.status is WorkflowRunStatus.RUNNING
         workflow_run = await self._repository.mark_running(workflow_run.id)
-        await self._runtime.run(workflow_run, resume=resume)
+        work_committed = await self._runtime.run(workflow_run, lease, resume=resume)
+        if work_committed:
+            return WorkCommitted()
         await self._repository.mark_completed(workflow_run.id)
         return WorkCompleted()

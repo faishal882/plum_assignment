@@ -23,6 +23,10 @@ from claims_backend.domain.claims import (
     ClaimCategory,
     ClaimLifecycle,
     DocumentReplacementResult,
+    MemberAction,
+    MemberAdjudication,
+    MemberDeduction,
+    MemberExplanation,
     ReplaceDocument,
     SubmitClaim,
 )
@@ -596,6 +600,24 @@ def _claim_version_snapshot(
 
 
 def _to_domain(row: ClaimRow) -> Claim:
+    explanation = row.member_explanation
+    action = row.current_action
+    deduction_values = None if explanation is None else explanation.get("deductions")
+    deductions = (
+        tuple(
+            MemberDeduction(
+                code=str(item["code"]),
+                label=str(item["label"]),
+                amount_paise=int(str(item["amount_paise"])),
+            )
+            for item in deduction_values
+            if isinstance(item, dict)
+        )
+        if isinstance(deduction_values, list)
+        else ()
+    )
+    observed_roles = None if action is None else action.get("observed_document_roles")
+    required_roles = None if action is None else action.get("required_document_roles")
     return Claim(
         id=row.id,
         owner_user_id=row.owner_user_id,
@@ -608,6 +630,35 @@ def _to_domain(row: ClaimRow) -> Claim:
         claimed_paise=row.claimed_paise,
         currency=row.currency,
         lifecycle=ClaimLifecycle(row.lifecycle_status),
+        adjudication=(
+            None
+            if row.adjudication_recommendation is None or row.approved_paise is None
+            else MemberAdjudication(
+                recommendation=row.adjudication_recommendation,
+                approved_paise=row.approved_paise,
+                currency=row.currency,
+            )
+        ),
+        explanation=(
+            None
+            if explanation is None
+            else MemberExplanation(
+                summary=str(explanation["summary"]),
+                deductions=deductions,
+            )
+        ),
+        action=(
+            None
+            if action is None
+            else MemberAction(
+                code=str(action["code"]),
+                message=str(action["message"]),
+                observed_document_roles=tuple(str(value) for value in observed_roles),
+                required_document_roles=tuple(str(value) for value in required_roles),
+            )
+            if isinstance(observed_roles, list) and isinstance(required_roles, list)
+            else None
+        ),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

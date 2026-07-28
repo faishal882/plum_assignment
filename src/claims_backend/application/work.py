@@ -44,12 +44,17 @@ class WorkCompleted:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkCommitted:
+    """The handler atomically completed the leased work item."""
+
+
+@dataclass(frozen=True, slots=True)
 class WorkRetry:
     failure_code: str
     available_at: datetime
 
 
-type WorkOutcome = WorkCompleted | WorkRetry
+type WorkOutcome = WorkCompleted | WorkCommitted | WorkRetry
 type WorkHandler = Callable[[WorkLease], Awaitable[WorkOutcome]]
 
 
@@ -71,7 +76,7 @@ class WorkerService:
         outcome = await handler(lease)
         if isinstance(outcome, WorkCompleted):
             await self._scheduler.complete(lease)
-        else:
+        elif isinstance(outcome, WorkRetry):
             await self._scheduler.retry(
                 lease,
                 outcome.failure_code,

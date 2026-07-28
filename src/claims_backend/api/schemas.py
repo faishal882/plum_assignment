@@ -63,12 +63,47 @@ class ClaimResponse(BaseModel):
     currency: str
     lifecycle_status: str
     progress: ProgressResponse
+    adjudication: "MemberAdjudicationResponse | None" = None
+    explanation: "MemberExplanationResponse | None" = None
+    action: "MemberActionResponse | None" = None
     created_at: datetime
     updated_at: datetime
 
     @field_serializer("claimed_amount")
     def serialize_claimed_amount(self, amount: Decimal) -> str:
         return f"{amount:.2f}"
+
+
+class MemberAdjudicationResponse(BaseModel):
+    recommendation: str
+    approved_amount: Decimal
+    currency: str
+
+    @field_serializer("approved_amount")
+    def serialize_approved_amount(self, amount: Decimal) -> str:
+        return f"{amount:.2f}"
+
+
+class MemberDeductionResponse(BaseModel):
+    code: str
+    label: str
+    amount: Decimal
+
+    @field_serializer("amount")
+    def serialize_amount(self, amount: Decimal) -> str:
+        return f"{amount:.2f}"
+
+
+class MemberExplanationResponse(BaseModel):
+    summary: str
+    deductions: list[MemberDeductionResponse]
+
+
+class MemberActionResponse(BaseModel):
+    code: str
+    message: str
+    observed_document_roles: list[str]
+    required_document_roles: list[str]
 
 
 class ReplaceDocumentCommandRequest(BaseModel):
