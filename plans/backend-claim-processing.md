@@ -1,6 +1,6 @@
 # Plan: Explainable Health-Claim Processing Backend
 
-> Source PRD: [Backend PRD — Explainable Health-Claim Processing](../backend_prd.md)
+> Source PRD: [Backend PRD — Explainable Health-Claim Processing](../prds/backend_prd.md)
 
 ## Architectural decisions
 

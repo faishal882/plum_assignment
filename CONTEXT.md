@@ -48,6 +48,10 @@ _Avoid_: Decision, adjudication result
 A non-terminal claim condition that identifies information or evidence the member must provide before processing can continue.
 _Avoid_: Rejection, validation error
 
+**Processing Failed**:
+A claim condition reached when system or provider processing exhausts its durable retry budget without producing a safe outcome. It is distinct from rejection and from information the member can correct.
+_Avoid_: Rejection, action required
+
 **Manual Review**:
 Human examination required or recommended because evidence, policy application, or workflow completeness is not sufficient for safe automatic handling.
 _Avoid_: Rejection, decision

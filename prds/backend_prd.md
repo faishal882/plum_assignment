@@ -7,6 +7,9 @@
 **Architecture authority:** `final_arch_v2.md`  
 **Domain language:** `CONTEXT.md`
 
+> Operational completion requirements are defined in
+> [`backend_v1_operational_prd.md`](backend_v1_operational_prd.md).
+
 ## Problem Statement
 
 Members submit health-insurance claims with medical and billing documents. Reviewing those documents, reconciling their contents, applying policy rules, calculating eligible amounts, and explaining the result is currently a manual process. The process is slow, inconsistent, difficult to audit, and cannot scale without increasing operations effort.
