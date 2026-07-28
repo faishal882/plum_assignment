@@ -1,0 +1,1 @@
+"""Privileged deterministic fixture adapters."""
