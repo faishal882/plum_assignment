@@ -893,6 +893,10 @@ class DocumentTriageResultRow(Base):
     client_document_id: Mapped[str] = mapped_column(String(128), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     readability: Mapped[str] = mapped_column(String(32), nullable=False)
+    readability_observation: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
     identity_observations: Mapped[list[dict[str, object]]] = mapped_column(
         JSONB,
         nullable=False,
@@ -924,4 +928,5 @@ class MemberActionRow(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     observed_document_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     required_document_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    details: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
