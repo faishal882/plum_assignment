@@ -229,14 +229,14 @@ Complete the first adjudication tracer bullet using a privileged structured-comp
 
 ### Acceptance criteria
 
-- [ ] The fixture adapter can seed TC004 evidence without placing privileged fields in a production request schema.
-- [ ] The workflow evaluates eligibility, evidence sufficiency, applicable limits, and 10% co-pay in the approved rule order.
-- [ ] Monetary arithmetic uses integer paise and produces exactly ₹1,350.
-- [ ] The model boundary cannot provide a decision, reason code, or approved amount.
-- [ ] Every rule result records status, policy path, evidence references, inputs, amount before, adjustment, and amount after.
-- [ ] The same casefile and Policy IR produce the same canonical decision hash.
-- [ ] Terminal decision, trace, projection, audit events, and work completion commit atomically.
-- [ ] The member projection explains the ₹150 deduction without exposing privileged fixture or internal provider data.
+- [x] The fixture adapter can seed TC004 evidence without placing privileged fields in a production request schema.
+- [x] The workflow evaluates eligibility, evidence sufficiency, applicable limits, and 10% co-pay in the approved rule order.
+- [x] Monetary arithmetic uses integer paise and produces exactly ₹1,350.
+- [x] The model boundary cannot provide a decision, reason code, or approved amount.
+- [x] Every rule result records status, policy path, evidence references, inputs, amount before, adjustment, and amount after.
+- [x] The same casefile and Policy IR produce the same canonical decision hash.
+- [x] Terminal decision, trace, projection, audit events, and work completion commit atomically.
+- [x] The member projection explains the ₹150 deduction without exposing privileged fixture or internal provider data.
 
 ---
 
@@ -250,13 +250,13 @@ Add bounded early document triage before full Textract processing. For TC001, id
 
 ### Acceptance criteria
 
-- [ ] Local media inspection completes before model triage.
-- [ ] The fast triage route returns a schema-constrained document role, readability result, and bounded identity observations.
-- [ ] Unknown roles remain unknown rather than being forced into a supported class.
-- [ ] TC001 identifies two observed prescriptions and the missing hospital bill.
-- [ ] The member-facing action names both the observed and required document roles.
-- [ ] The claim reaches `ACTION_REQUIRED` without page Textract, casefile adjudication, or financial recommendation.
-- [ ] The trace proves that the expensive extraction and policy nodes did not execute.
+- [x] Local media inspection completes before model triage.
+- [x] The fast triage route returns a schema-constrained document role, readability result, and bounded identity observations.
+- [x] Unknown roles remain unknown rather than being forced into a supported class.
+- [x] TC001 identifies two observed prescriptions and the missing hospital bill.
+- [x] The member-facing action names both the observed and required document roles.
+- [x] The claim reaches `ACTION_REQUIRED` without page Textract, casefile adjudication, or financial recommendation.
+- [x] The trace proves that the expensive extraction and policy nodes did not execute.
 
 ---
 
