@@ -101,6 +101,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   standard recorded worker without a processing fixture.
 - [x] Assignment-shaped TC002 documents request replacement of the recorded unreadable pharmacy
   bill through the standard recorded worker without a processing fixture.
+- [x] Assignment-shaped TC003 documents surface their patient identity conflict through the
+  standard recorded worker without a processing fixture.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

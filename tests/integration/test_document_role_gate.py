@@ -295,6 +295,61 @@ async def test_assignment_tc002_unreadable_bill_requires_replacement_without_fix
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc003_identity_conflict_requires_correction_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    prescription, bill = _assignment_tc003_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "assignment-tc003-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc003_metadata())},
+            files=[
+                ("files", ("prescription_rajesh.jpg", prescription, "image/jpeg")),
+                ("files", ("bill_arjun.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "ACTION_REQUIRED"
+    assert body["action"] == {
+        "code": "PATIENT_IDENTITY_CONFLICT",
+        "message": (
+            "Patient names do not match: F005 shows Rajesh Kumar; "
+            "F006 shows Arjun Mehta. Please replace the document that "
+            "belongs to a different patient."
+        ),
+        "observed_document_roles": ["PRESCRIPTION", "HOSPITAL_BILL"],
+        "required_document_roles": [],
+        "identity_conflict": [
+            {"client_document_id": "F005", "patient_name": "Rajesh Kumar"},
+            {"client_document_id": "F006", "patient_name": "Arjun Mehta"},
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -488,6 +543,38 @@ def _assignment_tc002_metadata() -> dict[str, object]:
             {"upload_index": 1, "client_document_id": "F004"},
         ],
     }
+
+
+def _assignment_tc003_metadata() -> dict[str, object]:
+    return {
+        **_metadata(),
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F005"},
+            {"upload_index": 1, "client_document_id": "F006"},
+        ],
+    }
+
+
+def _assignment_tc003_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {"patient_name": "Rajesh Kumar"},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {"patient_name": "Arjun Mehta"},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
 
 
 def _assignment_tc004_documents() -> tuple[bytes, bytes]:
