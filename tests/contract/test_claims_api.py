@@ -1,9 +1,11 @@
 import json
 from datetime import date
+from io import BytesIO
 from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pypdf import PdfWriter
 
 from claims_backend.api.app import create_app
 from claims_backend.api.dependencies import get_identity_provider
@@ -26,11 +28,20 @@ def fixed_identity_provider() -> IdentityProvider:
     return FixedIdentityProvider()
 
 
+def pdf_bytes() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 @pytest.mark.asyncio
 async def test_identity_provider_can_be_replaced_without_changing_claim_routes(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     app.dependency_overrides[get_identity_provider] = fixed_identity_provider
     transport = ASGITransport(app=app)
     metadata = {
@@ -48,7 +59,7 @@ async def test_identity_provider_can_be_replaced_without_changing_claim_routes(
             "/v1/claims",
             headers={"X-Dev-Username": "external-subject"},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 202
@@ -61,8 +72,9 @@ async def test_identity_provider_can_be_replaced_without_changing_claim_routes(
 @pytest.mark.asyncio
 async def test_claim_submission_requires_a_local_identity(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     metadata = {
         "member_id": "EMP001",
@@ -78,7 +90,7 @@ async def test_claim_submission_requires_a_local_identity(
         response = await client.post(
             "/v1/claims",
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 401
@@ -96,8 +108,9 @@ async def test_claim_submission_requires_a_local_identity(
 @pytest.mark.asyncio
 async def test_malformed_local_identity_is_rejected_before_lookup(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -121,8 +134,9 @@ async def test_malformed_local_identity_is_rejected_before_lookup(
 @pytest.mark.asyncio
 async def test_unknown_local_identity_is_rejected(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     metadata = {
         "member_id": "EMP001",
@@ -139,7 +153,7 @@ async def test_unknown_local_identity_is_rejected(
             "/v1/claims",
             headers={"X-Dev-Username": "unknown.user"},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 401
@@ -157,8 +171,9 @@ async def test_unknown_local_identity_is_rejected(
 @pytest.mark.asyncio
 async def test_member_can_submit_and_retrieve_a_queued_claim(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
 
     metadata = {
@@ -176,7 +191,7 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
             "/v1/claims",
             headers={"X-Dev-Username": "MEMBER.EMP001"},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
         assert submitted.status_code == 202
@@ -215,8 +230,9 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
 @pytest.mark.asyncio
 async def test_another_member_cannot_discover_a_claim(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     metadata = {
         "member_id": "EMP001",
@@ -233,7 +249,7 @@ async def test_another_member_cannot_discover_a_claim(
             "/v1/claims",
             headers={"X-Dev-Username": "member.emp001"},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
         response = await client.get(
             submitted.json()["status_url"],
@@ -255,8 +271,9 @@ async def test_another_member_cannot_discover_a_claim(
 async def test_non_owner_cannot_submit_for_member(
     migrated_database_url: str,
     username: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     metadata = {
         "member_id": "EMP001",
@@ -273,7 +290,7 @@ async def test_non_owner_cannot_submit_for_member(
             "/v1/claims",
             headers={"X-Dev-Username": username},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 403
@@ -291,8 +308,9 @@ async def test_non_owner_cannot_submit_for_member(
 @pytest.mark.asyncio
 async def test_unknown_claim_returns_a_stable_not_found_error(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -316,8 +334,9 @@ async def test_unknown_claim_returns_a_stable_not_found_error(
 @pytest.mark.asyncio
 async def test_invalid_claim_metadata_returns_a_stable_error(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     invalid_metadata = {
         "member_id": "EMP001",
@@ -333,7 +352,7 @@ async def test_invalid_claim_metadata_returns_a_stable_error(
             "/v1/claims",
             headers={"X-Dev-Username": "member.emp001"},
             data={"metadata": json.dumps(invalid_metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 422

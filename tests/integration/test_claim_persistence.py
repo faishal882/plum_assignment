@@ -1,15 +1,18 @@
 import json
 from datetime import date
+from io import BytesIO
 from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pypdf import PdfWriter
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.api.app import create_app
 from claims_backend.application.claims import ClaimsApplication
+from claims_backend.application.documents import UploadSource
 from claims_backend.config import Settings
 from claims_backend.domain.claims import (
     ClaimCategory,
@@ -17,26 +20,51 @@ from claims_backend.domain.claims import (
     SubmitClaim,
 )
 from claims_backend.domain.identity import Principal, Role
+from claims_backend.infrastructure.local_documents import LocalDocumentStore
 from claims_backend.infrastructure.postgres.models import (
     AuditEventRow,
     ClaimRow,
     ClaimVersionRow,
     ClaimWorkItemRow,
+    DocumentRow,
+    DocumentVersionRow,
     UserRow,
 )
 from claims_backend.infrastructure.postgres.repositories import PostgresClaimsRepository
 
 
+class MemoryUpload(UploadSource):
+    filename = "prescription.pdf"
+    content_type = "application/pdf"
+
+    def __init__(self, content: bytes) -> None:
+        self._content = content
+        self._offset = 0
+
+    async def read(self, size: int) -> bytes:
+        chunk = self._content[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+
 @pytest.mark.asyncio
 async def test_submission_persists_the_complete_initial_claim_unit(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
     engine = create_async_engine(migrated_database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with session_factory() as session:
-        application = ClaimsApplication(PostgresClaimsRepository(session))
-        claim = await application.submit(_submission(), _principal())
+        application = ClaimsApplication(
+            PostgresClaimsRepository(session),
+            LocalDocumentStore(tmp_path),
+        )
+        claim = await application.submit(
+            _submission(),
+            _principal(),
+            [MemoryUpload(_pdf_bytes())],
+        )
 
     async with session_factory() as session:
         claim_count = await session.scalar(select(func.count()).select_from(ClaimRow))
@@ -68,8 +96,9 @@ async def test_submission_persists_the_complete_initial_claim_unit(
 @pytest.mark.asyncio
 async def test_username_rename_preserves_claim_ownership_and_audit_snapshot(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     metadata = {
         "member_id": "EMP001",
@@ -86,7 +115,7 @@ async def test_username_rename_preserves_claim_ownership_and_audit_snapshot(
             "/v1/claims",
             headers={"X-Dev-Username": "member.emp001"},
             data={"metadata": json.dumps(metadata)},
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", _pdf_bytes(), "application/pdf")},
         )
         claim_id = submitted.json()["claim_id"]
 
@@ -139,8 +168,9 @@ async def test_username_rename_preserves_claim_ownership_and_audit_snapshot(
 @pytest.mark.asyncio
 async def test_invalid_metadata_creates_no_claim_or_work(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
-    app = create_app(Settings(database_url=migrated_database_url))
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -162,7 +192,7 @@ async def test_invalid_metadata_creates_no_claim_or_work(
                     }
                 )
             },
-            files={"files": ("prescription.pdf", b"%PDF-1.4 placeholder", "application/pdf")},
+            files={"files": ("prescription.pdf", _pdf_bytes(), "application/pdf")},
         )
 
     assert response.status_code == 422
@@ -180,6 +210,7 @@ async def test_invalid_metadata_creates_no_claim_or_work(
 @pytest.mark.asyncio
 async def test_work_item_failure_rolls_back_the_entire_submission(
     migrated_database_url: str,
+    tmp_path,
 ) -> None:
     engine = create_async_engine(migrated_database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -209,9 +240,16 @@ async def test_work_item_failure_rolls_back_the_entire_submission(
 
     try:
         async with session_factory() as session:
-            application = ClaimsApplication(PostgresClaimsRepository(session))
+            application = ClaimsApplication(
+                PostgresClaimsRepository(session),
+                LocalDocumentStore(tmp_path),
+            )
             with pytest.raises(IntegrityError):
-                await application.submit(_submission(), _principal())
+                await application.submit(
+                    _submission(),
+                    _principal(),
+                    [MemoryUpload(_pdf_bytes())],
+                )
     finally:
         async with engine.begin() as connection:
             await connection.execute(
@@ -222,10 +260,18 @@ async def test_work_item_failure_rolls_back_the_entire_submission(
     async with session_factory() as session:
         counts = [
             await session.scalar(select(func.count()).select_from(table))
-            for table in (ClaimRow, ClaimVersionRow, AuditEventRow, ClaimWorkItemRow)
+            for table in (
+                ClaimRow,
+                ClaimVersionRow,
+                AuditEventRow,
+                ClaimWorkItemRow,
+                DocumentRow,
+                DocumentVersionRow,
+            )
         ]
 
-    assert counts == [0, 0, 0, 0]
+    assert counts == [0, 0, 0, 0, 0, 0]
+    assert list((tmp_path / "objects").rglob("*.pdf")) == []
 
     await engine.dispose()
 
@@ -249,3 +295,11 @@ def _principal() -> Principal:
         roles=frozenset({Role.MEMBER}),
         member_id="EMP001",
     )
+
+
+def _pdf_bytes() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
