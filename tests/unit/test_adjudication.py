@@ -244,6 +244,24 @@ def test_mri_threshold_and_pet_always_rules_are_exact() -> None:
     assert pet.rule_results[-1].reason_code == "PRE_AUTH_MISSING"
 
 
+def test_tc008_rejects_eligible_consultation_amount_above_category_limit() -> None:
+    proposal = _evaluate_limit_case(amount_paise=750_000)
+
+    assert proposal.recommendation is AdjudicationRecommendation.REJECTED
+    assert proposal.approved_paise == 0
+    limit = proposal.rule_results[-1]
+    assert limit.status is RuleStatus.FAIL
+    assert limit.reason_code == "PER_CLAIM_EXCEEDED"
+    assert limit.policy_path == "/opd_categories/consultation/sub_limit"
+    assert limit.inputs == {
+        "eligible_paise": 750_000,
+        "limit_paise": 500_000,
+        "general_limit_paise": 500_000,
+        "precedence": "CATEGORY_OVER_GENERAL",
+        "outcome": "REJECT",
+    }
+
+
 def _evaluate_waiting_case(
     *,
     join_date: date,
@@ -439,6 +457,42 @@ def _evaluate_pre_authorization_case(
         ),
     )
     return DeterministicPolicyAdjudicator().evaluate(casefile, policy)
+
+
+def _evaluate_limit_case(*, amount_paise: int):
+    compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
+    assert compilation.ir is not None
+    casefile = ClaimCasefile(
+        claim_id=UUID("00000000-0000-0000-0000-000000000808"),
+        claim_version=1,
+        member_id="EMP003",
+        member_version_id=UUID("00000000-0000-0000-0000-000000000801"),
+        policy_version_id=UUID("00000000-0000-0000-0000-000000000802"),
+        category="CONSULTATION",
+        claimed_paise=amount_paise,
+        currency="INR",
+        eligibility=EvidenceFact(
+            state=FactState.KNOWN,
+            value=True,
+            evidence_refs=("member:active",),
+        ),
+        document_roles=EvidenceFact(
+            state=FactState.KNOWN,
+            value=["PRESCRIPTION", "HOSPITAL_BILL"],
+            evidence_refs=("document:prescription", "document:bill"),
+        ),
+        billed_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=amount_paise,
+            evidence_refs=("document:bill-total",),
+        ),
+        ytd_used_paise=EvidenceFact(
+            state=FactState.KNOWN,
+            value=0,
+            evidence_refs=("utilization:zero",),
+        ),
+    )
+    return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
 
 
 def _evaluate_clinical_case(

@@ -11,7 +11,7 @@ from claims_backend.domain.adjudication import (
     RuleResult,
     RuleStatus,
 )
-from claims_backend.domain.policy import PolicyIR, PreAuthorizationMode
+from claims_backend.domain.policy import LimitOutcome, PolicyIR, PreAuthorizationMode
 from claims_backend.domain.reconciliation import EvidenceSourceType
 
 
@@ -132,7 +132,36 @@ class DeterministicPolicyAdjudicator:
                 results=results,
             )
         if amount > category.limit_paise:
-            raise UnsafeCasefileError("Category limit outcome is not implemented for this slice.")
+            if policy.limit_exceeded_outcome is not LimitOutcome.REJECT:
+                raise UnsafeCasefileError(
+                    "Configured category limit outcome is not supported by this evaluator."
+                )
+            results.append(
+                _result(
+                    len(results) + 1,
+                    f"amount.{casefile.category.casefold()}.category_limit",
+                    RuleStatus.FAIL,
+                    "PER_CLAIM_EXCEEDED",
+                    f"{category.source_pointer}/sub_limit",
+                    casefile.billed_paise.evidence_refs,
+                    {
+                        "eligible_paise": amount,
+                        "limit_paise": category.limit_paise,
+                        "general_limit_paise": policy.general_per_claim_limit_paise,
+                        "precedence": policy.limit_precedence.value,
+                        "outcome": policy.limit_exceeded_outcome.value,
+                    },
+                    amount,
+                    -amount,
+                )
+            )
+            return _proposal(
+                AdjudicationRecommendation.REJECTED,
+                0,
+                casefile,
+                policy,
+                results,
+            )
         results.append(
             _result(
                 len(results) + 1,
