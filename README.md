@@ -117,7 +117,7 @@ It then follows one of three explicit routes:
 Every process work item carries a normalized `claim_version`. Its first execution atomically
 creates one `workflow_runs` record pinned to the work item, claim version, graph name, and graph
 version. The workflow-run UUID is used unchanged as LangGraph's `thread_id`, while the project
-record stores the `claim-processing-v3` graph version independently of LangGraph's reserved root
+record stores the `claim-processing-v5` graph version independently of LangGraph's reserved root
 checkpoint namespace. Graph state is limited to IDs, the operation key, version, booleans, and
 small evidence/action summaries—never document bytes, OCR bodies, prompts, or provider responses.
 
@@ -180,6 +180,95 @@ source order cannot erase disagreement. TC003 preserves Rajesh Kumar from `F005`
 from `F006`, returns only those relevant conflict details to the member, and stops before
 adjudication. Replacing the mismatched document starts a new claim attempt without altering the
 original reconciliation or member action.
+
+## Local page OCR
+
+The document-intelligence route renders each immutable document version into stable, numbered
+JPEG page artifacts beneath `CLAIMS_DATA_ROOT`. PDFs are rendered with pypdfium2; JPEG and PNG
+inputs become a single normalized page. Rendering is bounded by `CLAIMS_PAGE_RENDER_DPI` and
+`CLAIMS_MAX_TEXTRACT_PAGE_BYTES` (5 MiB by default). The renderer progressively reduces quality
+and dimensions, then raises a typed error if a safe page still cannot be produced. The workflow
+turns that error into a targeted `PAGE_TOO_LARGE_FOR_OCR` replacement action instead of silently
+dropping a page.
+
+PostgreSQL stores immutable page provenance: source and rendered hashes, document-version ID,
+page number, render version, dimensions, media type, size, and local relative path. The OCR
+adapter sends page bytes directly to synchronous Amazon Textract—S3 is not part of this local
+architecture. Hospital and pharmacy bills use expense analysis; forms and reports use forms and
+tables analysis; unknown/free-text documents use text detection. Provider blocks are converted
+to project-owned observations containing kind, text, confidence, page, normalized geometry,
+source block ID, and deterministic observation ID.
+
+Page processing is replay-safe at two layers. Rendered artifacts are unique by document version,
+page, and render version. OCR results are unique by page artifact, provider, and provider version.
+Retries therefore read stored observations, and cross-page results are returned in page and
+geometry order. Provider request IDs and retry counts are retained, but raw provider responses
+are not stored.
+
+Relevant configuration:
+
+- `CLAIMS_AWS_REGION` (default `ap-south-1`)
+- `CLAIMS_PAGE_RENDER_DPI` (default `180`)
+- `CLAIMS_MAX_TEXTRACT_PAGE_BYTES` (default `5242880`)
+
+The default suite uses recorded and Botocore-stubbed responses. A real synthetic page can be
+tested explicitly with:
+
+```bash
+CLAIMS_RUN_LIVE_AWS=1 CLAIMS_AWS_REGION=us-east-1 \
+  uv run pytest tests/live/test_textract_live.py -q
+```
+
+This call may incur AWS charges. It uses generated text only and requires credentials with
+`textract:DetectDocumentText`.
+
+## Bedrock structured extraction
+
+All model calls pass through the project-owned `StructuredModelTransport` boundary. The default
+router independently configures `FAST_TRIAGE` and `COMPLEX_EXTRACTION`, including route, model ID,
+AWS region, prompt version, schema version, enablement, evaluation approval, and temperature.
+Both currently resolve to the explicit cross-region inference profile
+`us.anthropic.claude-sonnet-4-6`, with temperature zero. Override it locally through
+`CLAIMS_BEDROCK_MODEL_ID`.
+
+`ChatBedrockConverseTransport` uses Bedrock Converse through LangChain AWS native structured
+output. It returns only the parsed project schema plus request ID, token counts, latency, and stop
+reason. Prompts, raw responses, chain-of-thought, and document bytes are not persisted.
+`RecordedStructuredModelTransport` supplies the default no-network test path using sanitized,
+version-controlled fixtures.
+
+Complex extraction receives a bounded, canonical list of OCR observations. Its output is
+untrusted and passes four separate validation boundaries:
+
+1. Authority validation recursively rejects decision, recommendation, payable/approved amount,
+   reason-code, and policy-outcome fields before application use.
+2. Pydantic rejects undeclared fields and schema/type/version mismatches.
+3. Semantic validation permits only declared clinical, billing, patient, treatment, and document
+   fact namespaces.
+4. Grounding validation requires every candidate to cite an available OCR observation ID.
+
+Validated evidence candidates receive deterministic IDs derived from candidate content and the
+model, route, prompt, and schema versions. PostgreSQL stores an immutable extraction envelope for
+each document/input hash and immutable candidate rows. The envelope retains the route
+configuration and provider metadata required to reconstruct which model contract produced a
+candidate. Replaying identical observations reads that record without another model call. These
+candidates are evidence only: the model boundary has no method that can commit a policy or
+financial decision.
+
+The recorded integration suite exercises routing and persistence without AWS. The live schema
+contract is opt-in:
+
+```bash
+CLAIMS_RUN_LIVE_AWS=1 \
+CLAIMS_AWS_REGION=us-east-1 \
+CLAIMS_BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6 \
+  uv run pytest tests/live/test_bedrock_live.py -q
+```
+
+This call may incur AWS charges and requires Bedrock Converse permission plus model/Marketplace
+access for the configured inference profile. On 2026-07-28, the repository's live invocation
+reached Bedrock but the current AWS account was denied because it lacked a valid payment
+instrument for the model subscription; the live Phase 15 acceptance gate therefore remains open.
 
 ## Setup data import
 
