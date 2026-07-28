@@ -291,6 +291,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
             else:
                 started = monotonic()
                 root_attributes: dict[str, str | int] = {
+                    "session.id": str(workflow_run.claim_id),
                     "claim.id": str(workflow_run.claim_id),
                     "claim.version": workflow_run.claim_version,
                     "workflow.run_id": str(workflow_run.id),
@@ -393,6 +394,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 f"claim.workflow.{node_name}",
                 component=_NODE_COMPONENTS[node_name],
                 attributes={
+                    "session.id": state["claim_id"],
                     "claim.id": state["claim_id"],
                     "claim.version": state["claim_version"],
                     "workflow.run_id": state["workflow_run_id"],

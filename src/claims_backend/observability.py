@@ -54,6 +54,7 @@ _SAFE_ATTRIBUTE_PREFIXES = (
     "provider.",
     "reconciliation.",
     "review.",
+    "session.",
     "service.",
     "textract.",
     "work.",
@@ -236,12 +237,8 @@ class Observability:
             "event": event.event_name,
             "claim_id": event.claim_id,
             "workflow_run_id": event.workflow_run_id,
-            "trace_id": (
-                f"{span_context.trace_id:032x}" if span_context.is_valid else None
-            ),
-            "span_id": (
-                f"{span_context.span_id:016x}" if span_context.is_valid else None
-            ),
+            "trace_id": (f"{span_context.trace_id:032x}" if span_context.is_valid else None),
+            "span_id": (f"{span_context.span_id:016x}" if span_context.is_valid else None),
             "attempt": event.attempt,
             "duration_ms": event.duration_ms,
             "outcome": event.outcome,
@@ -393,9 +390,7 @@ def _scan_value(value: object, canaries: Sequence[str]) -> None:
         for key, child in value.items():
             normalized_key = str(key).casefold()
             if any(part in normalized_key for part in _FORBIDDEN_KEY_PARTS):
-                raise PrivacyViolation(
-                    f"Telemetry contains forbidden attribute key: {key}"
-                )
+                raise PrivacyViolation(f"Telemetry contains forbidden attribute key: {key}")
             _scan_value(child, canaries)
         return
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
