@@ -157,6 +157,24 @@ class RecordedDiscoveryOcrProvider:
             patient_name="Ravi Menon",
             content={"date": "2024-10-30", "total": 4800},
         ),
+        "dfa961a94a1ef140ffd34a828291addb1e668da05f8420df429586544d165d20": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Deepak Shah",
+            content={"date": "2024-11-03", "diagnosis": "Acute Bronchitis"},
+        ),
+        "d36653736568ef358aa6a99c3693d1c811e322dba52c243cc6323fa9a235a1d3": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Deepak Shah",
+            content={
+                "date": "2024-11-03",
+                "hospital_name": "Apollo Hospitals",
+                "line_items": [
+                    {"description": "Consultation Fee", "amount": 1500},
+                    {"description": "Medicines", "amount": 3000},
+                ],
+                "total": 4500,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
