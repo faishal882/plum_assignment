@@ -5,14 +5,20 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import ValidationError
 
-from claims_backend.api.dependencies import ClaimsApplicationDependency
+from claims_backend.api.dependencies import (
+    ClaimsApplicationDependency,
+    CurrentPrincipalDependency,
+)
 from claims_backend.api.schemas import (
     ClaimMetadataRequest,
     ClaimReceiptResponse,
     ClaimResponse,
     ProgressResponse,
 )
-from claims_backend.application.claims import ClaimNotFoundError
+from claims_backend.application.claims import (
+    ClaimNotFoundError,
+    ClaimSubmissionForbiddenError,
+)
 from claims_backend.domain.claims import Claim, DocumentManifestItem, SubmitClaim
 
 router = APIRouter(prefix="/v1/claims", tags=["claims"])
@@ -27,6 +33,7 @@ async def submit_claim(
     metadata: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File()],
     application: ClaimsApplicationDependency,
+    principal: CurrentPrincipalDependency,
 ) -> ClaimReceiptResponse:
     request = _parse_metadata(metadata)
     if len(files) != len(request.documents):
@@ -54,7 +61,17 @@ async def submit_claim(
             for document in request.documents
         ),
     )
-    claim = await application.submit(submission)
+    try:
+        claim = await application.submit(submission, principal)
+    except ClaimSubmissionForbiddenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CLAIM_SUBMISSION_FORBIDDEN",
+                "message": "The identity cannot submit a claim for this member.",
+                "details": [],
+            },
+        ) from error
     return ClaimReceiptResponse(
         claim_id=claim.id,
         version=claim.version,
@@ -67,9 +84,10 @@ async def submit_claim(
 async def get_claim(
     claim_id: UUID,
     application: ClaimsApplicationDependency,
+    principal: CurrentPrincipalDependency,
 ) -> ClaimResponse:
     try:
-        claim = await application.get(claim_id)
+        claim = await application.get(claim_id, principal)
     except ClaimNotFoundError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

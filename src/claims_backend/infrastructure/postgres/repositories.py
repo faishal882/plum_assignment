@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from claims_backend.domain.claims import Claim, ClaimCategory, ClaimLifecycle, SubmitClaim
+from claims_backend.domain.identity import Principal
 from claims_backend.infrastructure.postgres.models import (
     AuditEventRow,
     ClaimRow,
@@ -17,13 +18,15 @@ class PostgresClaimsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, submission: SubmitClaim) -> Claim:
+    async def create(self, submission: SubmitClaim, principal: Principal) -> Claim:
         claim_id = uuid4()
         now = datetime.now(UTC)
         version = 1
 
         row = ClaimRow(
             id=claim_id,
+            owner_user_id=principal.user_id,
+            owner_username_snapshot=principal.username,
             member_id=submission.member_id,
             policy_id=submission.policy_id,
             category=submission.category.value,
@@ -59,6 +62,8 @@ class PostgresClaimsRepository:
                 [
                     AuditEventRow(
                         id=uuid4(),
+                        actor_user_id=principal.user_id,
+                        actor_username_snapshot=principal.username,
                         claim_id=claim_id,
                         sequence=1,
                         event_type="CLAIM_RECEIVED",
@@ -67,6 +72,8 @@ class PostgresClaimsRepository:
                     ),
                     AuditEventRow(
                         id=uuid4(),
+                        actor_user_id=principal.user_id,
+                        actor_username_snapshot=principal.username,
                         claim_id=claim_id,
                         sequence=2,
                         event_type="CLAIM_QUEUED",
@@ -91,8 +98,13 @@ class PostgresClaimsRepository:
 
         return _to_domain(row)
 
-    async def get(self, claim_id: UUID) -> Claim | None:
-        result = await self._session.execute(select(ClaimRow).where(ClaimRow.id == claim_id))
+    async def get_owned(self, claim_id: UUID, owner_user_id: UUID) -> Claim | None:
+        result = await self._session.execute(
+            select(ClaimRow).where(
+                ClaimRow.id == claim_id,
+                ClaimRow.owner_user_id == owner_user_id,
+            )
+        )
         row = result.scalar_one_or_none()
         return None if row is None else _to_domain(row)
 
@@ -100,6 +112,8 @@ class PostgresClaimsRepository:
 def _to_domain(row: ClaimRow) -> Claim:
     return Claim(
         id=row.id,
+        owner_user_id=row.owner_user_id,
+        owner_username_snapshot=row.owner_username_snapshot,
         version=row.current_version,
         member_id=row.member_id,
         policy_id=row.policy_id,

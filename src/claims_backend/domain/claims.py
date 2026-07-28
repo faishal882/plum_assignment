@@ -37,6 +37,8 @@ class SubmitClaim:
 @dataclass(frozen=True, slots=True)
 class Claim:
     id: UUID
+    owner_user_id: UUID
+    owner_username_snapshot: str
     version: int
     member_id: str
     policy_id: str

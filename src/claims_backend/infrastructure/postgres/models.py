@@ -20,6 +20,48 @@ class Base(DeclarativeBase):
     pass
 
 
+class UserRow(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "normalized_username = lower(btrim(username))",
+            name="users_username_normalized",
+        ),
+        CheckConstraint(
+            "normalized_username ~ '^[a-z0-9][a-z0-9._-]{2,63}$'",
+            name="users_username_supported_characters",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    normalized_username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class UserRoleRow(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    role: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+
+class UserMemberLinkRow(Base):
+    __tablename__ = "user_member_links"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    member_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+
 class ClaimRow(Base):
     __tablename__ = "claims"
     __table_args__ = (
@@ -27,6 +69,13 @@ class ClaimRow(Base):
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    owner_user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    owner_username_snapshot: Mapped[str] = mapped_column(String(64), nullable=False)
     member_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     policy_id: Mapped[str] = mapped_column(String(64), nullable=False)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -61,6 +110,12 @@ class AuditEventRow(Base):
     __table_args__ = (UniqueConstraint("claim_id", "sequence", name="audit_claim_sequence_uq"),)
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    actor_user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_username_snapshot: Mapped[str] = mapped_column(String(64), nullable=False)
     claim_id: Mapped[UUID] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("claims.id", ondelete="RESTRICT"),
