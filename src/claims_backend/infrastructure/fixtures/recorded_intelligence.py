@@ -130,6 +130,23 @@ class RecordedDiscoveryOcrProvider:
                 "total": 15000,
             },
         ),
+        "794f357edfa5309d8ee9ab291978d954690066af7f1a25e2c317bf431dcf1116": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Amit Verma",
+            content={"date": "2024-10-20", "diagnosis": "Gastroenteritis"},
+        ),
+        "339da8a6a604c73cad1f49be0bb6141063e5e86552d9a85e842171f3014f75d2": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Amit Verma",
+            content={
+                "date": "2024-10-20",
+                "line_items": [
+                    {"description": "Consultation Fee", "amount": 2000},
+                    {"description": "Medicines", "amount": 5500},
+                ],
+                "total": 7500,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
