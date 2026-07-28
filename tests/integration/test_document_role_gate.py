@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from PIL import Image
+from PIL import Image, ImageDraw
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 
@@ -238,6 +238,48 @@ async def test_public_claim_decides_without_processing_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc004_documents_process_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_decision_utilization(app.state.session_factory)
+    prescription, bill = _assignment_tc004_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "assignment-tc004-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc004_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+    assert projection.status_code == 200
+    assert projection.json()["lifecycle_status"] == "DECIDED"
+    assert projection.json()["adjudication"]["approved_amount"] == "1350.00"
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_worker_loop_processes_claim_submitted_after_startup(
     migrated_database_url: str,
     tmp_path,
@@ -320,6 +362,63 @@ def _jpeg_bytes() -> bytes:
 def _bill_jpeg_bytes() -> bytes:
     output = BytesIO()
     Image.new("RGB", (64, 64), (30, 90, 180)).save(output, format="JPEG")
+    return output.getvalue()
+
+
+def _assignment_tc004_metadata() -> dict[str, object]:
+    return {
+        **_metadata(),
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F007"},
+            {"upload_index": 1, "client_document_id": "F008"},
+        ],
+    }
+
+
+def _assignment_tc004_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {
+                "date": "2024-11-01",
+                "diagnosis": "Viral Fever",
+                "doctor_name": "Dr. Arun Sharma",
+                "doctor_registration": "KA/45678/2015",
+                "medicines": ["Paracetamol 650mg", "Vitamin C 500mg"],
+                "patient_name": "Rajesh Kumar",
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "date": "2024-11-01",
+                "hospital_name": "City Clinic, Bengaluru",
+                "line_items": [
+                    {"amount": 1000, "description": "Consultation Fee"},
+                    {"amount": 300, "description": "CBC Test"},
+                    {"amount": 200, "description": "Dengue NS1 Test"},
+                ],
+                "patient_name": "Rajesh Kumar",
+                "total": 1500,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
+
+
+def _assignment_document_image(text: str) -> bytes:
+    image = Image.new("RGB", (1400, 1000), "white")
+    ImageDraw.Draw(image).multiline_text((80, 80), text, fill="black", spacing=14)
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=92, optimize=False, progressive=False)
     return output.getvalue()
 
 
