@@ -3,7 +3,7 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
-import pypdfium2 as pdfium
+import pypdfium2 as pdfium  # type: ignore[import-untyped]
 from PIL import Image
 
 from claims_backend.application.intelligence import (
