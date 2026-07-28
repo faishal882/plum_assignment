@@ -26,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.state.settings = resolved_settings
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.include_router(router)

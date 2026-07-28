@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from claims_backend.application.documents import StoredDocument
 from claims_backend.domain.claims import Claim, ClaimCategory, ClaimLifecycle, SubmitClaim
 from claims_backend.domain.identity import Principal
 from claims_backend.infrastructure.postgres.models import (
@@ -11,6 +12,8 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimRow,
     ClaimVersionRow,
     ClaimWorkItemRow,
+    DocumentRow,
+    DocumentVersionRow,
 )
 
 
@@ -18,7 +21,12 @@ class PostgresClaimsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, submission: SubmitClaim, principal: Principal) -> Claim:
+    async def create(
+        self,
+        submission: SubmitClaim,
+        principal: Principal,
+        documents: tuple[StoredDocument, ...],
+    ) -> Claim:
         claim_id = uuid4()
         now = datetime.now(UTC)
         version = 1
@@ -57,6 +65,35 @@ class PostgresClaimsRepository:
                     submission={"documents": manifest},
                     created_at=now,
                 )
+            )
+            document_rows = [
+                DocumentRow(
+                    id=uuid4(),
+                    claim_id=claim_id,
+                    client_document_id=manifest_item.client_document_id,
+                    upload_index=manifest_item.upload_index,
+                    created_at=now,
+                )
+                for manifest_item in submission.documents
+            ]
+            self._session.add_all(document_rows)
+            await self._session.flush(document_rows)
+            self._session.add_all(
+                [
+                    DocumentVersionRow(
+                        id=stored.storage_id,
+                        document_id=document.id,
+                        version=1,
+                        original_filename=stored.original_filename,
+                        media_type=stored.media_type,
+                        size_bytes=stored.size_bytes,
+                        page_count=stored.page_count,
+                        sha256=stored.sha256,
+                        relative_path=stored.relative_path.as_posix(),
+                        created_at=now,
+                    )
+                    for document, stored in zip(document_rows, documents, strict=True)
+                ]
             )
             self._session.add_all(
                 [

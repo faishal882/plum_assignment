@@ -15,9 +15,16 @@ from claims_backend.api.schemas import (
     ClaimResponse,
     ProgressResponse,
 )
+from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
     ClaimNotFoundError,
     ClaimSubmissionForbiddenError,
+)
+from claims_backend.application.documents import (
+    ClaimUploadTooLargeError,
+    DocumentIngestionError,
+    FileTooLargeError,
+    UnsupportedDocumentError,
 )
 from claims_backend.domain.claims import Claim, DocumentManifestItem, SubmitClaim
 
@@ -58,11 +65,15 @@ async def submit_claim(
                 upload_index=document.upload_index,
                 client_document_id=document.client_document_id,
             )
-            for document in request.documents
+            for document in sorted(request.documents, key=lambda item: item.upload_index)
         ),
     )
     try:
-        claim = await application.submit(submission, principal)
+        claim = await application.submit(
+            submission,
+            principal,
+            [FastAPIUploadSource(upload) for upload in files],
+        )
     except ClaimSubmissionForbiddenError as error:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -72,6 +83,8 @@ async def submit_claim(
                 "details": [],
             },
         ) from error
+    except DocumentIngestionError as error:
+        raise _document_error(error) from error
     return ClaimReceiptResponse(
         claim_id=claim.id,
         version=claim.version,
@@ -139,4 +152,31 @@ def _to_response(claim: Claim) -> ClaimResponse:
         progress=ProgressResponse(current_stage=claim.lifecycle.value, is_terminal=False),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
+    )
+
+
+def _document_error(error: DocumentIngestionError) -> HTTPException:
+    if isinstance(error, (FileTooLargeError, ClaimUploadTooLargeError)):
+        status_code = status.HTTP_413_CONTENT_TOO_LARGE
+    elif isinstance(error, UnsupportedDocumentError):
+        status_code = status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+    else:
+        status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    details: list[dict[str, object]] = []
+    if error.upload_index is not None:
+        details.append(
+            {
+                "location": ["files", error.upload_index],
+                "message": error.message,
+                "type": error.code,
+            }
+        )
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "code": error.code,
+            "message": error.message,
+            "details": details,
+        },
     )

@@ -105,6 +105,51 @@ class ClaimVersionRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class DocumentRow(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("claim_id", "client_document_id", name="documents_claim_client_id_uq"),
+        UniqueConstraint("claim_id", "upload_index", name="documents_claim_upload_index_uq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    client_document_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    upload_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DocumentVersionRow(Base):
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0", name="document_versions_size_positive"),
+        CheckConstraint("page_count > 0", name="document_versions_page_count_positive"),
+        UniqueConstraint("document_id", "version", name="document_versions_document_version_uq"),
+        UniqueConstraint("relative_path", name="document_versions_relative_path_uq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    relative_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AuditEventRow(Base):
     __tablename__ = "audit_events"
     __table_args__ = (UniqueConstraint("claim_id", "sequence", name="audit_claim_sequence_uq"),)
