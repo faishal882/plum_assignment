@@ -529,6 +529,71 @@ async def test_assignment_tc006_partial_dental_decision_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc007_pre_authorization_decision_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_member_utilization(
+        app.state.session_factory,
+        member_id="EMP007",
+        as_of_date="2024-11-02",
+    )
+    documents = _assignment_tc007_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp007",
+                "Idempotency-Key": "assignment-tc007-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc007_metadata())},
+            files=[
+                ("files", ("prescription.jpg", documents[0], "image/jpeg")),
+                ("files", ("lab_report.jpg", documents[1], "image/jpeg")),
+                ("files", ("bill.jpg", documents[2], "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp007"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "REJECTED",
+        "approved_amount": "0.00",
+        "currency": "INR",
+    }
+    assert body["explanation"] == {
+        "summary": (
+            "MRI expenses of ₹15,000.00 require pre-authorization above ₹10,000.00. "
+            "No valid authorization was found; obtain it and resubmit the claim."
+        ),
+        "deductions": [
+            {
+                "code": "PRE_AUTH_MISSING",
+                "label": "Required pre-authorization was not provided.",
+                "amount": "15000.00",
+            }
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -833,6 +898,61 @@ def _assignment_tc006_document() -> bytes:
             ensure_ascii=True,
         )
     )
+
+
+def _assignment_tc007_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP007",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "DIAGNOSTIC",
+        "treatment_date": "2024-11-02",
+        "claimed_amount": "15000.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F012"},
+            {"upload_index": 1, "client_document_id": "F013"},
+            {"upload_index": 2, "client_document_id": "F014"},
+        ],
+    }
+
+
+def _assignment_tc007_documents() -> tuple[bytes, bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {
+                "diagnosis": "Suspected Lumbar Disc Herniation",
+                "doctor_name": "Dr. Venkat Rao",
+                "doctor_registration": "AP/67890/2017",
+                "tests_ordered": ["MRI Lumbar Spine"],
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    report = _assignment_document_image(
+        "LAB_REPORT\n"
+        + json.dumps(
+            {"test_name": "MRI Lumbar Spine"},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "line_items": [{"amount": 15000, "description": "MRI Lumbar Spine"}],
+                "total": 15000,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, report, bill
 
 
 def _assignment_tc004_documents() -> tuple[bytes, bytes]:
