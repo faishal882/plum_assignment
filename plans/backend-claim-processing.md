@@ -270,13 +270,13 @@ Extend early triage with document-specific readability handling. TC002 must requ
 
 ### Acceptance criteria
 
-- [ ] Readability is represented as a typed observation with document and preview provenance.
-- [ ] Deterministic unreadable-document transforms produce repeatable fixture inputs.
-- [ ] TC002 identifies the pharmacy bill as the affected document.
-- [ ] The member action asks for replacement of that specific document.
-- [ ] The lifecycle becomes `ACTION_REQUIRED` with no `REJECTED` adjudication.
-- [ ] Full extraction and policy evaluation do not run for the unreadable input.
-- [ ] Supplying a readable replacement creates a new claim version and makes the claim eligible to resume.
+- [x] Readability is represented as a typed observation with document and preview provenance.
+- [x] Deterministic unreadable-document transforms produce repeatable fixture inputs.
+- [x] TC002 identifies the pharmacy bill as the affected document.
+- [x] The member action asks for replacement of that specific document.
+- [x] The lifecycle becomes `ACTION_REQUIRED` with no `REJECTED` adjudication.
+- [x] Full extraction and policy evaluation do not run for the unreadable input.
+- [x] Supplying a readable replacement creates a new claim version and makes the claim eligible to resume.
 
 ---
 
@@ -290,13 +290,13 @@ Reconcile visible patient-name observations across documents and the pinned memb
 
 ### Acceptance criteria
 
-- [ ] Identity observations retain producer, document version, page/region, source text hash, and confidence.
-- [ ] Reconciliation represents patient identity as known, unknown, or conflict.
-- [ ] TC003 retains both conflicting patient names and associates each with its source document.
-- [ ] Neither confidence nor source order silently overwrites the conflict.
-- [ ] The member-facing action describes the mismatch without exposing unrelated internal evidence.
-- [ ] The claim reaches `ACTION_REQUIRED` or explicit identity review without adjudication.
-- [ ] Corrective replacement creates a new case attempt while preserving the original conflict trace.
+- [x] Identity observations retain producer, document version, page/region, source text hash, and confidence.
+- [x] Reconciliation represents patient identity as known, unknown, or conflict.
+- [x] TC003 retains both conflicting patient names and associates each with its source document.
+- [x] Neither confidence nor source order silently overwrites the conflict.
+- [x] The member-facing action describes the mismatch without exposing unrelated internal evidence.
+- [x] The claim reaches `ACTION_REQUIRED` or explicit identity review without adjudication.
+- [x] Corrective replacement creates a new case attempt while preserving the original conflict trace.
 
 ---
 
