@@ -108,6 +108,28 @@ class RecordedDiscoveryOcrProvider:
                 "total": 12000,
             },
         ),
+        "4b40289a4779b19fb3487c93105ce0210787c34a1153af53b8e0623b37a121ee": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Suresh Patil",
+            content={
+                "date": "2024-11-02",
+                "diagnosis": "Suspected Lumbar Disc Herniation",
+                "tests_ordered": ["MRI Lumbar Spine"],
+            },
+        ),
+        "4434347caee415c76c08ce97736e44e6ddddfd4e6d289dad2787f7b97d7249da": RecordedDocument(
+            DocumentRole.LAB_REPORT,
+            content={"test_name": "MRI Lumbar Spine"},
+        ),
+        "b5b677ae00fc83c81d0967eca4dc22c3e56920571095fb7e69fba611dd6ff97d": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Suresh Patil",
+            content={
+                "date": "2024-11-02",
+                "line_items": [{"description": "MRI Lumbar Spine", "amount": 15000}],
+                "total": 15000,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
@@ -338,6 +360,13 @@ def _extraction_values(
     diagnosis = content.get("diagnosis")
     if isinstance(diagnosis, str):
         values.append(("clinical.condition", diagnosis))
+    treatment = content.get("treatment") or content.get("test_name")
+    if treatment is None:
+        ordered = content.get("tests_ordered")
+        if isinstance(ordered, list) and ordered and isinstance(ordered[0], str):
+            treatment = ordered[0]
+    if isinstance(treatment, str):
+        values.append(("clinical.treatment", "MRI" if "mri" in treatment.casefold() else treatment))
     provider = content.get("hospital_name")
     if isinstance(provider, str):
         values.append(("provider.name", provider))
