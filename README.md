@@ -102,12 +102,17 @@ lease lasts five minutes. Retry failures use bounded sanitized codes and persist
 completes or reschedules through a separate scheduler transaction. The table remains authoritative
 across worker crashes; no FastAPI background task, SQS, Redis, or in-memory queue is involved.
 
-## Resumable workflow skeleton
+## Resumable claim workflow
 
-Phase 7 introduces one fixed typed LangGraph behind the project-owned `WorkflowRuntime` boundary.
-The current skeleton deliberately performs only two framework-neutral steps—loading an immutable
-claim-version reference and recording skeleton completion. OCR, extraction, policy evaluation, and
-decisions are added by later phases rather than simulated here.
+The backend runs one fixed typed LangGraph behind the project-owned `WorkflowRuntime` boundary.
+Every claim first loads its immutable claim-version snapshot and verifies locally sealed media.
+It then follows one of three explicit routes:
+
+- `STRUCTURED_COMPONENT` freezes privileged test evidence and runs deterministic adjudication.
+- `EARLY_TRIAGE` applies bounded document-role/readability classification and can stop with a
+  member action before expensive extraction.
+- Claims without a seeded component fixture follow the original skeleton route until their
+  extraction capabilities are implemented.
 
 Every process work item carries a normalized `claim_version`. Its first execution atomically
 creates one `workflow_runs` record pinned to the work item, claim version, graph name, and graph
@@ -127,6 +132,39 @@ execution resumes at the next node. If a node commits an effect but dies before 
 the node may run again; `(workflow_run_id, effect_key)` uniqueness makes that write idempotent.
 The work lease is completed only after both the graph and project-owned workflow run reach
 completion.
+
+## Structured adjudication trace
+
+The test-only `StructuredComponentFixtureAdapter` can seed TC004 after a normal multipart
+submission. It is an infrastructure fixture boundary, not an HTTP route or request field. The
+production claim schema therefore cannot supply eligibility, evidence findings, utilization,
+reason codes, decisions, or approved amounts.
+
+The adjudicator reads the frozen casefile, pinned Policy IR, and pinned PostgreSQL member
+utilization. It evaluates eligibility, evidence sufficiency, applicable limits, co-pay, and final
+recommendation in a fixed order. All money uses integer paise. Each rule result preserves status,
+policy path, evidence references, normalized inputs, amount before, adjustment, and amount after.
+Canonical JSON hashing makes the complete decision reproducible for identical inputs.
+
+The terminal transaction writes the decision, ordered rule results, member-safe projection,
+audit event, workflow completion, and work completion together. A failure in any write rolls back
+the entire terminal transition. PostgreSQL also rejects updates and deletes to fixture inputs,
+casefiles, decisions, rule results, triage results, and member actions. TC004 consequently exposes
+an approved ₹1,350 projection and ₹150 co-pay explanation without fixture payloads or internal
+provider data.
+
+## Early document-role gate
+
+The `EARLY_TRIAGE` route accepts only schema-constrained per-document outputs: a bounded role
+vocabulary including `UNKNOWN`, a readability enum, and at most two bounded identity
+observations. It requires exactly one result for every submitted document and persists the exact
+document-version reference. Unknown values are preserved rather than guessed.
+
+TC001 proves the short-circuit path with two generic JPEG filenames classified as prescriptions.
+The pinned policy requires a hospital bill, so the backend atomically records a
+`MISSING_REQUIRED_DOCUMENT` member action and moves the claim to `ACTION_REQUIRED`. The workflow
+effect trace ends after local media inspection, triage, and action commit. No Textract,
+full-extraction, casefile, policy-adjudication, or financial-decision operation executes.
 
 ## Setup data import
 
