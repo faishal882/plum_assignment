@@ -406,6 +406,7 @@ def _to_response(claim: Claim) -> ClaimResponse:
                 ),
             )
         ),
+        handling_status=claim.handling_status,
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

@@ -7,10 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from claims_backend.application.claims import ClaimsApplication
 from claims_backend.application.documents import DocumentStore, UploadLimits
 from claims_backend.application.identity import IdentityProvider
+from claims_backend.application.reviews import ReviewApplication
 from claims_backend.domain.identity import InvalidUsernameError, Principal
 from claims_backend.infrastructure.local_documents import LocalDocumentStore
 from claims_backend.infrastructure.postgres.identity import PostgresIdentityProvider
 from claims_backend.infrastructure.postgres.repositories import PostgresClaimsRepository
+from claims_backend.infrastructure.postgres.reviews import PostgresReviewRepository
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -92,3 +94,14 @@ async def get_current_principal(
 
 
 CurrentPrincipalDependency = Annotated[Principal, Depends(get_current_principal)]
+
+
+def get_review_application(request: Request) -> ReviewApplication:
+    session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    return ReviewApplication(PostgresReviewRepository(session_factory))
+
+
+ReviewApplicationDependency = Annotated[
+    ReviewApplication,
+    Depends(get_review_application),
+]

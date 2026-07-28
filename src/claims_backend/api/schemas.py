@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from claims_backend.domain.claims import ClaimCategory
+from claims_backend.domain.reviews import ReviewAction
 
 
 class DocumentManifestItemRequest(BaseModel):
@@ -66,6 +67,7 @@ class ClaimResponse(BaseModel):
     adjudication: "MemberAdjudicationResponse | None" = None
     explanation: "MemberExplanationResponse | None" = None
     action: "MemberActionResponse | None" = None
+    handling_status: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -171,3 +173,73 @@ class ErrorBodyResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBodyResponse
+
+
+class ReviewTaskSummaryResponse(BaseModel):
+    id: UUID
+    claim_id: UUID
+    claim_version: int
+    status: str
+    signal_codes: list[str]
+    machine_recommendation: str
+    machine_approved_amount: Decimal
+    currency: str
+    allowed_actions: list[str]
+    created_at: datetime
+    resolved_at: datetime | None
+
+    @field_serializer("machine_approved_amount")
+    def serialize_machine_amount(self, amount: Decimal) -> str:
+        return f"{amount:.2f}"
+
+
+class ReviewTaskDetailResponse(BaseModel):
+    task: ReviewTaskSummaryResponse
+    evidence: dict[str, object]
+    conflicts: list[dict[str, object]]
+    rules: list[dict[str, object]]
+    calculations: list[dict[str, object]]
+    failures: list[dict[str, object]]
+
+
+class ReviewCommandRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: ReviewAction
+    expected_claim_version: int = Field(ge=1)
+    reason_code: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,63}$")
+    reason_note: str = Field(min_length=10, max_length=1000)
+    amended_amount: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    @model_validator(mode="after")
+    def amend_requires_amount(self) -> "ReviewCommandRequest":
+        if (
+            self.action is ReviewAction.AMEND
+            and self.amended_amount is None
+        ):
+            raise ValueError("AMEND requires amended_amount")
+        if (
+            self.action is not ReviewAction.AMEND
+            and self.amended_amount is not None
+        ):
+            raise ValueError("amended_amount is valid only for AMEND")
+        return self
+
+
+class ReviewResolutionResponse(BaseModel):
+    id: UUID
+    task_id: UUID
+    action: str
+    reason_code: str
+    reason_note: str
+    before: dict[str, object]
+    after: dict[str, object]
+    actor_user_id: UUID
+    actor_username: str
+    created_at: datetime
+    replayed: bool
