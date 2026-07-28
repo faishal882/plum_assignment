@@ -3,6 +3,8 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.application.policy_admin import (
@@ -137,6 +139,57 @@ async def test_operator_activation_is_atomic_and_auditable(
     assert events[0].from_status is PolicyVersionStatus.COMPILED
     assert events[0].to_status is PolicyVersionStatus.ACTIVE
     assert events[0].ir_sha256 == compiled.ir_sha256
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_compiled_ir_and_findings_are_database_immutable(
+    migrated_database_url: str,
+) -> None:
+    engine = create_async_engine(migrated_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    setup = SetupDataApplication(PostgresSetupImportRepository(factory))
+    source = await setup.import_sources(POLICY_BYTES, source_name=POLICY_PATH.name)
+    policies = PolicyAdministrationApplication(
+        PostgresPolicyRepository(factory),
+        PolicyCompiler(),
+    )
+    compiled = await policies.compile(
+        source.policy_source_sha256,
+        OVERLAY_BYTES,
+        overlay_source_name=OVERLAY_PATH.name,
+    )
+
+    with pytest.raises(DBAPIError):
+        async with factory.begin() as session:
+            await session.execute(
+                text(
+                    """
+                    UPDATE policy_versions
+                    SET ir_sha256 = :changed
+                    WHERE id = :policy_version_id
+                    """
+                ),
+                {
+                    "changed": "0" * 64,
+                    "policy_version_id": compiled.policy_version_id,
+                },
+            )
+    with pytest.raises(DBAPIError):
+        async with factory.begin() as session:
+            await session.execute(
+                text(
+                    """
+                    UPDATE policy_findings
+                    SET message = :changed
+                    WHERE policy_version_id = :policy_version_id
+                    """
+                ),
+                {
+                    "changed": "changed",
+                    "policy_version_id": compiled.policy_version_id,
+                },
+            )
     await engine.dispose()
 
 
