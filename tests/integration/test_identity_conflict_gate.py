@@ -6,7 +6,8 @@ from uuid import UUID
 import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image, ImageDraw
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 
 from claims_backend.api.app import create_app
 from claims_backend.application.work import WorkerService
@@ -145,6 +146,12 @@ async def test_tc003_preserves_both_patient_names_and_requests_correction(
         "DOCUMENT_TRIAGE_COMPLETED",
         "MEMBER_ACTION_COMMITTED",
     ]
+    with pytest.raises(DBAPIError):
+        async with app.state.session_factory.begin() as session:
+            await session.execute(
+                text("DELETE FROM identity_reconciliations WHERE claim_id = :claim_id"),
+                {"claim_id": claim_id},
+            )
     await app.state.engine.dispose()
 
 
