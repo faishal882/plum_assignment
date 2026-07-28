@@ -374,7 +374,7 @@ async def _mark_processing_failed(
         select(WorkflowRunRow).where(WorkflowRunRow.work_item_id == work_item.id).with_for_update()
     )
     if workflow is not None:
-        workflow.status = "COMPLETED"
+        workflow.status = "FAILED"
         workflow.completed_at = now
         workflow.updated_at = now
 

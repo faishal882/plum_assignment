@@ -20,8 +20,10 @@ from claims_backend.application.work import (
 )
 from claims_backend.config import Settings
 from claims_backend.domain.work import RetryDisposition, WorkRequest
-from claims_backend.infrastructure.postgres.models import ClaimRow, ClaimWorkItemRow
+from claims_backend.domain.workflow import ExecutionContract, WorkflowRunStatus
+from claims_backend.infrastructure.postgres.models import ClaimRow, ClaimWorkItemRow, WorkflowRunRow
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
+from claims_backend.infrastructure.postgres.workflow_repository import PostgresWorkflowRepository
 
 
 @pytest.mark.asyncio
@@ -326,14 +328,23 @@ async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
         await _submit_claim(client, "deterministic-failure")
 
     scheduler = PostgresWorkScheduler(app.state.session_factory)
+    repository = PostgresWorkflowRepository(app.state.session_factory)
 
-    async def handler(_):
+    async def handler(lease):
+        workflow = await repository.get_or_create(
+            lease,
+            "claim-processing",
+            "claim-processing-v7",
+            ExecutionContract.unspecified(),
+        )
+        await repository.mark_running(workflow.id)
         return WorkFailed("MODEL_SEMANTIC_VALIDATION_FAILED")
 
     assert await WorkerService(scheduler).run_once("failure-worker", handler)
     async with app.state.session_factory() as session:
         failed = await session.scalar(select(ClaimWorkItemRow))
         claim = await session.scalar(select(ClaimRow))
+        workflow = await session.scalar(select(WorkflowRunRow))
 
     assert failed is not None
     assert failed.status == "FAILED"
@@ -344,6 +355,8 @@ async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
     assert claim.lifecycle_status == "PROCESSING_FAILED"
     assert claim.current_action is None
     assert claim.adjudication_recommendation is None
+    assert workflow is not None
+    assert workflow.status == WorkflowRunStatus.FAILED.value
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         projection = await client.get(
             f"/v1/claims/{claim.id}",

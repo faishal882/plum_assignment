@@ -8,6 +8,7 @@ class WorkflowRunStatus(StrEnum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 @dataclass(frozen=True, slots=True)

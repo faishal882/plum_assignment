@@ -686,7 +686,7 @@ class WorkflowRunRow(Base):
             name="workflow_runs_claim_version_positive",
         ),
         CheckConstraint(
-            "status IN ('PENDING', 'RUNNING', 'COMPLETED')",
+            "status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')",
             name="workflow_runs_status_supported",
         ),
         ForeignKeyConstraint(
