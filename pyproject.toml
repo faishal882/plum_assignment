@@ -28,6 +28,7 @@ claimsctl = "claims_backend.cli:main"
 [dependency-groups]
 dev = [
     "httpx>=0.28,<1",
+    "hypothesis>=6.151,<7",
     "mypy>=1.17,<2",
     "pytest>=8.4,<9",
     "pytest-asyncio>=1.1,<2",
