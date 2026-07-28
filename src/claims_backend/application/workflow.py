@@ -76,6 +76,10 @@ class ClaimWorkflowProcessor:
         self._runtime = runtime
         self._retry_schedule = retry_schedule or RetrySchedule()
 
+    async def setup(self) -> None:
+        """Initialize durable workflow state before the worker leases work."""
+        await self._runtime.setup()
+
     async def process(
         self,
         lease: WorkLease,

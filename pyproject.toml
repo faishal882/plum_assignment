@@ -29,6 +29,7 @@ dependencies = [
 
 [project.scripts]
 claimsctl = "claims_backend.cli:main"
+claims-worker = "claims_backend.worker.command:main"
 
 [dependency-groups]
 dev = [
