@@ -79,6 +79,7 @@ def test_tc004_produces_exact_deterministic_rule_trace() -> None:
         "amount.consultation.category_limit",
         "amount.annual_opd_remaining",
         "amount.consultation.copay",
+        "final.recommendation",
     ]
     assert all(
         result.status in {RuleStatus.PASS, RuleStatus.APPLIED} for result in first.rule_results
@@ -89,7 +90,7 @@ def test_tc004_produces_exact_deterministic_rule_trace() -> None:
     assert all(result.amount_before_paise is not None for result in first.rule_results)
     assert all(result.adjustment_paise is not None for result in first.rule_results)
     assert all(result.amount_after_paise is not None for result in first.rule_results)
-    assert first.rule_results[-1].adjustment_paise == -15_000
+    assert first.rule_results[-2].adjustment_paise == -15_000
     assert first.rule_results[-1].amount_after_paise == 135_000
 
 
@@ -301,6 +302,86 @@ def test_decreasing_category_limit_cannot_increase_approved_amount(
     assert lower.approved_paise <= higher.approved_paise
 
 
+def test_tc010_applies_network_discount_before_copay() -> None:
+    proposal = _evaluate_limit_case(
+        amount_paise=450_000,
+        provider_name="Apollo Hospitals",
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.APPROVED
+    assert proposal.approved_paise == 324_000
+    financial_steps = [
+        result
+        for result in proposal.rule_results
+        if result.reason_code
+        in {"NETWORK_DISCOUNT_APPLIED", "CATEGORY_COPAY_APPLIED"}
+    ]
+    assert [result.reason_code for result in financial_steps] == [
+        "NETWORK_DISCOUNT_APPLIED",
+        "CATEGORY_COPAY_APPLIED",
+    ]
+    assert [
+        (
+            result.amount_before_paise,
+            result.adjustment_paise,
+            result.amount_after_paise,
+        )
+        for result in financial_steps
+    ] == [
+        (450_000, -90_000, 360_000),
+        (360_000, -36_000, 324_000),
+    ]
+    assert [result.inputs["operation"] for result in financial_steps] == [
+        "PERCENT_DISCOUNT",
+        "PERCENT_COPAY",
+    ]
+    assert all(result.policy_path for result in financial_steps)
+    assert all(result.evidence_refs for result in financial_steps)
+    explanation = render_member_explanation(proposal)
+    assert explanation.summary == (
+        "₹3,240.00 approved after a 20% network discount and "
+        "10% consultation co-pay."
+    )
+    assert [
+        (deduction.code, deduction.amount_paise)
+        for deduction in explanation.deductions
+    ] == [
+        ("NETWORK_DISCOUNT_APPLIED", 90_000),
+        ("CATEGORY_COPAY_APPLIED", 36_000),
+    ]
+    assert [result.rule_id for result in proposal.rule_results][-3:] == [
+        "amount.consultation.network_discount",
+        "amount.consultation.copay",
+        "final.recommendation",
+    ]
+
+
+@settings(max_examples=30)
+@given(
+    amount_paise=st.integers(min_value=1, max_value=500_000),
+    lower_copay=st.integers(min_value=0, max_value=50),
+    extra_copay=st.integers(min_value=0, max_value=50),
+)
+def test_increasing_copay_cannot_increase_approved_amount(
+    amount_paise: int,
+    lower_copay: int,
+    extra_copay: int,
+) -> None:
+    higher_copay = min(lower_copay + extra_copay, 100)
+    lower = _evaluate_limit_case(
+        amount_paise=amount_paise,
+        provider_name="Apollo Hospitals",
+        copay_percent=lower_copay,
+    )
+    higher = _evaluate_limit_case(
+        amount_paise=amount_paise,
+        provider_name="Apollo Hospitals",
+        copay_percent=higher_copay,
+    )
+
+    assert 0 <= higher.approved_paise <= lower.approved_paise <= amount_paise
+
+
 def _evaluate_waiting_case(
     *,
     join_date: date,
@@ -500,17 +581,32 @@ def _evaluate_limit_case(
     *,
     amount_paise: int,
     limit_paise: int | None = None,
+    provider_name: str | None = None,
+    copay_percent: int | None = None,
 ):
     compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
     assert compilation.ir is not None
     policy = compilation.ir
-    if limit_paise is not None:
+    if limit_paise is not None or copay_percent is not None:
         category = policy.category_rules["CONSULTATION"]
         policy = policy.model_copy(
             update={
                 "category_rules": {
                     **policy.category_rules,
-                    "CONSULTATION": category.model_copy(update={"limit_paise": limit_paise}),
+                    "CONSULTATION": category.model_copy(
+                        update={
+                            **(
+                                {}
+                                if limit_paise is None
+                                else {"limit_paise": limit_paise}
+                            ),
+                            **(
+                                {}
+                                if copay_percent is None
+                                else {"copay_percent": copay_percent}
+                            ),
+                        }
+                    ),
                 }
             }
         )
@@ -537,6 +633,15 @@ def _evaluate_limit_case(
             state=FactState.KNOWN,
             value=amount_paise,
             evidence_refs=("document:bill-total",),
+        ),
+        provider_name=(
+            EvidenceFact(
+                state=FactState.KNOWN,
+                value=provider_name,
+                evidence_refs=("document:provider-name",),
+            )
+            if provider_name is not None
+            else None
         ),
         ytd_used_paise=EvidenceFact(
             state=FactState.KNOWN,

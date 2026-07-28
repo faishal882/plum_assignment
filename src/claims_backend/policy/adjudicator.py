@@ -201,6 +201,16 @@ class DeterministicPolicyAdjudicator:
                 0,
             )
         )
+        network_discount = _network_discount_result(
+            sequence=len(results) + 1,
+            casefile=casefile,
+            policy=policy,
+            amount=amount,
+            percent=category.network_discount_percent,
+        )
+        if network_discount is not None:
+            results.append(network_discount)
+            amount = network_discount.amount_after_paise
         deduction = amount * category.copay_percent // 100
         results.append(
             _result(
@@ -213,6 +223,7 @@ class DeterministicPolicyAdjudicator:
                 {
                     "copay_percent": category.copay_percent,
                     "eligible_paise": amount,
+                    "operation": "PERCENT_COPAY",
                 },
                 amount,
                 -deduction,
@@ -228,6 +239,22 @@ class DeterministicPolicyAdjudicator:
             if approved == 0
             else AdjudicationRecommendation.APPROVED
         )
+        results.append(
+            _result(
+                len(results) + 1,
+                "final.recommendation",
+                RuleStatus.APPLIED,
+                f"FINAL_{recommendation.value}",
+                "/rule_order/final_recommendation",
+                casefile.billed_paise.evidence_refs,
+                {
+                    "operation": "FINAL_RECOMMENDATION",
+                    "recommendation": recommendation.value,
+                },
+                approved,
+                0,
+            )
+        )
         return _proposal(
             recommendation,
             approved,
@@ -235,6 +262,45 @@ class DeterministicPolicyAdjudicator:
             policy,
             results,
         )
+
+
+def _network_discount_result(
+    *,
+    sequence: int,
+    casefile: ClaimCasefile,
+    policy: PolicyIR,
+    amount: int,
+    percent: int,
+) -> RuleResult | None:
+    provider = casefile.provider_name
+    if (
+        provider is None
+        or provider.state is not FactState.KNOWN
+        or percent == 0
+    ):
+        return None
+    provider_name = _string(provider.value)
+    network_names = {name.casefold(): name for name in policy.network_hospitals}
+    matched = network_names.get(provider_name.casefold())
+    if matched is None:
+        return None
+    deduction = amount * percent // 100
+    return _result(
+        sequence,
+        f"amount.{casefile.category.casefold()}.network_discount",
+        RuleStatus.APPLIED,
+        "NETWORK_DISCOUNT_APPLIED",
+        f"{policy.category_rules[casefile.category].source_pointer}/network_discount_percent",
+        (*provider.evidence_refs, *casefile.billed_paise.evidence_refs),
+        {
+            "provider_name": matched,
+            "network_discount_percent": percent,
+            "eligible_paise": amount,
+            "operation": "PERCENT_DISCOUNT",
+        },
+        amount,
+        -deduction,
+    )
 
 
 def _pre_authorization_result(

@@ -81,6 +81,7 @@ class StructuredDocumentEvidence(BaseModel):
     treatment_date: str | None = None
     clinical_condition: str | None = None
     clinical_treatment: str | None = None
+    provider_name: str | None = None
     line_items_paise: dict[str, int] = Field(default_factory=dict)
 
 

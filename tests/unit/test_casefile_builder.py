@@ -54,6 +54,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
             _candidate("document.pre_authorization.valid_to", "2024-12-31", "2024-12-31", 12),
             _candidate("document.pre_authorization.reference", "PA-123", "PA-123", 13),
             _candidate("document.pre_authorization.applicable_amount", "15000", "15000", 14),
+            _candidate("provider.name", "Apollo Hospitals", "Apollo Hospitals", 15),
         ),
         material_fact_paths=_MATERIAL_PATHS,
     )
@@ -78,7 +79,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     first = build_casefile(request)
     repeated = build_casefile(request)
 
-    assert first.schema_version == 5
+    assert first.schema_version == 6
     assert first.canonical_hash() == repeated.canonical_hash()
     assert first.member_snapshot_sha256 == "a" * 64
     assert first.evidence == reconciliation
@@ -101,6 +102,9 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     assert first.pre_authorization.valid_to.value == "2024-12-31"
     assert first.pre_authorization.reference.value == "PA-123"
     assert first.pre_authorization.applicable_paise.value == 1_500_000
+    assert first.provider_name is not None
+    assert first.provider_name.value == "apollo hospitals"
+    assert first.provider_name.evidence_refs == (f"{15:064x}",)
 
 
 def test_casefile_cannot_be_built_from_insufficient_evidence() -> None:

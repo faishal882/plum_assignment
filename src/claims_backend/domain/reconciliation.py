@@ -227,6 +227,7 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
     if fact_path in {
         "document.pre_authorization.patient_name",
         "document.pre_authorization.treatment",
+        "provider.name",
     }:
         return None if value is None else _normalize(str(value))
     if fact_path in {

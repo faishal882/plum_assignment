@@ -304,6 +304,16 @@ class PostgresClaimProcessor:
                             fixture.payload_sha256,
                         )
                     )
+                if document.provider_name is not None:
+                    candidates.append(
+                        _structured_fixture_candidate(
+                            "provider.name",
+                            document.provider_name,
+                            evidence.schema_version,
+                            source_ref,
+                            fixture.payload_sha256,
+                        )
+                    )
                 if document.billed_paise is not None:
                     candidates.append(
                         _structured_fixture_candidate(

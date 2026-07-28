@@ -144,6 +144,47 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         ),
         None,
     )
+    network_discount = next(
+        (
+            result
+            for result in proposal.rule_results
+            if result.reason_code == "NETWORK_DISCOUNT_APPLIED"
+        ),
+        None,
+    )
+    if (
+        network_discount is not None
+        and copay is not None
+        and network_discount.adjustment_paise < 0
+        and copay.adjustment_paise < 0
+    ):
+        discount_percent = _required_integer(
+            network_discount.inputs.get("network_discount_percent")
+        )
+        copay_percent = _required_integer(copay.inputs.get("copay_percent"))
+        category = copay.rule_id.removeprefix("amount.").removesuffix(".copay")
+        return MemberExplanation(
+            summary=(
+                f"{_format_rupees(proposal.approved_paise)} approved after a "
+                f"{discount_percent}% network discount and {copay_percent}% "
+                f"{category.replace('_', ' ')} co-pay."
+            ),
+            deductions=(
+                MemberDeduction(
+                    code=network_discount.reason_code,
+                    label=f"{discount_percent}% network discount",
+                    amount_paise=-network_discount.adjustment_paise,
+                ),
+                MemberDeduction(
+                    code=copay.reason_code,
+                    label=(
+                        f"{copay_percent}% "
+                        f"{category.replace('_', ' ')} co-pay"
+                    ),
+                    amount_paise=-copay.adjustment_paise,
+                ),
+            ),
+        )
     if copay is not None and copay.adjustment_paise < 0:
         percent = _required_integer(copay.inputs.get("copay_percent"))
         category = copay.rule_id.removeprefix("amount.").removesuffix(".copay")

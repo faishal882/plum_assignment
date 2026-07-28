@@ -84,6 +84,7 @@ class ClaimCasefile(BaseModel):
     patient_identity: EvidenceFact | None = None
     clinical_condition: EvidenceFact | None = None
     clinical_treatment: EvidenceFact | None = None
+    provider_name: EvidenceFact | None = None
     line_items: EvidenceFact | None = None
     line_item_facts: tuple[CasefileLineItem, ...] = ()
     pre_authorization: PreAuthorizationEvidence | None = None

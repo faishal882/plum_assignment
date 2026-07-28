@@ -30,6 +30,7 @@ _ALLOWED_FACT_PREFIXES = (
     "clinical.",
     "document.",
     "patient.",
+    "provider.",
     "treatment.",
 )
 

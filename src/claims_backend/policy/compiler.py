@@ -24,7 +24,7 @@ from claims_backend.domain.policy import (
     WaitingPeriodRules,
 )
 
-COMPILER_VERSION = "policy-compiler-v4"
+COMPILER_VERSION = "policy-compiler-v5"
 _TEST_IDENTIFIER_PATTERN = re.compile(r"\bTC\d+\b|case_id|test_case", re.IGNORECASE)
 
 
@@ -101,6 +101,7 @@ class _PolicySource(BaseModel):
     submission_rules: _SubmissionRules
     waiting_periods: _WaitingPeriods
     exclusions: _Exclusions
+    network_hospitals: list[str]
 
 
 class _Approval(BaseModel):
@@ -430,7 +431,7 @@ def _build_ir(
         if (concept := _clinical_exclusion_concept(label))
     }
     return PolicyIR(
-        schema_version=4,
+        schema_version=5,
         policy_id=source.policy_id,
         source_sha256=source_hash,
         overlay_sha256=overlay_hash,
@@ -449,6 +450,7 @@ def _build_ir(
         waiting_period_rules=waiting_period_rules,
         dental_procedure_rules=dental_procedure_rules,
         clinical_exclusion_rules=clinical_exclusion_rules,
+        network_hospitals=tuple(source.network_hospitals),
         relationship_aliases=overlay.clarifications.relationship_aliases,
         rule_order=(
             "eligibility",
@@ -462,7 +464,7 @@ def _build_ir(
             "copay",
             "final_recommendation",
         ),
-        engine_contract_version="policy-evaluator-v4",
+        engine_contract_version="policy-evaluator-v5",
     )
 
 

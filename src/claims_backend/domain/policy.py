@@ -143,6 +143,7 @@ class PolicyIR(BaseModel):
     waiting_period_rules: WaitingPeriodRules
     dental_procedure_rules: dict[str, DentalProcedureRule]
     clinical_exclusion_rules: dict[str, ClinicalExclusionRule]
+    network_hospitals: tuple[str, ...]
     relationship_aliases: dict[str, str]
     rule_order: tuple[str, ...]
     engine_contract_version: str
