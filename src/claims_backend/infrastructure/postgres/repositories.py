@@ -29,6 +29,7 @@ from claims_backend.domain.claims import (
     MemberDeduction,
     MemberExplanation,
     MemberIdentityConflict,
+    MemberLineItemExplanation,
     ReplaceDocument,
     SubmitClaim,
 )
@@ -606,6 +607,7 @@ def _to_domain(row: ClaimRow) -> Claim:
     explanation = row.member_explanation
     action = row.current_action
     deduction_values = None if explanation is None else explanation.get("deductions")
+    line_item_values = None if explanation is None else explanation.get("line_items")
     deductions = (
         tuple(
             MemberDeduction(
@@ -617,6 +619,22 @@ def _to_domain(row: ClaimRow) -> Claim:
             if isinstance(item, dict)
         )
         if isinstance(deduction_values, list)
+        else ()
+    )
+    line_items = (
+        tuple(
+            MemberLineItemExplanation(
+                concept=str(item["concept"]),
+                label=str(item["label"]),
+                claimed_paise=int(str(item["claimed_paise"])),
+                approved_paise=int(str(item["approved_paise"])),
+                status=str(item["status"]),
+                reason_code=str(item["reason_code"]),
+            )
+            for item in line_item_values
+            if isinstance(item, dict)
+        )
+        if isinstance(line_item_values, list)
         else ()
     )
     observed_roles = None if action is None else action.get("observed_document_roles")
@@ -650,6 +668,7 @@ def _to_domain(row: ClaimRow) -> Claim:
             else MemberExplanation(
                 summary=str(explanation["summary"]),
                 deductions=deductions,
+                line_items=line_items,
             )
         ),
         action=(

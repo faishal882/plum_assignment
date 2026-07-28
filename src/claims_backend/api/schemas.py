@@ -97,6 +97,20 @@ class MemberDeductionResponse(BaseModel):
 class MemberExplanationResponse(BaseModel):
     summary: str
     deductions: list[MemberDeductionResponse]
+    line_items: list["MemberLineItemExplanationResponse"] | None = None
+
+
+class MemberLineItemExplanationResponse(BaseModel):
+    concept: str
+    label: str
+    claimed_amount: Decimal
+    approved_amount: Decimal
+    status: str
+    reason_code: str
+
+    @field_serializer("claimed_amount", "approved_amount")
+    def serialize_amount(self, amount: Decimal) -> str:
+        return f"{amount:.2f}"
 
 
 class MemberActionResponse(BaseModel):

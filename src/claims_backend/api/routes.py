@@ -21,6 +21,7 @@ from claims_backend.api.schemas import (
     MemberAdjudicationResponse,
     MemberDeductionResponse,
     MemberExplanationResponse,
+    MemberLineItemExplanationResponse,
     ProgressResponse,
     ReplaceDocumentCommandRequest,
     ReplacementDocumentResponse,
@@ -358,6 +359,20 @@ def _to_response(claim: Claim) -> ClaimResponse:
                     )
                     for deduction in claim.explanation.deductions
                 ],
+                line_items=(
+                    [
+                        MemberLineItemExplanationResponse(
+                            concept=item.concept,
+                            label=item.label,
+                            claimed_amount=Decimal(item.claimed_paise) / 100,
+                            approved_amount=Decimal(item.approved_paise) / 100,
+                            status=item.status,
+                            reason_code=item.reason_code,
+                        )
+                        for item in claim.explanation.line_items
+                    ]
+                    or None
+                ),
             )
         ),
         action=(

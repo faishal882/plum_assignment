@@ -2,10 +2,62 @@ from claims_backend.domain.adjudication import (
     AdjudicationProposal,
     AdjudicationRecommendation,
 )
-from claims_backend.domain.claims import MemberDeduction, MemberExplanation
+from claims_backend.domain.claims import (
+    MemberDeduction,
+    MemberExplanation,
+    MemberLineItemExplanation,
+)
 
 
 def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanation:
+    dental_items = tuple(
+        result
+        for result in proposal.rule_results
+        if result.reason_code
+        in {"DENTAL_LINE_ITEM_COVERED", "DENTAL_LINE_ITEM_EXCLUDED"}
+    )
+    if dental_items:
+        line_items = tuple(
+            MemberLineItemExplanation(
+                concept=_required_string(result.inputs.get("concept")),
+                label=_required_string(result.inputs.get("label")),
+                claimed_paise=_required_integer(
+                    result.inputs.get("line_item_paise")
+                ),
+                approved_paise=(
+                    _required_integer(result.inputs.get("line_item_paise"))
+                    if result.reason_code == "DENTAL_LINE_ITEM_COVERED"
+                    else 0
+                ),
+                status=(
+                    "APPROVED"
+                    if result.reason_code == "DENTAL_LINE_ITEM_COVERED"
+                    else "REJECTED"
+                ),
+                reason_code=result.reason_code,
+            )
+            for result in dental_items
+        )
+        excluded = tuple(
+            item for item in line_items if item.status == "REJECTED"
+        )
+        excluded_paise = sum(item.claimed_paise for item in excluded)
+        return MemberExplanation(
+            summary=(
+                f"{_format_rupees(proposal.approved_paise)} approved; "
+                f"{_format_rupees(excluded_paise)} excluded from the dental claim."
+            ),
+            deductions=tuple(
+                MemberDeduction(
+                    code=item.reason_code,
+                    label=f"{item.label} is excluded by the dental policy.",
+                    amount_paise=item.claimed_paise,
+                )
+                for item in excluded
+            ),
+            line_items=line_items,
+        )
+
     waiting = next(
         (
             result
@@ -38,7 +90,7 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
         ),
         None,
     )
-    if copay is not None:
+    if copay is not None and copay.adjustment_paise < 0:
         percent = _required_integer(copay.inputs.get("copay_percent"))
         category = copay.rule_id.removeprefix("amount.").removesuffix(".copay")
         deduction = -copay.adjustment_paise

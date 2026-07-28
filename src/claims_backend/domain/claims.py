@@ -27,9 +27,20 @@ class MemberDeduction:
 
 
 @dataclass(frozen=True, slots=True)
+class MemberLineItemExplanation:
+    concept: str
+    label: str
+    claimed_paise: int
+    approved_paise: int
+    status: str
+    reason_code: str
+
+
+@dataclass(frozen=True, slots=True)
 class MemberExplanation:
     summary: str
     deductions: tuple[MemberDeduction, ...]
+    line_items: tuple[MemberLineItemExplanation, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
