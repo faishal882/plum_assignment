@@ -340,7 +340,6 @@ def _to_response(claim: Claim) -> ClaimResponse:
             is_terminal=claim.lifecycle
             in {
                 ClaimLifecycle.ACTION_REQUIRED,
-                ClaimLifecycle.IN_REVIEW,
                 ClaimLifecycle.DECIDED,
                 ClaimLifecycle.PROCESSING_FAILED,
             },
