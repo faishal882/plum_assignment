@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from claims_backend.api.app import create_app
+from claims_backend.application.work import LeaseLostError
 from claims_backend.config import Settings
 from claims_backend.infrastructure.postgres.models import (
     AuditEventRow,
@@ -19,6 +21,7 @@ from claims_backend.infrastructure.postgres.models import (
     DocumentRow,
     DocumentVersionRow,
 )
+from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 
 
 @pytest.mark.asyncio
@@ -168,6 +171,38 @@ async def test_concurrent_distinct_actions_apply_only_one_expected_version(
     assert claim.current_version == 2
     assert action_count == 1
     assert len(_stored_files(tmp_path)) == 2
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_replacement_fences_work_leased_for_the_superseded_version(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        claim_id = (await _submit(client)).json()["claim_id"]
+        now = datetime.now(UTC)
+        scheduler = PostgresWorkScheduler(app.state.session_factory, clock=lambda: now)
+        obsolete_lease = (await scheduler.lease("version-one-worker", 1, timedelta(minutes=5)))[0]
+        replaced = await _replace(client, claim_id, "replace-leased-version")
+
+    assert replaced.status_code == 200
+    with pytest.raises(LeaseLostError):
+        await scheduler.complete(obsolete_lease)
+    async with app.state.session_factory() as session:
+        work = (
+            await session.scalars(
+                select(ClaimWorkItemRow)
+                .where(ClaimWorkItemRow.claim_id == claim_id)
+                .order_by(ClaimWorkItemRow.operation_key)
+            )
+        ).all()
+    assert [(item.operation_key.rsplit(":", 1)[-1], item.status) for item in work] == [
+        ("v1", "SUPERSEDED"),
+        ("v2", "AVAILABLE"),
+    ]
     await app.state.engine.dispose()
 
 

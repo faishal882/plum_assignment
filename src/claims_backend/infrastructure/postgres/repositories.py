@@ -396,9 +396,15 @@ class PostgresClaimsRepository:
                 update(ClaimWorkItemRow)
                 .where(
                     ClaimWorkItemRow.claim_id == claim_id,
-                    ClaimWorkItemRow.status == "AVAILABLE",
+                    ClaimWorkItemRow.status.in_(("AVAILABLE", "LEASED")),
                 )
-                .values(status="SUPERSEDED", updated_at=now)
+                .values(
+                    status="SUPERSEDED",
+                    lease_owner=None,
+                    lease_token=None,
+                    lease_until=None,
+                    updated_at=now,
+                )
             )
             self._session.add(
                 ClaimWorkItemRow(
