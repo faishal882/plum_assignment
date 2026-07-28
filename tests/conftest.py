@@ -65,7 +65,8 @@ def _reset_database(database_url: str, *, include_setup: bool) -> None:
         )
         connection.execute(
             text(
-                "TRUNCATE TABLE workflow_effects, workflow_runs, claim_actions, "
+                "TRUNCATE TABLE rule_results, decision_records, casefiles, "
+                "processing_fixtures, workflow_effects, workflow_runs, claim_actions, "
                 "idempotency_keys, document_versions, documents, claim_work_items, "
                 f"audit_events, claim_versions, claims{setup_tables} "
                 "RESTART IDENTITY CASCADE"

@@ -412,6 +412,19 @@ class ClaimRow(Base):
     claimed_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     lifecycle_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    adjudication_recommendation: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    approved_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    member_explanation: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    current_action: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -720,4 +733,129 @@ class WorkflowEffectRow(Base):
     effect_key: Mapped[str] = mapped_column(String(160), nullable=False)
     effect_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProcessingFixtureRow(Base):
+    __tablename__ = "processing_fixtures"
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            name="processing_fixtures_claim_version_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    route: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CasefileRow(Base):
+    __tablename__ = "casefiles"
+    __table_args__ = (
+        UniqueConstraint("claim_id", "claim_version", name="casefiles_claim_version_uq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    policy_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    member_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("member_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    content: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DecisionRecordRow(Base):
+    __tablename__ = "decision_records"
+    __table_args__ = (
+        CheckConstraint(
+            "approved_paise >= 0",
+            name="decision_records_approved_nonnegative",
+        ),
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            name="decision_records_claim_version_uq",
+        ),
+        UniqueConstraint("canonical_hash", name="decision_records_canonical_hash_uq"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    casefile_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("casefiles.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    policy_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    recommendation: Mapped[str] = mapped_column(String(32), nullable=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class RuleResultRow(Base):
+    __tablename__ = "rule_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "decision_record_id",
+            "sequence",
+            name="rule_results_decision_sequence_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    decision_record_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("decision_records.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    rule_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    inputs: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    amount_before_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    adjustment_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount_after_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
