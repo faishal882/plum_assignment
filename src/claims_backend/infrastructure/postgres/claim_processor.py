@@ -15,6 +15,7 @@ from claims_backend.domain.adjudication import (
 from claims_backend.domain.evidence import StructuredEvidencePayload, TriageModelOutput
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
+    AffectedDocument,
     CasefileTrace,
     ClaimProcessingTrace,
     DecisionTrace,
@@ -415,6 +416,11 @@ class PostgresClaimProcessor:
                         client_document_id=item.client_document_id,
                         role=item.role.value,
                         readability=item.readability.status.value,
+                        readability_observation={
+                            "status": item.readability.status.value,
+                            "document_version_id": str(snapshot["document_version_id"]),
+                            "preview": item.readability.preview.model_dump(mode="json"),
+                        },
                         identity_observations=[
                             observation.model_dump(mode="json")
                             for observation in item.identity_observations
@@ -431,9 +437,33 @@ class PostgresClaimProcessor:
             observed = tuple(item.role.value for item in output.documents)
             required = policy.document_requirements[claim.category].required
             missing = tuple(role for role in required if role not in set(observed))
+            unreadable = tuple(
+                item
+                for item in output.documents
+                if item.readability.status.value == "UNREADABLE"
+            )
             message = None
             code = None
-            if missing:
+            affected_documents: tuple[AffectedDocument, ...] = ()
+            if unreadable:
+                code = "UNREADABLE_DOCUMENT"
+                affected_documents = tuple(
+                    AffectedDocument(
+                        client_document_id=item.client_document_id,
+                        observed_role=item.role.value,
+                        requested_action="REPLACE",
+                    )
+                    for item in unreadable
+                )
+                required = tuple(dict.fromkeys(item.role.value for item in unreadable))
+                first = affected_documents[0]
+                role_label = first.observed_role.replace("_", " ").lower()
+                message = (
+                    f"The {role_label} ({first.client_document_id}) could not be read. "
+                    "Please replace that document with a clearer image."
+                )
+                missing = required
+            elif missing:
                 code = "MISSING_REQUIRED_DOCUMENT"
                 if observed == ("PRESCRIPTION", "PRESCRIPTION") and missing == ("HOSPITAL_BILL",):
                     message = (
@@ -450,6 +480,7 @@ class PostgresClaimProcessor:
                 message=message,
                 observed_roles=observed,
                 required_roles=missing,
+                affected_documents=affected_documents,
             )
 
     async def commit_member_action(
@@ -503,6 +534,16 @@ class PostgresClaimProcessor:
                 message=result.message,
                 observed_document_roles=list(result.observed_roles),
                 required_document_roles=list(result.required_roles),
+                details={
+                    "affected_documents": [
+                        {
+                            "client_document_id": document.client_document_id,
+                            "observed_role": document.observed_role,
+                            "requested_action": document.requested_action,
+                        }
+                        for document in result.affected_documents
+                    ]
+                },
                 created_at=now,
             )
             session.add(action)
@@ -515,6 +556,14 @@ class PostgresClaimProcessor:
                 "message": result.message,
                 "observed_document_roles": list(result.observed_roles),
                 "required_document_roles": list(result.required_roles),
+                "affected_documents": [
+                    {
+                        "client_document_id": document.client_document_id,
+                        "observed_role": document.observed_role,
+                        "requested_action": document.requested_action,
+                    }
+                    for document in result.affected_documents
+                ],
             }
             claim.updated_at = now
             audit_sequence = (

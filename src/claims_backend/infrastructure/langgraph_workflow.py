@@ -10,7 +10,11 @@ from sqlalchemy.engine import make_url
 
 from claims_backend.application.processing import ClaimProcessor
 from claims_backend.application.workflow import WorkflowRepository, WorkflowRuntime
-from claims_backend.domain.processing import EarlyGateResult, ProcessingRoute
+from claims_backend.domain.processing import (
+    AffectedDocument,
+    EarlyGateResult,
+    ProcessingRoute,
+)
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import WorkflowRun, WorkflowRunStatus
 
@@ -35,6 +39,7 @@ class WorkflowState(TypedDict):
     action_message: str
     observed_roles: list[str]
     required_roles: list[str]
+    affected_documents: list[dict[str, str]]
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -59,6 +64,7 @@ class WorkflowUpdate(TypedDict, total=False):
     action_message: str
     observed_roles: list[str]
     required_roles: list[str]
+    affected_documents: list[dict[str, str]]
     terminal_committed: bool
     effect_count: int
 
@@ -159,6 +165,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "action_message": "",
                     "observed_roles": [],
                     "required_roles": [],
+                    "affected_documents": [],
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -304,6 +311,14 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
             "action_message": result.message or "",
             "observed_roles": list(result.observed_roles),
             "required_roles": list(result.required_roles),
+            "affected_documents": [
+                {
+                    "client_document_id": document.client_document_id,
+                    "observed_role": document.observed_role,
+                    "requested_action": document.requested_action,
+                }
+                for document in result.affected_documents
+            ],
             "effect_count": state["effect_count"] + int(created),
         }
 
@@ -319,6 +334,14 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 message=state["action_message"],
                 observed_roles=tuple(state["observed_roles"]),
                 required_roles=tuple(state["required_roles"]),
+                affected_documents=tuple(
+                    AffectedDocument(
+                        client_document_id=document["client_document_id"],
+                        observed_role=document["observed_role"],
+                        requested_action=document["requested_action"],
+                    )
+                    for document in state["affected_documents"]
+                ),
             ),
         )
         await self._after_effect("commit_member_action")
