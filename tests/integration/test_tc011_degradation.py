@@ -1,10 +1,14 @@
 import json
+import shutil
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from pypdf import PdfWriter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -28,6 +32,9 @@ from claims_backend.infrastructure.postgres.models import (
     ComponentFailureRow,
     DecisionRecordRow,
 )
+from claims_backend.infrastructure.postgres.reconstruction import (
+    PostgresClaimReconstructor,
+)
 from claims_backend.infrastructure.postgres.setup_import_repository import (
     PostgresSetupImportRepository,
 )
@@ -35,6 +42,7 @@ from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkSc
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
+from claims_backend.observability import ObservabilityConfig, create_observability
 
 _POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
 
@@ -71,6 +79,16 @@ async def test_tc011_degrades_only_anomaly_enrichment_without_losing_decision(
     app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
     transport = ASGITransport(app=app)
     sink = _FailingEngineeringSink()
+    exporter = InMemorySpanExporter()
+    log_root = tmp_path / "diagnostics"
+    observability = create_observability(
+        ObservabilityConfig(
+            log_root=log_root,
+            phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
+        ),
+        process_name="worker",
+        span_exporter=exporter,
+    )
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         rejected_injection = await client.post(
@@ -109,6 +127,7 @@ async def test_tc011_degrades_only_anomaly_enrichment_without_losing_decision(
             migrated_database_url,
             workflows,
             processor=processor,
+            observability=observability,
         )
         await runtime.setup()
 
@@ -144,6 +163,21 @@ async def test_tc011_degrades_only_anomaly_enrichment_without_losing_decision(
         }
     ]
     assert sink.attempts == 1
+    reconstructor = PostgresClaimReconstructor(app.state.session_factory)
+    reconstruction = await reconstructor.reconstruct(claim_id)
+    assert reconstruction is not None
+    assert reconstruction.decision is not None
+    assert reconstruction.decision["recommendation"] == "APPROVED"
+    assert reconstruction.decision["approved_paise"] == 400_000
+    assert reconstruction.component_failures[0]["component"] == "ANOMALY_ENRICHMENT"
+    assert reconstruction.evidence_references
+    before_diagnostic_deletion = reconstruction.canonical_sha256
+    observability.shutdown()
+    exporter.clear()
+    shutil.rmtree(log_root)
+    reconstructed_without_diagnostics = await reconstructor.reconstruct(claim_id)
+    assert reconstructed_without_diagnostics is not None
+    assert reconstructed_without_diagnostics.canonical_sha256 == before_diagnostic_deletion
 
     async with app.state.session_factory() as session:
         claim = await session.get(ClaimRow, claim_id)
