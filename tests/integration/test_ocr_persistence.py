@@ -53,7 +53,7 @@ class RecordedOcrProvider:
     ) -> OcrPageResult:
         self.calls.append(page.page_number)
         observation_id = sha256(
-            f"{page.document_version_id}:{page.page_number}".encode()
+            f"{page.document_version_id}:{page.page_number}:{role.value}".encode()
         ).hexdigest()
         return OcrPageResult(
             profile=TextractProfile.TEXT,
@@ -123,18 +123,23 @@ async def test_page_ocr_is_idempotent_and_merges_in_page_order(
 
     first = await ocr.process(pages, DocumentRole.UNKNOWN)
     replay = await ocr.process(pages, DocumentRole.UNKNOWN)
+    role_aware = await ocr.process(pages, DocumentRole.HOSPITAL_BILL)
 
-    assert provider.calls == [1, 2]
+    assert provider.calls == [1, 2, 1, 2]
     assert [item.page_number for item in first] == [1, 2]
     assert [item.text for item in first] == ["Page 1", "Page 2"]
     assert replay == first
+    assert [item.page_number for item in role_aware] == [1, 2]
+    assert {item.observation_id for item in first}.isdisjoint(
+        item.observation_id for item in role_aware
+    )
     async with app.state.session_factory() as session:
         result_count = await session.scalar(select(func.count()).select_from(OcrPageResultRow))
         observation_count = await session.scalar(
             select(func.count()).select_from(OcrObservationRow)
         )
-    assert result_count == 2
-    assert observation_count == 2
+    assert result_count == 4
+    assert observation_count == 4
     await app.state.engine.dispose()
 
 

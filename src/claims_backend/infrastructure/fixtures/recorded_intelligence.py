@@ -39,19 +39,20 @@ class RecordedDiscoveryOcrProvider:
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
-        if role is not DocumentRole.UNKNOWN:
-            raise RecordedInputUnavailableError(
-                "Recorded discovery OCR accepts only the UNKNOWN discovery role."
-            )
         document_kind = self._records.get(page.original_sha256)
         if document_kind is None:
             raise RecordedInputUnavailableError(
                 "No recorded discovery OCR result exists for this document hash."
             )
+        actual_role = DocumentRole(document_kind)
+        if role not in {DocumentRole.UNKNOWN, actual_role}:
+            raise RecordedInputUnavailableError(
+                "Recorded role-aware OCR has no result for the requested document role."
+            )
         observation_id = sha256(
             (
                 f"{page.document_version_id}:{page.original_sha256}:"
-                f"{page.page_number}:recorded-discovery-v1"
+                f"{page.page_number}:{role.value}:recorded-discovery-v1"
             ).encode()
         ).hexdigest()
         return OcrPageResult(

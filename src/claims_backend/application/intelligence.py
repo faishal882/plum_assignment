@@ -124,6 +124,7 @@ class OcrRepository(Protocol):
         page_artifact_id: UUID,
         provider_name: str,
         provider_version: str,
+        role: DocumentRole,
     ) -> bool: ...
 
     async def save(
@@ -131,12 +132,14 @@ class OcrRepository(Protocol):
         artifact: PageArtifact,
         provider_name: str,
         provider_version: str,
+        role: DocumentRole,
         result: OcrPageResult,
     ) -> None: ...
 
     async def list_observations(
         self,
         document_version_id: UUID,
+        role: DocumentRole | None = None,
     ) -> tuple[OcrObservation, ...]: ...
 
 
@@ -166,6 +169,7 @@ class OcrApplication:
                 artifact.id,
                 self._provider.provider_name,
                 self._provider.provider_version,
+                role,
             )
             if exists:
                 continue
@@ -175,9 +179,10 @@ class OcrApplication:
                 artifact,
                 self._provider.provider_name,
                 self._provider.provider_version,
+                role,
                 result,
             )
-        return await self._repository.list_observations(document_version_id)
+        return await self._repository.list_observations(document_version_id, role)
 
 
 class PageRenderingError(Exception):

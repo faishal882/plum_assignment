@@ -1004,7 +1004,10 @@ class PostgresClaimProcessor:
             key=lambda item: int(str(item["upload_index"])),
         ):
             document_version_id = UUID(str(snapshot["document_version_id"]))
-            observations = await self._ocr_repository.list_observations(document_version_id)
+            observations = await self._ocr_repository.list_observations(
+                document_version_id,
+                DocumentRole.UNKNOWN,
+            )
             if not observations:
                 raise ProcessingInvariantError("Discovery OCR observations are missing.")
             documents.append(
@@ -1509,9 +1512,12 @@ class PostgresClaimProcessor:
         if self._ocr_repository is None:
             raise ProcessingInvariantError("Structured extraction requires the OCR repository.")
         async with self._session_factory() as session:
-            document_version_ids = (
-                await session.scalars(
-                    select(DocumentTriageResultRow.document_version_id)
+            document_roles = (
+                await session.execute(
+                    select(
+                        DocumentTriageResultRow.document_version_id,
+                        DocumentTriageResultRow.role,
+                    )
                     .where(
                         DocumentTriageResultRow.claim_id == workflow_run.claim_id,
                         DocumentTriageResultRow.claim_version == workflow_run.claim_version,
@@ -1520,8 +1526,11 @@ class PostgresClaimProcessor:
                 )
             ).all()
         candidate_count = 0
-        for document_version_id in document_version_ids:
-            observations = await self._ocr_repository.list_observations(document_version_id)
+        for document_version_id, role in document_roles:
+            observations = await self._ocr_repository.list_observations(
+                document_version_id,
+                DocumentRole(role),
+            )
             result = await self._structured_model.extract_complex(
                 document_version_id,
                 observations,

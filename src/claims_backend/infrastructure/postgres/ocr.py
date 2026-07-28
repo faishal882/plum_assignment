@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from claims_backend.application.intelligence import PageArtifact
-from claims_backend.domain.evidence import NormalizedRegion
+from claims_backend.domain.evidence import DocumentRole, NormalizedRegion
 from claims_backend.domain.ocr import (
     OcrObservation,
     OcrObservationKind,
@@ -27,6 +27,7 @@ class PostgresOcrRepository:
         page_artifact_id: UUID,
         provider_name: str,
         provider_version: str,
+        role: DocumentRole,
     ) -> bool:
         async with self._session_factory() as session:
             result_id = await session.scalar(
@@ -34,6 +35,7 @@ class PostgresOcrRepository:
                     OcrPageResultRow.page_artifact_id == page_artifact_id,
                     OcrPageResultRow.provider_name == provider_name,
                     OcrPageResultRow.provider_version == provider_version,
+                    OcrPageResultRow.document_role == role.value,
                 )
             )
         return result_id is not None
@@ -43,6 +45,7 @@ class PostgresOcrRepository:
         artifact: PageArtifact,
         provider_name: str,
         provider_version: str,
+        role: DocumentRole,
         result: OcrPageResult,
     ) -> None:
         now = datetime.now(UTC)
@@ -56,6 +59,7 @@ class PostgresOcrRepository:
                     page_number=artifact.page_number,
                     provider_name=provider_name,
                     provider_version=provider_version,
+                    document_role=role.value,
                     profile=result.profile.value,
                     provider_request_id=result.provider_request_id,
                     retry_attempts=result.retry_attempts,
@@ -69,6 +73,7 @@ class PostgresOcrRepository:
                         OcrPageResultRow.page_artifact_id == artifact.id,
                         OcrPageResultRow.provider_name == provider_name,
                         OcrPageResultRow.provider_version == provider_version,
+                        OcrPageResultRow.document_role == role.value,
                     )
                 )
             ).one()
@@ -94,15 +99,17 @@ class PostgresOcrRepository:
     async def list_observations(
         self,
         document_version_id: UUID,
+        role: DocumentRole | None = None,
     ) -> tuple[OcrObservation, ...]:
         async with self._session_factory() as session:
-            rows = (
-                await session.scalars(
-                    select(OcrObservationRow).where(
-                        OcrObservationRow.document_version_id == document_version_id
-                    )
-                )
-            ).all()
+            statement = (
+                select(OcrObservationRow)
+                .join(OcrPageResultRow)
+                .where(OcrObservationRow.document_version_id == document_version_id)
+            )
+            if role is not None:
+                statement = statement.where(OcrPageResultRow.document_role == role.value)
+            rows = (await session.scalars(statement)).all()
         observations = tuple(_to_domain(row) for row in rows)
         return tuple(
             sorted(

@@ -175,16 +175,16 @@ class TextractAdapter:
         profile = _profile(role)
         if profile is TextractProfile.EXPENSE:
             response = self._client.analyze_expense(Document={"Bytes": page.content})
-            observations = _expense_observations(response, page)
+            observations = _expense_observations(response, page, role)
         elif profile is TextractProfile.FORMS_TABLES:
             response = self._client.analyze_document(
                 Document={"Bytes": page.content},
                 FeatureTypes=["FORMS", "TABLES"],
             )
-            observations = _block_observations(response, page)
+            observations = _block_observations(response, page, role)
         else:
             response = self._client.detect_document_text(Document={"Bytes": page.content})
-            observations = _block_observations(response, page)
+            observations = _block_observations(response, page, role)
         metadata = _mapping(response.get("ResponseMetadata"))
         return OcrPageResult(
             profile=profile,
@@ -262,6 +262,7 @@ def _profile(role: DocumentRole) -> TextractProfile:
 def _block_observations(
     response: Mapping[str, object],
     page: RenderedPage,
+    role: DocumentRole,
 ) -> list[OcrObservation]:
     observations: list[OcrObservation] = []
     for raw in _list(response.get("Blocks")):
@@ -274,6 +275,7 @@ def _block_observations(
         observations.append(
             _observation(
                 page=page,
+                role=role,
                 kind=OcrObservationKind(block_type),
                 text=text,
                 confidence=_confidence(block.get("Confidence")),
@@ -287,6 +289,7 @@ def _block_observations(
 def _expense_observations(
     response: Mapping[str, object],
     page: RenderedPage,
+    role: DocumentRole,
 ) -> list[OcrObservation]:
     observations: list[OcrObservation] = []
     for expense_index, raw_document in enumerate(_list(response.get("ExpenseDocuments"))):
@@ -298,6 +301,7 @@ def _expense_observations(
             observations.append(
                 _observation(
                     page=page,
+                    role=role,
                     kind=OcrObservationKind.EXPENSE_FIELD,
                     text=_required_string(value, "Text"),
                     confidence=_confidence(value.get("Confidence")),
@@ -318,6 +322,7 @@ def _expense_observations(
                     observations.append(
                         _observation(
                             page=page,
+                            role=role,
                             kind=OcrObservationKind.EXPENSE_FIELD,
                             text=_required_string(value, "Text"),
                             confidence=_confidence(value.get("Confidence")),
@@ -331,6 +336,7 @@ def _expense_observations(
 def _observation(
     *,
     page: RenderedPage,
+    role: DocumentRole,
     kind: OcrObservationKind,
     text: str,
     confidence: float,
@@ -340,6 +346,7 @@ def _observation(
     canonical = json.dumps(
         {
             "document_version_id": str(page.document_version_id),
+            "document_role": role.value,
             "page_number": page.page_number,
             "kind": kind.value,
             "text": text,

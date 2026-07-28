@@ -1196,6 +1196,7 @@ class OcrPageResultRow(Base):
             "page_artifact_id",
             "provider_name",
             "provider_version",
+            "document_role",
             name="ocr_page_results_artifact_provider_uq",
         ),
     )
@@ -1215,6 +1216,7 @@ class OcrPageResultRow(Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     provider_name: Mapped[str] = mapped_column(String(64), nullable=False)
     provider_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    document_role: Mapped[str] = mapped_column(String(32), nullable=False)
     profile: Mapped[str] = mapped_column(String(32), nullable=False)
     provider_request_id: Mapped[str] = mapped_column(String(128), nullable=False)
     retry_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
