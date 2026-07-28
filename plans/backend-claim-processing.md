@@ -51,19 +51,21 @@ Create the smallest useful backend slice: a member submits valid claim metadata,
 
 **User stories**: 57, 58, 59
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Put identity and authorization in front of the Phase 1 path. Development requests resolve a unique username into an immutable principal, while claim ownership and role checks depend only on the project-owned identity contract.
 
 ### Acceptance criteria
 
-- [ ] Seeded users have immutable UUIDs, unique case-insensitive usernames, and one or more supported roles.
-- [ ] The local development identity mechanism resolves requests without introducing passwords, tokens, sessions, or OAuth flows.
-- [ ] Renaming a username does not change historical ownership or audit identity.
-- [ ] Members can submit and read only claims associated with their member identity.
-- [ ] Unknown, malformed, or unauthorized identities receive stable errors without disclosing claim existence.
-- [ ] Claim mutations retain the immutable user ID and a username snapshot.
-- [ ] Tests prove that the local identity adapter can be replaced without changing claim application behavior.
+- [x] Seeded users have immutable UUIDs, unique case-insensitive usernames, and one or more supported roles.
+- [x] The local development identity mechanism resolves requests without introducing passwords, tokens, sessions, or OAuth flows.
+- [x] Renaming a username does not change historical ownership or audit identity.
+- [x] Members can submit and read only claims associated with their member identity.
+- [x] Unknown, malformed, or unauthorized identities receive stable errors without disclosing claim existence.
+- [x] Claim mutations retain the immutable user ID and a username snapshot.
+- [x] Tests prove that the local identity adapter can be replaced without changing claim application behavior.
 
 ---
 
