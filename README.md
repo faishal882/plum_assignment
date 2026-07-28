@@ -188,6 +188,56 @@ row; member inspection returns `utilization_state: "UNKNOWN"` and `used_paise: n
 submission schema forbids these setup facts, keeping PostgreSQL authoritative for later
 adjudication snapshots.
 
+## Policy compilation and activation
+
+The reviewed assignment overlay lives at
+`config/policy/assignment-overlay-v1.json`. It is an immutable, independently versioned and
+SHA-256-addressed artifact bound to the exact source-policy hash. It contains domain
+clarifications only—never evaluation case identifiers:
+
+- Category-specific limits take precedence over the general per-claim limit.
+- Exceeding a category limit produces `REJECT`, rather than an inferred cap.
+- The consultation category limit is ₹5,000 (`500000` paise in Policy IR).
+- MRI and CT scans require pre-authorization above ₹10,000.
+- PET scans always require pre-authorization.
+- Detailed dental line items may satisfy the dental evidence requirement.
+- `CHILDREN` is normalized to the canonical `CHILD` relationship vocabulary.
+
+Compile an already imported source using its hash:
+
+```bash
+uv run claimsctl policy compile \
+  --source-sha <policy-source-sha256> \
+  --overlay config/policy/assignment-overlay-v1.json
+```
+
+Compilation validates schemas and emits typed `SCHEMA`, `SEMANTIC`, `REFERENTIAL`, `VOCABULARY`,
+and `CONTRADICTION` findings. It writes canonical JSON Policy IR using integer paise and stores a
+deterministic IR hash. The same source, overlay, and compiler version return the original policy
+version.
+
+Inspect and activate a compiled version:
+
+```bash
+uv run claimsctl policy inspect --policy-version-id <policy-version-uuid>
+uv run claimsctl policy findings --policy-version-id <policy-version-uuid>
+uv run claimsctl policy activate \
+  --policy-version-id <policy-version-uuid> \
+  --actor operator.local
+uv run claimsctl policy activation-events \
+  --policy-version-id <policy-version-uuid>
+```
+
+Activation requires the local `OPERATOR` role and applies a configurable severity gate whose
+default blocks unresolved `ERROR` findings. Activation and findings remain CLI-only. Each
+successful transition creates an immutable actor-attributed event; PostgreSQL guards the overlay,
+compiled IR, findings, and activation events against content mutation.
+
+New claim acceptance requires one active policy version and a member version imported from that
+policy source. The claim and immutable claim-version snapshot pin the policy source, overlay,
+Policy IR, hashes, member record, member version, and setup import. Later policy activation or
+roster imports therefore cannot change the evidence governing an accepted claim.
+
 ## Local identities
 
 Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
