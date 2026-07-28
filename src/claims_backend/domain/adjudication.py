@@ -72,6 +72,7 @@ class ClaimCasefile(BaseModel):
     member_join_date: EvidenceFact | None = None
     patient_identity: EvidenceFact | None = None
     clinical_condition: EvidenceFact | None = None
+    clinical_treatment: EvidenceFact | None = None
     line_items: EvidenceFact | None = None
     line_item_facts: tuple[CasefileLineItem, ...] = ()
     evidence: EvidenceReconciliation | None = None

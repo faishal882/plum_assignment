@@ -37,6 +37,12 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
             _candidate("patient.name", "Rajesh Kumar", "Rajesh Kumar", 5),
             _candidate("treatment.date", "2024-11-01", "2024-11-01", 6),
             _candidate("billing.line_items.consultation_fee", "1000", "1000", 7),
+            _candidate(
+                "clinical.treatment",
+                "Bariatric Consultation",
+                "Bariatric Consultation",
+                8,
+            ),
         ),
         material_fact_paths=_MATERIAL_PATHS,
     )
@@ -61,7 +67,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     first = build_casefile(request)
     repeated = build_casefile(request)
 
-    assert first.schema_version == 3
+    assert first.schema_version == 4
     assert first.canonical_hash() == repeated.canonical_hash()
     assert first.member_snapshot_sha256 == "a" * 64
     assert first.evidence == reconciliation
@@ -71,6 +77,8 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     assert first.member_join_date.value == "2024-04-01"
     assert first.patient_identity.value == "rajesh kumar"
     assert first.clinical_condition.value == "viral fever"
+    assert first.clinical_treatment.value == "bariatric_treatment"
+    assert first.clinical_treatment.evidence_refs == (f"{8:064x}",)
     assert first.line_items.value == ["billing.line_items.consultation_fee=100000"]
     assert first.line_item_facts[0].concept == "consultation_fee"
     assert first.line_item_facts[0].amount_paise == 100_000

@@ -63,7 +63,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         candidate_id for fact in line_item_facts for candidate_id in fact.candidate_ids
     )
     return ClaimCasefile(
-        schema_version=3,
+        schema_version=4,
         claim_id=request.claim_id,
         claim_version=request.claim_version,
         member_id=request.member_id,
@@ -89,6 +89,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         member_join_date=_evidence_fact(_required_fact(facts, "member.join_date")),
         patient_identity=_evidence_fact(_required_fact(facts, "patient.name")),
         clinical_condition=_optional_evidence_fact(facts.get("clinical.condition")),
+        clinical_treatment=_optional_evidence_fact(facts.get("clinical.treatment")),
         line_items=EvidenceFact(
             state=FactState.KNOWN if line_item_facts else FactState.UNKNOWN,
             value=[f"{fact.fact_path}={fact.value}" for fact in line_item_facts],

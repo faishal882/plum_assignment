@@ -216,6 +216,10 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
         normalized = "" if value is None else _normalize(str(value))
         if normalized in {"t2dm", "type 2 diabetes", "type 2 diabetes mellitus"}:
             return "diabetes"
+        if fact_path == "clinical.condition" and "obesity" in normalized.split():
+            return "obesity"
+        if fact_path == "clinical.treatment" and "bariatric" in normalized.split():
+            return "bariatric_treatment"
         return normalized
     return value
 

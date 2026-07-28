@@ -150,6 +150,48 @@ def test_conflicting_treatment_dates_require_correction() -> None:
     )
 
 
+def test_clinical_exclusion_concepts_normalize_without_broad_neighbor_matching() -> None:
+    obesity = _candidate(
+        candidate_id="4" * 64,
+        fact_path="clinical.condition",
+        value="Morbid Obesity — BMI 37",
+        normalized_value="Morbid Obesity",
+        observation_id="4" * 64,
+        page=1,
+    )
+    bariatric = _candidate(
+        candidate_id="5" * 64,
+        fact_path="clinical.treatment",
+        value="Bariatric Consultation and Customised Diet Plan",
+        normalized_value="Bariatric Consultation",
+        observation_id="5" * 64,
+        page=1,
+    )
+    neighbor = _candidate(
+        candidate_id="6" * 64,
+        fact_path="clinical.treatment",
+        value="Nutrition counselling for diabetes",
+        normalized_value="Nutrition counselling for diabetes",
+        observation_id="6" * 64,
+        page=1,
+    )
+
+    excluded = reconcile_evidence(
+        (obesity, bariatric),
+        material_fact_paths=("clinical.condition", "clinical.treatment"),
+    )
+    covered_neighbor = reconcile_evidence(
+        (neighbor,),
+        material_fact_paths=("clinical.treatment",),
+    )
+
+    assert [fact.value for fact in excluded.facts] == [
+        "obesity",
+        "bariatric_treatment",
+    ]
+    assert covered_neighbor.facts[0].value == "nutrition counselling for diabetes"
+
+
 def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:
     member_candidate = ProvenancedEvidenceCandidate(
         candidate_id="c" * 64,
