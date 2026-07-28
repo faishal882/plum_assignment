@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -7,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from claims_backend.application.claims import (
     ActionIdempotencyConflictError,
+    ActivePolicyUnavailableError,
     ClaimActionNotAllowedError,
     ClaimCreationResult,
     ClaimDocumentNotFoundError,
     ClaimNotFoundError,
     IdempotencyConflictError,
+    MemberSnapshotUnavailableError,
     StaleClaimVersionError,
 )
 from claims_backend.application.documents import StoredDocument
@@ -33,7 +36,23 @@ from claims_backend.infrastructure.postgres.models import (
     DocumentRow,
     DocumentVersionRow,
     IdempotencyKeyRow,
+    MemberRow,
+    MemberVersionRow,
+    PolicyOverlayRow,
+    PolicySourceRow,
+    PolicyVersionRow,
+    SetupImportRow,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _PinnedSnapshots:
+    policy_source_id: UUID
+    policy_overlay_id: UUID
+    policy_version_id: UUID
+    member_version_id: UUID
+    policy: dict[str, object]
+    member: dict[str, object]
 
 
 class PostgresClaimsRepository:
@@ -91,12 +110,17 @@ class PostgresClaimsRepository:
                     replayed=True,
                 )
 
+            pins = await self._resolve_pins(submission)
             row = ClaimRow(
                 id=claim_id,
                 owner_user_id=principal.user_id,
                 owner_username_snapshot=principal.username,
                 member_id=submission.member_id,
                 policy_id=submission.policy_id,
+                policy_source_id=pins.policy_source_id,
+                policy_overlay_id=pins.policy_overlay_id,
+                policy_version_id=pins.policy_version_id,
+                member_version_id=pins.member_version_id,
                 category=submission.category.value,
                 treatment_date=submission.treatment_date,
                 claimed_paise=submission.claimed_paise,
@@ -151,6 +175,7 @@ class PostgresClaimsRepository:
                             )
                         ),
                         source="SUBMISSION",
+                        pinned_snapshots=pins,
                     ),
                     created_at=now,
                 )
@@ -291,6 +316,14 @@ class PostgresClaimsRepository:
             new_claim_version = claim_row.current_version + 1
             action_id = uuid4()
             previous_lifecycle = claim_row.lifecycle_status
+            previous_claim_version = (
+                await self._session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == claim_id,
+                        ClaimVersionRow.version == action.expected_version,
+                    )
+                )
+            ).one()
 
             document_version_row = DocumentVersionRow(
                 id=document.storage_id,
@@ -339,6 +372,7 @@ class PostgresClaimsRepository:
                         source="DOCUMENT_REPLACEMENT",
                         action_id=action_id,
                         previous_version=action.expected_version,
+                        prior_submission=previous_claim_version.submission,
                     ),
                     created_at=now,
                 )
@@ -433,6 +467,88 @@ class PostgresClaimsRepository:
             replayed=False,
         )
 
+    async def _resolve_pins(self, submission: SubmitClaim) -> _PinnedSnapshots:
+        row = (
+            await self._session.execute(
+                select(
+                    PolicyVersionRow,
+                    PolicySourceRow,
+                    PolicyOverlayRow,
+                    MemberRow,
+                    MemberVersionRow,
+                    SetupImportRow,
+                )
+                .join(
+                    PolicySourceRow,
+                    PolicySourceRow.id == PolicyVersionRow.policy_source_id,
+                )
+                .join(
+                    PolicyOverlayRow,
+                    PolicyOverlayRow.id == PolicyVersionRow.policy_overlay_id,
+                )
+                .join(
+                    MemberRow,
+                    (MemberRow.policy_id == PolicyVersionRow.policy_id)
+                    & (MemberRow.external_member_id == submission.member_id),
+                )
+                .join(
+                    MemberVersionRow,
+                    MemberVersionRow.member_id == MemberRow.id,
+                )
+                .join(
+                    SetupImportRow,
+                    SetupImportRow.id == MemberVersionRow.setup_import_id,
+                )
+                .where(
+                    PolicyVersionRow.policy_id == submission.policy_id,
+                    PolicyVersionRow.status == "ACTIVE",
+                    SetupImportRow.policy_source_id
+                    == PolicyVersionRow.policy_source_id,
+                )
+                .order_by(
+                    SetupImportRow.imported_at.desc(),
+                    MemberVersionRow.version.desc(),
+                )
+                .limit(1)
+            )
+        ).one_or_none()
+        if row is None:
+            active_exists = await self._session.scalar(
+                select(PolicyVersionRow.id).where(
+                    PolicyVersionRow.policy_id == submission.policy_id,
+                    PolicyVersionRow.status == "ACTIVE",
+                )
+            )
+            if active_exists is None:
+                raise ActivePolicyUnavailableError(submission.policy_id)
+            raise MemberSnapshotUnavailableError(submission.member_id)
+
+        policy_version, source, overlay, member, member_version, setup_import = row
+        if policy_version.ir_sha256 is None:
+            raise ActivePolicyUnavailableError(submission.policy_id)
+        return _PinnedSnapshots(
+            policy_source_id=source.id,
+            policy_overlay_id=overlay.id,
+            policy_version_id=policy_version.id,
+            member_version_id=member_version.id,
+            policy={
+                "policy_source_id": str(source.id),
+                "policy_overlay_id": str(overlay.id),
+                "policy_version_id": str(policy_version.id),
+                "policy_version": policy_version.version,
+                "source_sha256": source.source_sha256,
+                "overlay_sha256": overlay.source_sha256,
+                "ir_sha256": policy_version.ir_sha256,
+            },
+            member={
+                "member_id": member.external_member_id,
+                "member_record_id": str(member.id),
+                "member_version_id": str(member_version.id),
+                "member_version": member_version.version,
+                "setup_import_id": str(setup_import.id),
+            },
+        )
+
 
 def _claim_version_snapshot(
     claim: ClaimRow,
@@ -441,6 +557,8 @@ def _claim_version_snapshot(
     source: str,
     action_id: UUID | None = None,
     previous_version: int | None = None,
+    pinned_snapshots: _PinnedSnapshots | None = None,
+    prior_submission: dict[str, object] | None = None,
 ) -> dict[str, object]:
     snapshot: dict[str, object] = {
         "source": source,
@@ -465,6 +583,12 @@ def _claim_version_snapshot(
             for document, document_version in documents
         ],
     }
+    if pinned_snapshots is not None:
+        snapshot["policy_snapshot"] = pinned_snapshots.policy
+        snapshot["member_snapshot"] = pinned_snapshots.member
+    elif prior_submission is not None:
+        snapshot["policy_snapshot"] = prior_submission["policy_snapshot"]
+        snapshot["member_snapshot"] = prior_submission["member_snapshot"]
     if action_id is not None:
         snapshot["action_id"] = str(action_id)
     if previous_version is not None:

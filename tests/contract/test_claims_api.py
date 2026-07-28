@@ -451,3 +451,37 @@ async def test_invalid_claim_metadata_returns_a_stable_error(
     }
 
     await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.clean_setup_data
+async def test_claim_submission_requires_an_active_compiled_policy(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    metadata = {
+        "member_id": "EMP001",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": "1500.00",
+        "currency": "INR",
+        "documents": [{"upload_index": 0, "client_document_id": "doc-prescription"}],
+    }
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "requires-active-policy",
+            },
+            data={"metadata": json.dumps(metadata)},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ACTIVE_POLICY_UNAVAILABLE"
+    await app.state.engine.dispose()

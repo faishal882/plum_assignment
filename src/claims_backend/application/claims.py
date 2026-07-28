@@ -24,6 +24,14 @@ class ClaimSubmissionForbiddenError(Exception):
     pass
 
 
+class ActivePolicyUnavailableError(Exception):
+    pass
+
+
+class MemberSnapshotUnavailableError(Exception):
+    pass
+
+
 class IdempotencyConflictError(Exception):
     pass
 

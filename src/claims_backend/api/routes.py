@@ -22,12 +22,14 @@ from claims_backend.api.schemas import (
 from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
     ActionIdempotencyConflictError,
+    ActivePolicyUnavailableError,
     ClaimActionForbiddenError,
     ClaimActionNotAllowedError,
     ClaimDocumentNotFoundError,
     ClaimNotFoundError,
     ClaimSubmissionForbiddenError,
     IdempotencyConflictError,
+    MemberSnapshotUnavailableError,
     StaleClaimVersionError,
 )
 from claims_backend.application.documents import (
@@ -99,6 +101,24 @@ async def submit_claim(
             detail={
                 "code": "CLAIM_SUBMISSION_FORBIDDEN",
                 "message": "The identity cannot submit a claim for this member.",
+                "details": [],
+            },
+        ) from error
+    except ActivePolicyUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ACTIVE_POLICY_UNAVAILABLE",
+                "message": "No active compiled policy is available for this claim.",
+                "details": [],
+            },
+        ) from error
+    except MemberSnapshotUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "MEMBER_SNAPSHOT_UNAVAILABLE",
+                "message": "No member snapshot is available for the active policy.",
                 "details": [],
             },
         ) from error
