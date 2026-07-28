@@ -659,6 +659,62 @@ async def test_assignment_tc008_per_claim_limit_decision_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc009_routes_same_day_velocity_to_review_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    await _import_tc009_history(app.state.session_factory)
+    prescription, bill = _assignment_tc009_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp008",
+                "Idempotency-Key": "assignment-tc009-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc009_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp008"},
+        )
+        tasks = await client.get(
+            "/v1/review-tasks",
+            headers={"X-Dev-Username": "reviewer.local"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "IN_REVIEW"
+    assert body["handling_status"] == "MANUAL_REVIEW"
+    assert body["progress"] == {"current_stage": "IN_REVIEW", "is_terminal": False}
+    assert "adjudication" not in body
+    assert tasks.status_code == 200
+    assert len(tasks.json()) == 1
+    task = tasks.json()[0]
+    assert task["claim_id"] == str(claim_id)
+    assert task["signal_codes"] == ["SAME_DAY_CLAIM_VELOCITY"]
+    assert task["machine_recommendation"] == "APPROVED"
+    assert task["machine_approved_amount"] == "4320.00"
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -1068,6 +1124,43 @@ def _assignment_tc008_documents() -> tuple[bytes, bytes]:
     return prescription, bill
 
 
+def _assignment_tc009_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP008",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-10-30",
+        "claimed_amount": "4800.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F017"},
+            {"upload_index": 1, "client_document_id": "F018"},
+        ],
+    }
+
+
+def _assignment_tc009_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {"diagnosis": "Migraine", "doctor_name": "Dr. S. Khan"},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {"total": 4800},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
+
+
 def _assignment_tc004_documents() -> tuple[bytes, bytes]:
     prescription = _assignment_document_image(
         "PRESCRIPTION\n"
@@ -1177,4 +1270,54 @@ async def _import_member_utilization(
             }
         ).encode(),
         member_data_source_name=f"{member_id.casefold()}-no-fixture-member-facts.json",
+    )
+
+
+async def _import_tc009_history(factory) -> None:
+    await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
+        _POLICY_BYTES,
+        source_name="policy_terms.json",
+        member_data_bytes=json.dumps(
+            {
+                "policy_id": "PLUM_GHI_2024",
+                "as_of_date": "2024-10-30",
+                "claim_history": [
+                    {
+                        "history_claim_id": "CLM_0081",
+                        "member_id": "EMP008",
+                        "treatment_date": "2024-10-30",
+                        "amount": "1200.00",
+                        "currency": "INR",
+                        "provider": "City Clinic A",
+                    },
+                    {
+                        "history_claim_id": "CLM_0082",
+                        "member_id": "EMP008",
+                        "treatment_date": "2024-10-30",
+                        "amount": "1800.00",
+                        "currency": "INR",
+                        "provider": "City Clinic B",
+                    },
+                    {
+                        "history_claim_id": "CLM_0083",
+                        "member_id": "EMP008",
+                        "treatment_date": "2024-10-30",
+                        "amount": "2100.00",
+                        "currency": "INR",
+                        "provider": "Wellness Center",
+                    },
+                ],
+                "utilization": [
+                    {
+                        "member_id": "EMP008",
+                        "period_start": "2024-04-01",
+                        "period_end": "2025-03-31",
+                        "used_amount": "0.00",
+                        "currency": "INR",
+                        "as_of_date": "2024-10-30",
+                    }
+                ],
+            }
+        ).encode(),
+        member_data_source_name="tc009-no-fixture-member-facts.json",
     )

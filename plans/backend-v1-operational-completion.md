@@ -113,6 +113,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   recorded worker without a processing fixture.
 - [x] Assignment-shaped TC008 reaches its per-claim-limit decision through the standard recorded
   worker without a processing fixture.
+- [x] Assignment-shaped TC009 reaches an auditable same-day-velocity review task through the
+  standard recorded worker without a processing fixture.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
