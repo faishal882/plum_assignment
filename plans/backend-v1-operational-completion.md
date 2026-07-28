@@ -87,6 +87,7 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   bill path without a processing fixture.
 - [x] Recorded corpus includes the TC005 diabetes waiting-period document pair.
 - [x] Recorded corpus includes the TC006 dental line-item document.
+- [x] Recorded corpus includes TC007 MRI authorization documents and treatment extraction.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
