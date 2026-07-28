@@ -140,6 +140,33 @@ async def test_api_process_writes_its_own_correlated_trace_and_log(
     await app.state.engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_submission_span_uses_claim_as_session_id(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path / "logs"),
+        process_name="api",
+        span_exporter=exporter,
+    )
+    app = create_app(
+        Settings(database_url=migrated_database_url, data_root=tmp_path),
+        observability=observability,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        claim_id = await _submit_claim(client, "submission-session")
+
+    observability.shutdown()
+    span = next(
+        span for span in exporter.get_finished_spans() if span.name == "api.claim_submitted"
+    )
+    assert span.attributes["session.id"] == str(claim_id)
+    assert span.attributes["claim.id"] == str(claim_id)
+    await app.state.engine.dispose()
+
+
 async def _submit_claim(client: AsyncClient, idempotency_key: str) -> UUID:
     response = await client.post(
         "/v1/claims",
