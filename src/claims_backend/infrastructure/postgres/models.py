@@ -859,3 +859,69 @@ class RuleResultRow(Base):
     adjustment_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_after_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DocumentTriageResultRow(Base):
+    __tablename__ = "document_triage_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            "client_document_id",
+            name="document_triage_results_claim_version_document_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    client_document_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    readability: Mapped[str] = mapped_column(String(32), nullable=False)
+    identity_observations: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB,
+        nullable=False,
+    )
+    model_route: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemberActionRow(Base):
+    __tablename__ = "member_actions"
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            name="member_actions_claim_version_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_document_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    required_document_roles: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
