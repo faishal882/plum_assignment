@@ -1,8 +1,9 @@
+import re
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
 from pydantic import ValidationError
 
 from claims_backend.api.dependencies import (
@@ -19,6 +20,7 @@ from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
     ClaimNotFoundError,
     ClaimSubmissionForbiddenError,
+    IdempotencyConflictError,
 )
 from claims_backend.application.documents import (
     ClaimUploadTooLargeError,
@@ -29,6 +31,7 @@ from claims_backend.application.documents import (
 from claims_backend.domain.claims import Claim, DocumentManifestItem, SubmitClaim
 
 router = APIRouter(prefix="/v1/claims", tags=["claims"])
+_IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 @router.post(
@@ -41,7 +44,9 @@ async def submit_claim(
     files: Annotated[list[UploadFile], File()],
     application: ClaimsApplicationDependency,
     principal: CurrentPrincipalDependency,
+    idempotency_key_header: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ClaimReceiptResponse:
+    idempotency_key = _validate_idempotency_key(idempotency_key_header)
     request = _parse_metadata(metadata)
     if len(files) != len(request.documents):
         raise HTTPException(
@@ -73,6 +78,7 @@ async def submit_claim(
             submission,
             principal,
             [FastAPIUploadSource(upload) for upload in files],
+            idempotency_key,
         )
     except ClaimSubmissionForbiddenError as error:
         raise HTTPException(
@@ -80,6 +86,15 @@ async def submit_claim(
             detail={
                 "code": "CLAIM_SUBMISSION_FORBIDDEN",
                 "message": "The identity cannot submit a claim for this member.",
+                "details": [],
+            },
+        ) from error
+    except IdempotencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IDEMPOTENCY_KEY_REUSED",
+                "message": "The Idempotency-Key was already used for a different request.",
                 "details": [],
             },
         ) from error
@@ -111,6 +126,28 @@ async def get_claim(
             },
         ) from error
     return _to_response(claim)
+
+
+def _validate_idempotency_key(value: str | None) -> str:
+    if value is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "IDEMPOTENCY_KEY_REQUIRED",
+                "message": "An Idempotency-Key header is required.",
+                "details": [],
+            },
+        )
+    if _IDEMPOTENCY_KEY_PATTERN.fullmatch(value) is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "INVALID_IDEMPOTENCY_KEY",
+                "message": "The Idempotency-Key header is invalid.",
+                "details": [],
+            },
+        )
+    return value
 
 
 def _parse_metadata(metadata: str) -> ClaimMetadataRequest:

@@ -2,8 +2,13 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from claims_backend.application.claims import (
+    ClaimCreationResult,
+    IdempotencyConflictError,
+)
 from claims_backend.application.documents import StoredDocument
 from claims_backend.domain.claims import Claim, ClaimCategory, ClaimLifecycle, SubmitClaim
 from claims_backend.domain.identity import Principal
@@ -14,6 +19,7 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimWorkItemRow,
     DocumentRow,
     DocumentVersionRow,
+    IdempotencyKeyRow,
 )
 
 
@@ -26,26 +32,13 @@ class PostgresClaimsRepository:
         submission: SubmitClaim,
         principal: Principal,
         documents: tuple[StoredDocument, ...],
-    ) -> Claim:
+        idempotency_key: str,
+        request_hash: str,
+    ) -> ClaimCreationResult:
         claim_id = uuid4()
         now = datetime.now(UTC)
         version = 1
 
-        row = ClaimRow(
-            id=claim_id,
-            owner_user_id=principal.user_id,
-            owner_username_snapshot=principal.username,
-            member_id=submission.member_id,
-            policy_id=submission.policy_id,
-            category=submission.category.value,
-            treatment_date=submission.treatment_date,
-            claimed_paise=submission.claimed_paise,
-            currency=submission.currency,
-            lifecycle_status=ClaimLifecycle.QUEUED.value,
-            current_version=version,
-            created_at=now,
-            updated_at=now,
-        )
         manifest = [
             {
                 "upload_index": item.upload_index,
@@ -55,6 +48,59 @@ class PostgresClaimsRepository:
         ]
 
         async with self._session.begin():
+            inserted_claim_id = await self._session.scalar(
+                insert(IdempotencyKeyRow)
+                .values(
+                    id=uuid4(),
+                    scope_user_id=principal.user_id,
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                    response_claim_id=claim_id,
+                    response_status=202,
+                    created_at=now,
+                    updated_at=now,
+                )
+                .on_conflict_do_nothing(constraint="idempotency_keys_user_key_uq")
+                .returning(IdempotencyKeyRow.response_claim_id)
+            )
+            if inserted_claim_id is None:
+                existing = (
+                    await self._session.execute(
+                        select(IdempotencyKeyRow)
+                        .where(
+                            IdempotencyKeyRow.scope_user_id == principal.user_id,
+                            IdempotencyKeyRow.idempotency_key == idempotency_key,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one()
+                if existing.request_hash != request_hash:
+                    raise IdempotencyConflictError
+                existing_claim = (
+                    await self._session.execute(
+                        select(ClaimRow).where(ClaimRow.id == existing.response_claim_id)
+                    )
+                ).scalar_one()
+                return ClaimCreationResult(
+                    claim=_to_domain(existing_claim),
+                    replayed=True,
+                )
+
+            row = ClaimRow(
+                id=claim_id,
+                owner_user_id=principal.user_id,
+                owner_username_snapshot=principal.username,
+                member_id=submission.member_id,
+                policy_id=submission.policy_id,
+                category=submission.category.value,
+                treatment_date=submission.treatment_date,
+                claimed_paise=submission.claimed_paise,
+                currency=submission.currency,
+                lifecycle_status=ClaimLifecycle.QUEUED.value,
+                current_version=version,
+                created_at=now,
+                updated_at=now,
+            )
             self._session.add(row)
             await self._session.flush((row,))
             self._session.add(
@@ -133,7 +179,7 @@ class PostgresClaimsRepository:
                 )
             )
 
-        return _to_domain(row)
+        return ClaimCreationResult(claim=_to_domain(row), replayed=False)
 
     async def get_owned(self, claim_id: UUID, owner_user_id: UUID) -> Claim | None:
         result = await self._session.execute(
