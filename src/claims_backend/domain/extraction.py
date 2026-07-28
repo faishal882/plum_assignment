@@ -15,7 +15,14 @@ JsonScalar = str | int | float | bool | None
 class UntrustedEvidenceCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    fact_path: str = Field(min_length=1, max_length=128)
+    fact_path: str = Field(
+        min_length=1,
+        max_length=128,
+        description=(
+            "Canonical fact path beginning with billing., clinical., document., "
+            "patient., or treatment."
+        ),
+    )
     value: JsonScalar
     normalized_value: JsonScalar = None
     evidence_refs: tuple[str, ...] = Field(min_length=1, max_length=20)

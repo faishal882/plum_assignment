@@ -22,6 +22,13 @@ from claims_backend.model.extraction import (
 from claims_backend.model.routing import ModelRouteConfig, ModelRouter
 from claims_backend.model.transport import ModelInvocation, StructuredModelTransport
 
+COMPLEX_EXTRACTION_SYSTEM_PROMPT = (
+    "Extract grounded evidence candidates only. Never decide policy or payment. "
+    "Every fact_path must begin with exactly one allowed namespace: billing., "
+    "clinical., document., patient., or treatment. Use billing.total for a bill's "
+    "total amount. Every candidate must cite one or more supplied observation_id values."
+)
+
 
 @dataclass(frozen=True, slots=True)
 class FastTriageResult:
@@ -100,7 +107,7 @@ class StructuredModelApplication:
         messages = [
             (
                 "system",
-                "Extract grounded evidence candidates only. Never decide policy or payment.",
+                COMPLEX_EXTRACTION_SYSTEM_PROMPT,
             ),
             (
                 "human",
@@ -148,6 +155,7 @@ def _input_sha256(
             "route": config.route.value,
             "prompt_version": config.prompt_version,
             "schema_version": config.schema_version,
+            "structured_output_method": config.structured_output_method,
             "observations": [observation.model_dump(mode="json") for observation in observations],
         },
         sort_keys=True,

@@ -25,7 +25,10 @@ class RecordedStructuredModelTransport:
         del schema, messages
         self.calls.append(config.route)
         raw_output = deepcopy(self._responses[config.route])
-        request_key = (f"{config.route.value}:{config.model_id}:{config.prompt_version}").encode()
+        request_key = (
+            f"{config.route.value}:{config.model_id}:{config.prompt_version}:"
+            f"{config.structured_output_method}"
+        ).encode()
         return ModelInvocation(
             raw_output=raw_output,
             provider_request_id=f"recorded-{sha256(request_key).hexdigest()[:24]}",

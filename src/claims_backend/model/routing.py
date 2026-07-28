@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 from claims_backend.domain.extraction import ModelRoute
 
@@ -13,6 +14,7 @@ class ModelRouteConfig:
     enabled: bool
     evaluation_approved: bool
     temperature: int = 0
+    structured_output_method: Literal["function_calling", "json_schema"] = "function_calling"
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -54,7 +56,7 @@ class ModelRouter:
                     route=ModelRoute.COMPLEX_EXTRACTION,
                     model_id=model_id,
                     region=region,
-                    prompt_version="complex-extraction-prompt-v1",
+                    prompt_version="complex-extraction-prompt-v2",
                     schema_version="complex-extraction-v1",
                     enabled=True,
                     evaluation_approved=True,

@@ -7,6 +7,7 @@ from claims_backend.domain.extraction import (
     ModelRoute,
 )
 from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
+from claims_backend.model.application import COMPLEX_EXTRACTION_SYSTEM_PROMPT
 from claims_backend.model.extraction import validate_complex_output
 from claims_backend.model.routing import ModelRouter
 
@@ -21,10 +22,10 @@ pytestmark = [
 
 def test_synthetic_ocr_passes_live_bedrock_structured_output_smoke() -> None:
     config = ModelRouter.default(
-        region=environ.get("CLAIMS_AWS_REGION", "us-east-1"),
+        region=environ.get("CLAIMS_BEDROCK_REGION", "us-west-2"),
         model_id=environ.get(
             "CLAIMS_BEDROCK_MODEL_ID",
-            "us.anthropic.claude-sonnet-4-6",
+            "qwen.qwen3-235b-a22b-2507-v1:0",
         ),
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
     invocation = ChatBedrockConverseTransport().invoke(
@@ -33,7 +34,7 @@ def test_synthetic_ocr_passes_live_bedrock_structured_output_smoke() -> None:
         [
             (
                 "system",
-                "Extract grounded evidence only. Never decide policy or payment.",
+                COMPLEX_EXTRACTION_SYSTEM_PROMPT,
             ),
             (
                 "human",

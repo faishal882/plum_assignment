@@ -8,10 +8,10 @@ from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTranspo
 from claims_backend.model.routing import ModelRouter
 
 
-def test_bedrock_transport_uses_pinned_model_and_native_structured_output() -> None:
+def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() -> None:
     config = ModelRouter.default(
-        region="us-east-1",
-        model_id="us.anthropic.claude-sonnet-4-6",
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
     parsed = ComplexExtractionOutput.model_validate(
         {
@@ -53,12 +53,12 @@ def test_bedrock_transport_uses_pinned_model_and_native_structured_output() -> N
         )
 
     constructor.assert_called_once()
-    assert constructor.call_args.kwargs["model"] == "us.anthropic.claude-sonnet-4-6"
-    assert constructor.call_args.kwargs["region_name"] == "us-east-1"
+    assert constructor.call_args.kwargs["model"] == "qwen.qwen3-235b-a22b-2507-v1:0"
+    assert constructor.call_args.kwargs["region_name"] == "us-west-2"
     assert constructor.call_args.kwargs["temperature"] == 0
     model.with_structured_output.assert_called_once_with(
         ComplexExtractionOutput,
-        method="json_schema",
+        method="function_calling",
         include_raw=True,
     )
     assert result.raw_output == {

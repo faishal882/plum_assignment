@@ -67,6 +67,7 @@ def validate_complex_output(
                 "route": config.route.value,
                 "prompt_version": config.prompt_version,
                 "schema_version": config.schema_version,
+                "structured_output_method": config.structured_output_method,
             },
             sort_keys=True,
             separators=(",", ":"),

@@ -30,7 +30,7 @@ class ChatBedrockConverseTransport:
         )
         structured = model.with_structured_output(
             schema,
-            method="json_schema",
+            method=config.structured_output_method,
             include_raw=True,
         )
         started = monotonic()

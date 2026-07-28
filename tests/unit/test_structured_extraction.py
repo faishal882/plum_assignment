@@ -13,8 +13,8 @@ from claims_backend.model.routing import ModelRouter
 
 def test_fast_and_complex_routes_are_independently_versioned_and_approved() -> None:
     router = ModelRouter.default(
-        region="us-east-1",
-        model_id="us.anthropic.claude-sonnet-4-6",
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
     )
 
     fast = router.resolve(ModelRoute.FAST_TRIAGE)
@@ -22,18 +22,24 @@ def test_fast_and_complex_routes_are_independently_versioned_and_approved() -> N
 
     assert fast.route is ModelRoute.FAST_TRIAGE
     assert complex_route.route is ModelRoute.COMPLEX_EXTRACTION
-    assert fast.model_id == complex_route.model_id == "us.anthropic.claude-sonnet-4-6"
+    assert fast.model_id == complex_route.model_id == "qwen.qwen3-235b-a22b-2507-v1:0"
     assert fast.prompt_version != complex_route.prompt_version
+    assert complex_route.prompt_version == "complex-extraction-prompt-v2"
     assert fast.schema_version != complex_route.schema_version
     assert fast.enabled and fast.evaluation_approved
     assert complex_route.enabled and complex_route.evaluation_approved
     assert fast.temperature == complex_route.temperature == 0
+    assert (
+        fast.structured_output_method
+        == complex_route.structured_output_method
+        == "function_calling"
+    )
 
 
 def test_authority_bearing_model_output_is_rejected_before_schema_parsing() -> None:
     config = ModelRouter.default(
-        region="us-east-1",
-        model_id="us.anthropic.claude-sonnet-4-6",
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
     raw = _valid_output()
     raw["decision"] = "APPROVED"
@@ -46,8 +52,8 @@ def test_authority_bearing_model_output_is_rejected_before_schema_parsing() -> N
 
 def test_schema_semantic_and_grounding_failures_remain_distinct() -> None:
     config = ModelRouter.default(
-        region="us-east-1",
-        model_id="us.anthropic.claude-sonnet-4-6",
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
 
     schema_failure = _valid_output()
@@ -82,8 +88,8 @@ def test_schema_semantic_and_grounding_failures_remain_distinct() -> None:
 
 def test_valid_candidates_are_grounded_and_canonically_identified() -> None:
     config = ModelRouter.default(
-        region="us-east-1",
-        model_id="us.anthropic.claude-sonnet-4-6",
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
     ).resolve(ModelRoute.COMPLEX_EXTRACTION)
 
     first = validate_complex_output(

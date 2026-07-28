@@ -159,8 +159,8 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         ocr_repository=ocr_repository,
         structured_model=StructuredModelApplication(
             ModelRouter.default(
-                region="us-east-1",
-                model_id="us.anthropic.claude-sonnet-4-6",
+                region="us-west-2",
+                model_id="qwen.qwen3-235b-a22b-2507-v1:0",
             ),
             recorded_model,
             PostgresStructuredModelRepository(app.state.session_factory),
