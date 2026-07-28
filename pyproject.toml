@@ -18,6 +18,9 @@ dependencies = [
     "uvicorn[standard]>=0.35,<1",
 ]
 
+[project.scripts]
+claimsctl = "claims_backend.cli:main"
+
 [dependency-groups]
 dev = [
     "httpx>=0.28,<1",
@@ -51,4 +54,3 @@ select = ["E", "F", "I", "UP", "B", "ASYNC"]
 python_version = "3.12"
 strict = true
 packages = ["claims_backend"]
-

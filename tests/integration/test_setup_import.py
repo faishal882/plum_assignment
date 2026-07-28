@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from claims_backend.application.setup_import import SetupDataApplication
+from claims_backend.cli import main as cli_main
 from claims_backend.domain.setup_data import FactState
 from claims_backend.infrastructure.postgres.models import (
     ClaimHistoryRow,
@@ -179,3 +180,49 @@ async def test_changed_policy_source_creates_new_member_versions(
         assert versions[0].source_pointer == "/members/0"
         assert versions[1].source_pointer == "/members/0"
     await engine.dispose()
+
+
+def test_local_cli_imports_and_inspects_without_http_routes(
+    migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CLAIMS_DATABASE_URL", migrated_database_url)
+
+    assert cli_main(["setup", "import", "--policy", str(POLICY_PATH)]) == 0
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["policy_id"] == "PLUM_GHI_2024"
+    assert imported["member_versions_created"] == 12
+
+    assert (
+        cli_main(
+            [
+                "setup",
+                "inspect-member",
+                "--policy-id",
+                "PLUM_GHI_2024",
+                "--member-id",
+                "DEP001",
+            ]
+        )
+        == 0
+    )
+    member = json.loads(capsys.readouterr().out)
+    assert member["primary_member_id"] == "EMP001"
+    assert member["utilization_state"] == "UNKNOWN"
+
+    assert (
+        cli_main(
+            ["setup", "inspect-import", "--import-id", imported["import_id"]]
+        )
+        == 0
+    )
+    inspected = json.loads(capsys.readouterr().out)
+    assert inspected == imported
+
+    # The setup importer remains a local administrative boundary.
+    from claims_backend.api.app import create_app
+    from claims_backend.config import Settings
+
+    paths = create_app(Settings(database_url=migrated_database_url)).openapi()["paths"]
+    assert all("policy" not in path and "setup" not in path for path in paths)

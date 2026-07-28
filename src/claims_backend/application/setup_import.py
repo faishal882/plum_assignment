@@ -3,6 +3,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from typing import Any, Protocol
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -30,6 +31,8 @@ class SetupImportRepository(Protocol):
         policy_id: str,
         member_id: str,
     ) -> MemberInspection | None: ...
+
+    async def get_import(self, import_id: UUID) -> SetupImportReceipt | None: ...
 
 
 class _PolicyMember(BaseModel):
@@ -141,6 +144,9 @@ class SetupDataApplication:
         member_id: str,
     ) -> MemberInspection | None:
         return await self._repository.inspect_member(policy_id, member_id)
+
+    async def inspect_import(self, import_id: UUID) -> SetupImportReceipt | None:
+        return await self._repository.get_import(import_id)
 
 
 def _parse_model[ModelT: BaseModel](
