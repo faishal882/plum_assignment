@@ -117,19 +117,21 @@ Make claim submission safe under client and network retries. Bind each member-sc
 
 **User stories**: 10, 11, 12
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Introduce the versioned claim-action contract used later for document correction and review. A member can replace a document without mutating the original claim evidence, and every action is concurrency-safe and idempotent.
 
 ### Acceptance criteria
 
-- [ ] `POST /v1/claims/{claim_id}/actions` accepts a typed document-replacement command.
-- [ ] Every command requires an idempotency key and expected claim version.
-- [ ] Replacement creates a new immutable document version and claim version while preserving the original.
-- [ ] Identical action retries return the original result without creating duplicate versions or work.
-- [ ] A stale expected version is rejected with the current version and no mutation.
-- [ ] Only actions allowed for the current lifecycle and principal role are accepted.
-- [ ] The claim trace links the action, actor, previous version, new version, and replacement document.
+- [x] `POST /v1/claims/{claim_id}/actions` accepts a typed document-replacement command.
+- [x] Every command requires an idempotency key and expected claim version.
+- [x] Replacement creates a new immutable document version and claim version while preserving the original.
+- [x] Identical action retries return the original result without creating duplicate versions or work.
+- [x] A stale expected version is rejected with the current version and no mutation.
+- [x] Only actions allowed for the current lifecycle and principal role are accepted.
+- [x] The claim trace links the action, actor, previous version, new version, and replacement document.
 
 ---
 
