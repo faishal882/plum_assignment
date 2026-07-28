@@ -109,6 +109,40 @@ def render_member_explanation(proposal: AdjudicationProposal) -> MemberExplanati
             deductions=(),
         )
 
+    pre_authorization = next(
+        (
+            result
+            for result in proposal.rule_results
+            if result.reason_code == "PRE_AUTH_MISSING"
+        ),
+        None,
+    )
+    if (
+        proposal.recommendation is AdjudicationRecommendation.REJECTED
+        and pre_authorization is not None
+    ):
+        treatment = _required_string(pre_authorization.inputs.get("treatment"))
+        eligible = _required_integer(
+            pre_authorization.inputs.get("eligible_paise")
+        )
+        threshold = _required_integer(
+            pre_authorization.inputs.get("threshold_paise")
+        )
+        return MemberExplanation(
+            summary=(
+                f"{treatment} expenses of {_format_rupees(eligible)} require "
+                f"pre-authorization above {_format_rupees(threshold)}. No valid "
+                "authorization was found; obtain it and resubmit the claim."
+            ),
+            deductions=(
+                MemberDeduction(
+                    code=pre_authorization.reason_code,
+                    label="Required pre-authorization was not provided.",
+                    amount_paise=eligible,
+                ),
+            ),
+        )
+
     copay = next(
         (
             result

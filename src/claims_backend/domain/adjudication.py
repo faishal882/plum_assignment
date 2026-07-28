@@ -47,6 +47,17 @@ class CasefileLineItem(BaseModel):
     evidence_refs: tuple[str, ...] = Field(min_length=1)
 
 
+class PreAuthorizationEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    patient_name: EvidenceFact
+    treatment: EvidenceFact
+    valid_from: EvidenceFact
+    valid_to: EvidenceFact
+    reference: EvidenceFact
+    applicable_paise: EvidenceFact
+
+
 class ClaimCasefile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -75,6 +86,7 @@ class ClaimCasefile(BaseModel):
     clinical_treatment: EvidenceFact | None = None
     line_items: EvidenceFact | None = None
     line_item_facts: tuple[CasefileLineItem, ...] = ()
+    pre_authorization: PreAuthorizationEvidence | None = None
     evidence: EvidenceReconciliation | None = None
 
     def canonical_bytes(self) -> bytes:

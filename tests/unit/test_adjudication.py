@@ -11,6 +11,7 @@ from claims_backend.domain.adjudication import (
     ClaimCasefile,
     EvidenceFact,
     FactState,
+    PreAuthorizationEvidence,
     RuleStatus,
 )
 from claims_backend.domain.evidence import NormalizedRegion
@@ -25,6 +26,7 @@ from claims_backend.policy.adjudicator import (
     UnsafeCasefileError,
 )
 from claims_backend.policy.compiler import PolicyCompiler
+from claims_backend.policy.explanation import render_member_explanation
 
 POLICY_BYTES = Path("problem_statement/policy_terms.json").read_bytes()
 OVERLAY_BYTES = Path("config/policy/assignment-overlay-v1.json").read_bytes()
@@ -196,6 +198,50 @@ def test_tc007_rejects_mri_above_threshold_without_pre_authorization() -> None:
         "threshold_paise": 1_000_000,
         "authorization_present": False,
     }
+    explanation = render_member_explanation(proposal)
+    assert "₹15,000.00" in explanation.summary
+    assert "₹10,000.00" in explanation.summary
+    assert "pre-authorization" in explanation.summary
+    assert "resubmit" in explanation.summary
+
+
+def test_valid_matching_pre_authorization_satisfies_mri_requirement() -> None:
+    proposal = _evaluate_pre_authorization_case(
+        treatment="mri",
+        amount_paise=1_500_000,
+        pre_authorized=True,
+    )
+
+    assert proposal.recommendation is AdjudicationRecommendation.APPROVED
+    authorization = next(
+        result for result in proposal.rule_results if result.reason_code == "PRE_AUTH_PRESENT"
+    )
+    assert authorization.status is RuleStatus.PASS
+    assert authorization.evidence_refs[-1] == "authorization:amount"
+
+
+def test_mri_threshold_and_pet_always_rules_are_exact() -> None:
+    below = _evaluate_pre_authorization_case(
+        treatment="mri",
+        amount_paise=999_999,
+    )
+    equal = _evaluate_pre_authorization_case(
+        treatment="mri",
+        amount_paise=1_000_000,
+    )
+    above = _evaluate_pre_authorization_case(
+        treatment="mri",
+        amount_paise=1_000_001,
+    )
+    pet = _evaluate_pre_authorization_case(
+        treatment="pet",
+        amount_paise=500_000,
+    )
+
+    assert below.recommendation is AdjudicationRecommendation.APPROVED
+    assert equal.recommendation is AdjudicationRecommendation.APPROVED
+    assert above.rule_results[-1].reason_code == "PRE_AUTH_MISSING"
+    assert pet.rule_results[-1].reason_code == "PRE_AUTH_MISSING"
 
 
 def _evaluate_waiting_case(
@@ -274,9 +320,21 @@ def _evaluate_pre_authorization_case(
     *,
     treatment: str,
     amount_paise: int,
+    pre_authorized: bool = False,
 ):
     compilation = PolicyCompiler().compile(POLICY_BYTES, OVERLAY_BYTES)
     assert compilation.ir is not None
+    diagnostic = compilation.ir.category_rules["DIAGNOSTIC"]
+    policy = compilation.ir.model_copy(
+        update={
+            "category_rules": {
+                **compilation.ir.category_rules,
+                "DIAGNOSTIC": diagnostic.model_copy(
+                    update={"limit_paise": 2_000_000}
+                ),
+            }
+        }
+    )
     casefile = ClaimCasefile(
         schema_version=4,
         claim_id=UUID("00000000-0000-0000-0000-000000000707"),
@@ -295,7 +353,12 @@ def _evaluate_pre_authorization_case(
         ),
         document_roles=EvidenceFact(
             state=FactState.KNOWN,
-            value=["PRESCRIPTION", "LAB_REPORT", "HOSPITAL_BILL"],
+            value=[
+                "PRESCRIPTION",
+                "LAB_REPORT",
+                "HOSPITAL_BILL",
+                *(["PRE_AUTHORIZATION"] if pre_authorized else []),
+            ],
             evidence_refs=("document:prescription", "document:report", "document:bill"),
         ),
         billed_paise=EvidenceFact(
@@ -333,13 +396,49 @@ def _evaluate_pre_authorization_case(
             value=treatment,
             evidence_refs=("document:test",),
         ),
+        pre_authorization=(
+            PreAuthorizationEvidence(
+                patient_name=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value="sanjay reddy",
+                    evidence_refs=("authorization:patient",),
+                ),
+                treatment=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value=treatment,
+                    evidence_refs=("authorization:treatment",),
+                ),
+                valid_from=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value="2024-10-01",
+                    evidence_refs=("authorization:valid-from",),
+                ),
+                valid_to=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value="2024-12-31",
+                    evidence_refs=("authorization:valid-to",),
+                ),
+                reference=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value="PA-007",
+                    evidence_refs=("authorization:reference",),
+                ),
+                applicable_paise=EvidenceFact(
+                    state=FactState.KNOWN,
+                    value=amount_paise,
+                    evidence_refs=("authorization:amount",),
+                ),
+            )
+            if pre_authorized
+            else None
+        ),
         ytd_used_paise=EvidenceFact(
             state=FactState.KNOWN,
             value=0,
             evidence_refs=("utilization:zero",),
         ),
     )
-    return DeterministicPolicyAdjudicator().evaluate(casefile, compilation.ir)
+    return DeterministicPolicyAdjudicator().evaluate(casefile, policy)
 
 
 def _evaluate_clinical_case(

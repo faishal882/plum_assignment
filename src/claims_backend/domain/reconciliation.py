@@ -200,7 +200,11 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
             return int(Decimal(cleaned) * 100)
         except InvalidOperation:
             return cleaned.casefold()
-    if fact_path == "billing.total" or fact_path.startswith("billing.line_items."):
+    if (
+        fact_path == "billing.total"
+        or fact_path.startswith("billing.line_items.")
+        or fact_path == "document.pre_authorization.applicable_amount"
+    ):
         if isinstance(value, bool) or value is None:
             return value
         cleaned = str(value).replace("INR", "").replace("₹", "").replace(",", "").strip()
@@ -221,6 +225,17 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
         if fact_path == "clinical.treatment" and "bariatric" in normalized.split():
             return "bariatric_treatment"
         return normalized
+    if fact_path in {
+        "document.pre_authorization.patient_name",
+        "document.pre_authorization.treatment",
+    }:
+        return None if value is None else _normalize(str(value))
+    if fact_path in {
+        "document.pre_authorization.valid_from",
+        "document.pre_authorization.valid_to",
+        "document.pre_authorization.reference",
+    }:
+        return None if value is None else str(value).strip()
     return value
 
 

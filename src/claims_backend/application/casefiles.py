@@ -7,6 +7,7 @@ from claims_backend.domain.adjudication import (
     ClaimCasefile,
     EvidenceFact,
     FactState,
+    PreAuthorizationEvidence,
 )
 from claims_backend.domain.reconciliation import (
     EvidenceReconciliation,
@@ -63,7 +64,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         candidate_id for fact in line_item_facts for candidate_id in fact.candidate_ids
     )
     return ClaimCasefile(
-        schema_version=4,
+        schema_version=5,
         claim_id=request.claim_id,
         claim_version=request.claim_version,
         member_id=request.member_id,
@@ -104,6 +105,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
             )
             for fact in line_item_facts
         ),
+        pre_authorization=_pre_authorization(facts),
         ytd_used_paise=EvidenceFact(
             state=(FactState.KNOWN if request.ytd_used_paise is not None else FactState.UNKNOWN),
             value=request.ytd_used_paise,
@@ -147,3 +149,25 @@ def _integer_fact_value(fact: ReconciledFact) -> int:
     if isinstance(fact.value, bool) or not isinstance(fact.value, int):
         raise ValueError(f"Reconciled monetary fact is not integer paise: {fact.fact_path}.")
     return fact.value
+
+
+def _pre_authorization(
+    facts: dict[str, ReconciledFact],
+) -> PreAuthorizationEvidence | None:
+    prefix = "document.pre_authorization."
+    field_paths = {
+        "patient_name": f"{prefix}patient_name",
+        "treatment": f"{prefix}treatment",
+        "valid_from": f"{prefix}valid_from",
+        "valid_to": f"{prefix}valid_to",
+        "reference": f"{prefix}reference",
+        "applicable_paise": f"{prefix}applicable_amount",
+    }
+    if not any(path in facts for path in field_paths.values()):
+        return None
+    return PreAuthorizationEvidence(
+        **{
+            field: _evidence_fact(_required_fact(facts, path))
+            for field, path in field_paths.items()
+        }
+    )

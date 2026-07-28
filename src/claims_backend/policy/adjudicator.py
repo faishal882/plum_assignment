@@ -230,7 +230,12 @@ def _pre_authorization_result(
     )
     if not required:
         return None
-    present = "PRE_AUTHORIZATION" in roles
+    present, authorization_refs = _valid_pre_authorization(
+        casefile,
+        treatment=treatment,
+        amount=amount,
+        role_present="PRE_AUTHORIZATION" in roles,
+    )
     return _result(
         sequence,
         rule.rule_id,
@@ -240,6 +245,7 @@ def _pre_authorization_result(
         (
             *treatment_fact.evidence_refs,
             *casefile.billed_paise.evidence_refs,
+            *authorization_refs,
         ),
         {
             "treatment": treatment,
@@ -251,6 +257,45 @@ def _pre_authorization_result(
         amount,
         0 if present else -amount,
     )
+
+
+def _valid_pre_authorization(
+    casefile: ClaimCasefile,
+    *,
+    treatment: str,
+    amount: int,
+    role_present: bool,
+) -> tuple[bool, tuple[str, ...]]:
+    authorization = casefile.pre_authorization
+    if authorization is None:
+        return False, ()
+    facts = (
+        authorization.patient_name,
+        authorization.treatment,
+        authorization.valid_from,
+        authorization.valid_to,
+        authorization.reference,
+        authorization.applicable_paise,
+    )
+    if any(fact.state is not FactState.KNOWN for fact in facts):
+        raise UnsafeCasefileError("Pre-authorization facts must be reconciled.")
+    treatment_date = _iso_date(
+        _known_fact(casefile.treatment_date, "treatment date").value,
+        "treatment date",
+    )
+    valid_from = _iso_date(authorization.valid_from.value, "authorization valid from")
+    valid_to = _iso_date(authorization.valid_to.value, "authorization valid to")
+    patient = _string(
+        _known_fact(casefile.patient_identity, "patient identity").value
+    ).casefold()
+    matches = (
+        role_present
+        and _string(authorization.patient_name.value).casefold() == patient
+        and _string(authorization.treatment.value).upper() == treatment
+        and valid_from <= treatment_date <= valid_to
+        and _integer(authorization.applicable_paise.value) >= amount
+    )
+    return matches, tuple(reference for fact in facts for reference in fact.evidence_refs)
 
 
 def _clinical_exclusion_result(

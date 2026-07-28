@@ -43,6 +43,17 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
                 "Bariatric Consultation",
                 8,
             ),
+            _candidate(
+                "document.pre_authorization.patient_name",
+                "Rajesh Kumar",
+                "Rajesh Kumar",
+                9,
+            ),
+            _candidate("document.pre_authorization.treatment", "MRI", "MRI", 10),
+            _candidate("document.pre_authorization.valid_from", "2024-10-01", "2024-10-01", 11),
+            _candidate("document.pre_authorization.valid_to", "2024-12-31", "2024-12-31", 12),
+            _candidate("document.pre_authorization.reference", "PA-123", "PA-123", 13),
+            _candidate("document.pre_authorization.applicable_amount", "15000", "15000", 14),
         ),
         material_fact_paths=_MATERIAL_PATHS,
     )
@@ -67,7 +78,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     first = build_casefile(request)
     repeated = build_casefile(request)
 
-    assert first.schema_version == 4
+    assert first.schema_version == 5
     assert first.canonical_hash() == repeated.canonical_hash()
     assert first.member_snapshot_sha256 == "a" * 64
     assert first.evidence == reconciliation
@@ -83,6 +94,13 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     assert first.line_item_facts[0].concept == "consultation_fee"
     assert first.line_item_facts[0].amount_paise == 100_000
     assert first.line_item_facts[0].evidence_refs == (f"{7:064x}",)
+    assert first.pre_authorization is not None
+    assert first.pre_authorization.patient_name.value == "rajesh kumar"
+    assert first.pre_authorization.treatment.value == "mri"
+    assert first.pre_authorization.valid_from.value == "2024-10-01"
+    assert first.pre_authorization.valid_to.value == "2024-12-31"
+    assert first.pre_authorization.reference.value == "PA-123"
+    assert first.pre_authorization.applicable_paise.value == 1_500_000
 
 
 def test_casefile_cannot_be_built_from_insufficient_evidence() -> None:
