@@ -6,6 +6,7 @@ from claims_backend.domain.policy import (
     FindingCategory,
     LimitOutcome,
     LimitPrecedence,
+    PolicyFindingSeverity,
     PreAuthorizationMode,
 )
 from claims_backend.policy.compiler import PolicyCompiler
@@ -42,3 +43,45 @@ def test_compiles_deterministic_assignment_policy_ir() -> None:
     assert "case_id" not in overlay_text
     assert "test_case" not in overlay_text
     assert all(f"tc{number:03}" not in overlay_text for number in range(1, 100))
+
+
+def test_schema_and_referential_errors_produce_no_policy_ir() -> None:
+    compiler = PolicyCompiler()
+    malformed = compiler.compile(POLICY_BYTES, b'{"overlay_id":"incomplete"}')
+    wrong_base = json.loads(OVERLAY_BYTES)
+    wrong_base["base_policy_sha256"] = "0" * 64
+    mismatched = compiler.compile(
+        POLICY_BYTES,
+        json.dumps(wrong_base).encode(),
+    )
+
+    assert malformed.ir is None
+    assert malformed.has_errors
+    assert {finding.category for finding in malformed.findings} == {
+        FindingCategory.SCHEMA
+    }
+    assert mismatched.ir is None
+    assert any(
+        finding.category is FindingCategory.REFERENTIAL
+        and finding.severity is PolicyFindingSeverity.ERROR
+        and finding.code == "OVERLAY_BASE_POLICY_MISMATCH"
+        for finding in mismatched.findings
+    )
+
+
+def test_overlay_cannot_encode_evaluation_case_identifiers() -> None:
+    overlay = json.loads(OVERLAY_BYTES)
+    overlay["clarifications"]["relationship_aliases"]["CASE"] = "TC008"
+
+    compilation = PolicyCompiler().compile(
+        POLICY_BYTES,
+        json.dumps(overlay).encode(),
+    )
+
+    assert compilation.ir is None
+    assert any(
+        finding.code == "TEST_IDENTIFIER_FORBIDDEN"
+        and finding.category is FindingCategory.SEMANTIC
+        and finding.severity is PolicyFindingSeverity.ERROR
+        for finding in compilation.findings
+    )
