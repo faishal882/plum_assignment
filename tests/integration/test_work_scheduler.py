@@ -20,7 +20,7 @@ from claims_backend.application.work import (
 )
 from claims_backend.config import Settings
 from claims_backend.domain.work import RetryDisposition, WorkRequest
-from claims_backend.infrastructure.postgres.models import ClaimWorkItemRow
+from claims_backend.infrastructure.postgres.models import ClaimRow, ClaimWorkItemRow
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 
 
@@ -333,12 +333,17 @@ async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
     assert await WorkerService(scheduler).run_once("failure-worker", handler)
     async with app.state.session_factory() as session:
         failed = await session.scalar(select(ClaimWorkItemRow))
+        claim = await session.scalar(select(ClaimRow))
 
     assert failed is not None
     assert failed.status == "FAILED"
     assert failed.attempt_count == 1
     assert failed.max_attempts == 3
     assert failed.last_failure_code == "MODEL_SEMANTIC_VALIDATION_FAILED"
+    assert claim is not None
+    assert claim.lifecycle_status == "PROCESSING_FAILED"
+    assert claim.current_action is None
+    assert claim.adjudication_recommendation is None
     await app.state.engine.dispose()
 
 

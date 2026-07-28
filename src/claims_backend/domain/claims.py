@@ -18,6 +18,7 @@ class ClaimLifecycle(StrEnum):
     ACTION_REQUIRED = "ACTION_REQUIRED"
     IN_REVIEW = "IN_REVIEW"
     DECIDED = "DECIDED"
+    PROCESSING_FAILED = "PROCESSING_FAILED"
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,7 +20,12 @@ from claims_backend.domain.work import (
     WorkRequest,
     WorkStatus,
 )
-from claims_backend.infrastructure.postgres.models import ClaimWorkItemRow
+from claims_backend.infrastructure.postgres.models import (
+    AuditEventRow,
+    ClaimRow,
+    ClaimWorkItemRow,
+    WorkflowRunRow,
+)
 
 _WORKER_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _FAILURE_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -264,6 +269,7 @@ class PostgresWorkScheduler(WorkScheduler):
             row.updated_at = now
             if row.attempt_count >= row.max_attempts:
                 row.status = WorkStatus.FAILED.value
+                await _mark_processing_failed(session, row, failure_code, now)
                 return RetryDisposition.EXHAUSTED
             row.status = WorkStatus.AVAILABLE.value
             row.available_at = retry_at
@@ -294,6 +300,83 @@ class PostgresWorkScheduler(WorkScheduler):
             )
             if failed_id is None:
                 raise LeaseLostError
+            work_item = await session.get(ClaimWorkItemRow, lease.work_item_id)
+            if work_item is None:
+                raise LeaseLostError
+            await _mark_processing_failed(session, work_item, failure_code, now)
+
+
+async def _mark_processing_failed(
+    session: AsyncSession,
+    work_item: ClaimWorkItemRow,
+    failure_code: str,
+    now: datetime,
+) -> None:
+    """Commit the safe public failure projection with the terminal work state."""
+    claim = await session.scalar(
+        select(ClaimRow)
+        .where(
+            ClaimRow.id == work_item.claim_id,
+            ClaimRow.current_version == work_item.claim_version,
+        )
+        .with_for_update()
+    )
+    if claim is None:
+        return
+    if claim.lifecycle_status != "PROCESSING_FAILED":
+        claim.lifecycle_status = "PROCESSING_FAILED"
+        claim.current_action = None
+        claim.adjudication_recommendation = None
+        claim.approved_paise = None
+        claim.member_explanation = {
+            "summary": "We could not finish processing this claim. Please try again later.",
+            "deductions": [],
+            "line_items": [],
+        }
+        claim.handling_status = "PROCESSING_FAILED"
+        claim.processing_quality = {
+            "completeness": 0.0,
+            "confidence": 0.0,
+            "degraded_components": [
+                {
+                    "component": "PROCESSING",
+                    "criticality": "CRITICAL",
+                    "attempts": work_item.attempt_count,
+                    "failure_code": failure_code,
+                    "retryable": False,
+                    "effect_on_handling": "PROCESSING_FAILED",
+                }
+            ],
+        }
+        claim.updated_at = now
+        sequence = (
+            await session.scalar(
+                select(func.max(AuditEventRow.sequence)).where(AuditEventRow.claim_id == claim.id)
+            )
+            or 0
+        ) + 1
+        session.add(
+            AuditEventRow(
+                id=uuid4(),
+                actor_user_id=claim.owner_user_id,
+                actor_username_snapshot=claim.owner_username_snapshot,
+                claim_id=claim.id,
+                sequence=sequence,
+                event_type="CLAIM_PROCESSING_FAILED",
+                payload={
+                    "failure_code": failure_code,
+                    "attempts": work_item.attempt_count,
+                },
+                created_at=now,
+            )
+        )
+    workflow = await session.scalar(
+        select(WorkflowRunRow).where(WorkflowRunRow.work_item_id == work_item.id).with_for_update()
+    )
+    if workflow is not None:
+        workflow.status = "COMPLETED"
+        workflow.completed_at = now
+        workflow.updated_at = now
 
 
 def _validate_lease_request(worker_id: str, limit: int, ttl: timedelta) -> None:

@@ -337,7 +337,13 @@ def _to_response(claim: Claim) -> ClaimResponse:
         lifecycle_status=claim.lifecycle.value,
         progress=ProgressResponse(
             current_stage=claim.lifecycle.value,
-            is_terminal=claim.lifecycle is ClaimLifecycle.DECIDED,
+            is_terminal=claim.lifecycle
+            in {
+                ClaimLifecycle.ACTION_REQUIRED,
+                ClaimLifecycle.IN_REVIEW,
+                ClaimLifecycle.DECIDED,
+                ClaimLifecycle.PROCESSING_FAILED,
+            },
         ),
         adjudication=(
             None
