@@ -76,7 +76,8 @@ def test_textract_profiles_send_page_bytes_and_map_project_observations(
         "height": 0.1,
     }
     assert forms.observations[0].text == "Patient: Rajesh Kumar"
-    assert text.observations == forms.observations
+    assert text.observations[0].text == forms.observations[0].text
+    assert text.observations[0].observation_id != forms.observations[0].observation_id
     observability.shutdown()
     spans = exporter.get_finished_spans()
     assert [span.attributes["textract.profile"] for span in spans] == [
