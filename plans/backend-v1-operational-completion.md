@@ -125,6 +125,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   no `ProcessingFixtureRow` seed (`12 passed`).
 - [x] The twelve-case recorded rendered evaluation gate uses the standard composed worker; its
   structured-component runner remains a separate OCR-bypassed diagnostic control.
+- [x] Recorded evaluation spans expose schema, grounding, trace-completeness, reconstruction,
+  provenance, failure-count, and aggregate pass-rate metrics for Phoenix.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

@@ -230,6 +230,12 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
                         {
                             "claim.id": str(claim_id),
                             "workflow.run_id": workflow_run_id,
+                            "evaluation.schema_valid": True,
+                            "evaluation.evidence_grounded": bool(result.outcome.provenance),
+                            "evaluation.trace_complete": result.outcome.trace_complete,
+                            "evaluation.reconstructable": True,
+                            "evaluation.provenance_count": len(result.outcome.provenance),
+                            "evaluation.failure_count": len(result.outcome.failures),
                         },
                     )
                     evaluation_observability.log(
@@ -257,6 +263,18 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
     assert report.versions.execution_profile is ExecutionProfile.RENDERED_RECORDED
     assert report.versions.ocr_mode == "ENABLED"
     assert report_path.is_file()
+    with evaluation_observability.span(
+        "evaluation.report",
+        component="evaluation",
+        attributes={
+            "evaluation.profile": ExecutionProfile.RENDERED_RECORDED.value,
+            "evaluation.passed": report.passed,
+            "evaluation.case_count": len(report.cases),
+            "evaluation.passed_case_count": sum(case.passed for case in report.cases),
+            "evaluation.failed_case_count": sum(not case.passed for case in report.cases),
+        },
+    ):
+        pass
     records: dict[str, list[dict[str, object]]] = {}
     for process in ("api", "worker", "evaluation"):
         path = tmp_path / "diagnostics" / f"{process}.jsonl"
@@ -285,6 +303,17 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
         [dict(span.attributes) for span in exporter.get_finished_spans()],
         phi_canaries=tuple(_MEMBER_NAMES.values()),
     )
+    case_spans = [span for span in exporter.get_finished_spans() if span.name == "evaluation.case"]
+    assert len(case_spans) == 12
+    assert all(span.attributes["evaluation.schema_valid"] is True for span in case_spans)
+    assert all(span.attributes["evaluation.evidence_grounded"] is True for span in case_spans)
+    assert all(span.attributes["evaluation.trace_complete"] is True for span in case_spans)
+    report_spans = [
+        span for span in exporter.get_finished_spans() if span.name == "evaluation.report"
+    ]
+    assert len(report_spans) == 1
+    assert report_spans[0].attributes["evaluation.passed"] is True
+    assert report_spans[0].attributes["evaluation.passed_case_count"] == 12
 
     api_observability.shutdown()
     worker_observability.shutdown()
