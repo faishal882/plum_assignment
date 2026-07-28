@@ -9,23 +9,66 @@ from PIL import Image
 from sqlalchemy import func, select
 
 from claims_backend.api.app import create_app
+from claims_backend.application.intelligence import (
+    OcrApplication,
+    PageArtifactApplication,
+    PageArtifactRepository,
+    RenderedPage,
+    SourceDocument,
+)
 from claims_backend.config import Settings
-from claims_backend.domain.evidence import NormalizedRegion
+from claims_backend.domain.evidence import DocumentRole, NormalizedRegion
 from claims_backend.domain.extraction import ModelRoute
-from claims_backend.domain.ocr import OcrObservation, OcrObservationKind
+from claims_backend.domain.ocr import (
+    OcrObservation,
+    OcrObservationKind,
+    OcrPageResult,
+    TextractProfile,
+)
 from claims_backend.infrastructure.fixtures.recorded_model import (
     RecordedStructuredModelTransport,
 )
+from claims_backend.infrastructure.page_artifacts import (
+    LocalPageArtifactReader,
+    LocalPageArtifactStore,
+)
+from claims_backend.infrastructure.page_renderer import LocalPageRenderer
 from claims_backend.infrastructure.postgres.models import (
+    DocumentRow,
     DocumentVersionRow,
     EvidenceCandidateRow,
     ModelExtractionRow,
+)
+from claims_backend.infrastructure.postgres.ocr import PostgresOcrRepository
+from claims_backend.infrastructure.postgres.page_artifacts import (
+    PostgresPageArtifactRepository,
 )
 from claims_backend.infrastructure.postgres.structured_model import (
     PostgresStructuredModelRepository,
 )
 from claims_backend.model.application import StructuredModelApplication
 from claims_backend.model.routing import ModelRouter
+
+
+class RecordedObservationOcr:
+    provider_name = "RECORDED_TEXTRACT"
+    provider_version = "recorded-provenance-v1"
+
+    def __init__(self, observation: OcrObservation) -> None:
+        self._observation = observation
+
+    def analyze(
+        self,
+        page: RenderedPage,
+        role: DocumentRole,
+    ) -> OcrPageResult:
+        del page, role
+        return OcrPageResult(
+            profile=TextractProfile.TEXT,
+            provider_request_id="recorded-provenance-request",
+            retry_attempts=0,
+            observations=(self._observation,),
+        )
 
 
 @pytest.mark.asyncio
@@ -47,9 +90,39 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
         )
     assert submitted.status_code == 202
     async with app.state.session_factory() as session:
-        document_version_id = (await session.scalars(select(DocumentVersionRow.id))).one()
+        document_version, document = (
+            await session.execute(
+                select(DocumentVersionRow, DocumentRow).join(
+                    DocumentRow,
+                    DocumentRow.id == DocumentVersionRow.document_id,
+                )
+            )
+        ).one()
+    document_version_id = document_version.id
 
     observation = _observation(document_version_id)
+    page_repository: PageArtifactRepository = PostgresPageArtifactRepository(
+        app.state.session_factory
+    )
+    artifacts = await PageArtifactApplication(
+        LocalPageRenderer(tmp_path, max_page_bytes=5 * 1024 * 1024),
+        LocalPageArtifactStore(tmp_path),
+        page_repository,
+    ).process(
+        SourceDocument(
+            document_id=document.id,
+            document_version_id=document_version.id,
+            relative_path=document_version.relative_path,
+            media_type=document_version.media_type,
+            sha256=document_version.sha256,
+            page_count=document_version.page_count,
+        )
+    )
+    await OcrApplication(
+        LocalPageArtifactReader(tmp_path),
+        RecordedObservationOcr(observation),
+        PostgresOcrRepository(app.state.session_factory),
+    ).process(artifacts, DocumentRole.UNKNOWN)
     recorded = RecordedStructuredModelTransport(
         {
             ModelRoute.FAST_TRIAGE: {
@@ -84,18 +157,20 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
             },
         }
     )
+    repository = PostgresStructuredModelRepository(app.state.session_factory)
     model = StructuredModelApplication(
         ModelRouter.default(
             region="us-west-2",
             model_id="qwen.qwen3-235b-a22b-2507-v1:0",
         ),
         recorded,
-        PostgresStructuredModelRepository(app.state.session_factory),
+        repository,
     )
 
     triage = await model.fast_triage([("human", "Recorded synthetic preview F-MODEL.")])
     first = await model.extract_complex(document_version_id, (observation,))
     replay = await model.extract_complex(document_version_id, (observation,))
+    provenanced = await repository.list_provenanced_candidates(document_version_id)
 
     assert triage.output.documents[0].role.value == "HOSPITAL_BILL"
     assert first == replay
@@ -105,6 +180,16 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
         ModelRoute.FAST_TRIAGE,
         ModelRoute.COMPLEX_EXTRACTION,
     ]
+    assert len(provenanced) == 1
+    assert provenanced[0].value == "800.00"
+    assert provenanced[0].producer == "BEDROCK"
+    assert provenanced[0].producer_version.startswith("qwen.qwen3-235b-a22b-2507-v1:0")
+    assert provenanced[0].schema_version == "complex-extraction-v1"
+    assert provenanced[0].sources[0].observation_id == observation.observation_id
+    assert provenanced[0].sources[0].document_version_id == document_version_id
+    assert provenanced[0].sources[0].page == 1
+    assert provenanced[0].sources[0].region == observation.region
+    assert provenanced[0].sources[0].source_sha256 == sha256(observation.text.encode()).hexdigest()
     async with app.state.session_factory() as session:
         extraction_count = await session.scalar(
             select(func.count()).select_from(ModelExtractionRow)

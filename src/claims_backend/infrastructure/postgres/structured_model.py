@@ -1,15 +1,22 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from claims_backend.domain.evidence import NormalizedRegion
 from claims_backend.domain.extraction import EvidenceCandidate, ModelRoute
+from claims_backend.domain.reconciliation import (
+    EvidenceCandidateSource,
+    ProvenancedEvidenceCandidate,
+)
 from claims_backend.infrastructure.postgres.models import (
     EvidenceCandidateRow,
     ModelExtractionRow,
+    OcrObservationRow,
 )
 from claims_backend.model.application import ComplexExtractionResult
 from claims_backend.model.routing import ModelRouteConfig
@@ -112,6 +119,72 @@ class PostgresStructuredModelRepository:
         if stored is None:
             raise RuntimeError("Structured extraction was not persisted.")
         return stored
+
+    async def list_provenanced_candidates(
+        self,
+        document_version_id: UUID,
+    ) -> tuple[ProvenancedEvidenceCandidate, ...]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(EvidenceCandidateRow, ModelExtractionRow)
+                    .join(
+                        ModelExtractionRow,
+                        ModelExtractionRow.id == EvidenceCandidateRow.model_extraction_id,
+                    )
+                    .where(ModelExtractionRow.document_version_id == document_version_id)
+                    .order_by(EvidenceCandidateRow.candidate_id)
+                )
+            ).all()
+            observation_ids = sorted(
+                {
+                    observation_id
+                    for candidate, _ in rows
+                    for observation_id in candidate.evidence_refs
+                }
+            )
+            observations = (
+                await session.scalars(
+                    select(OcrObservationRow).where(
+                        OcrObservationRow.observation_id.in_(observation_ids)
+                    )
+                )
+            ).all()
+        observations_by_id = {
+            observation.observation_id: observation for observation in observations
+        }
+        candidates: list[ProvenancedEvidenceCandidate] = []
+        for candidate, extraction in rows:
+            sources: list[EvidenceCandidateSource] = []
+            for observation_id in candidate.evidence_refs:
+                observation = observations_by_id.get(observation_id)
+                if observation is None:
+                    raise RuntimeError("Evidence candidate references a missing OCR observation.")
+                sources.append(
+                    EvidenceCandidateSource(
+                        observation_id=observation.observation_id,
+                        document_version_id=observation.document_version_id,
+                        page=observation.page_number,
+                        region=NormalizedRegion.model_validate(observation.region),
+                        source_sha256=sha256(observation.text.encode()).hexdigest(),
+                    )
+                )
+            candidates.append(
+                ProvenancedEvidenceCandidate.model_validate(
+                    {
+                        "candidate_id": candidate.candidate_id,
+                        "fact_path": candidate.fact_path,
+                        "value": candidate.value,
+                        "normalized_value": candidate.normalized_value,
+                        "producer": candidate.producer,
+                        "producer_version": (f"{extraction.model_id}:{extraction.prompt_version}"),
+                        "schema_version": extraction.schema_version,
+                        "confidence": candidate.confidence,
+                        "sources": [source.model_dump(mode="json") for source in sources],
+                    }
+                )
+            )
+        return tuple(candidates)
 
 
 def _to_result(
