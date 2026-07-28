@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from claims_backend.domain.evidence import (
     DocumentRole,
     IdentityObservation,
+    PreviewProvenance,
     Readability,
+    ReadabilityObservation,
     StructuredDocumentEvidence,
     StructuredEvidencePayload,
     TriageDocumentResult,
@@ -72,13 +74,13 @@ class StructuredComponentFixtureAdapter:
                 TriageDocumentResult(
                     client_document_id="F001",
                     role=DocumentRole.PRESCRIPTION,
-                    readability=Readability.READABLE,
+                    readability=_readability("tc001:F001", Readability.READABLE),
                     identity_observations=(),
                 ),
                 TriageDocumentResult(
                     client_document_id="F002",
                     role=DocumentRole.PRESCRIPTION,
-                    readability=Readability.READABLE,
+                    readability=_readability("tc001:F002", Readability.READABLE),
                     identity_observations=(),
                 ),
             )
@@ -102,3 +104,14 @@ class StructuredComponentFixtureAdapter:
                 )
                 .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
+
+
+def _readability(seed: str, status: Readability) -> ReadabilityObservation:
+    return ReadabilityObservation(
+        status=status,
+        preview=PreviewProvenance(
+            page=1,
+            sha256=sha256(seed.encode()).hexdigest(),
+            transform_version="fixture-preview-v1",
+        ),
+    )

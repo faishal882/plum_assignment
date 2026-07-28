@@ -1,6 +1,7 @@
 from enum import StrEnum
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DocumentRole(StrEnum):
@@ -27,6 +28,47 @@ class IdentityObservation(BaseModel):
     value: str = Field(min_length=1, max_length=128)
 
 
+class NormalizedRegion(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def contained_in_page(self) -> "NormalizedRegion":
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("Region must be contained within the normalized page.")
+        return self
+
+
+class PreviewProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    page: int = Field(ge=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    transform_version: str = Field(min_length=1, max_length=64)
+
+
+class ReadabilityObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Readability
+    preview: PreviewProvenance
+
+
+class TriageIdentityObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["PATIENT_NAME"]
+    value: str = Field(min_length=1, max_length=128)
+    page: int = Field(ge=1)
+    region: NormalizedRegion
+    source_text_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    confidence: float = Field(ge=0, le=1)
+
+
 class StructuredDocumentEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -50,12 +92,12 @@ class TriageDocumentResult(BaseModel):
 
     client_document_id: str = Field(min_length=1, max_length=128)
     role: DocumentRole
-    readability: Readability
-    identity_observations: tuple[IdentityObservation, ...] = Field(max_length=2)
+    readability: ReadabilityObservation
+    identity_observations: tuple[TriageIdentityObservation, ...] = Field(max_length=2)
 
 
 class TriageModelOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: int = 1
+    schema_version: Literal[2] = 2
     documents: tuple[TriageDocumentResult, ...] = Field(min_length=1, max_length=10)

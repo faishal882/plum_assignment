@@ -414,7 +414,7 @@ class PostgresClaimProcessor:
                         document_version_id=UUID(str(snapshot["document_version_id"])),
                         client_document_id=item.client_document_id,
                         role=item.role.value,
-                        readability=item.readability.value,
+                        readability=item.readability.status.value,
                         identity_observations=[
                             observation.model_dump(mode="json")
                             for observation in item.identity_observations
