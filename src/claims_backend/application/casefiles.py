@@ -3,6 +3,7 @@ from typing import Protocol
 from uuid import UUID
 
 from claims_backend.domain.adjudication import (
+    CasefileLineItem,
     ClaimCasefile,
     EvidenceFact,
     FactState,
@@ -62,7 +63,7 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
         candidate_id for fact in line_item_facts for candidate_id in fact.candidate_ids
     )
     return ClaimCasefile(
-        schema_version=2,
+        schema_version=3,
         claim_id=request.claim_id,
         claim_version=request.claim_version,
         member_id=request.member_id,
@@ -92,6 +93,15 @@ def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
             state=FactState.KNOWN if line_item_facts else FactState.UNKNOWN,
             value=[f"{fact.fact_path}={fact.value}" for fact in line_item_facts],
             evidence_refs=line_item_refs,
+        ),
+        line_item_facts=tuple(
+            CasefileLineItem(
+                fact_path=fact.fact_path,
+                concept=fact.fact_path.removeprefix("billing.line_items."),
+                amount_paise=_integer_fact_value(fact),
+                evidence_refs=fact.candidate_ids,
+            )
+            for fact in line_item_facts
         ),
         ytd_used_paise=EvidenceFact(
             state=(FactState.KNOWN if request.ytd_used_paise is not None else FactState.UNKNOWN),
@@ -124,3 +134,9 @@ def _evidence_fact(fact: ReconciledFact) -> EvidenceFact:
             "evidence_refs": fact.candidate_ids,
         }
     )
+
+
+def _integer_fact_value(fact: ReconciledFact) -> int:
+    if isinstance(fact.value, bool) or not isinstance(fact.value, int):
+        raise ValueError(f"Reconciled monetary fact is not integer paise: {fact.fact_path}.")
+    return fact.value

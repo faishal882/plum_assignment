@@ -61,7 +61,7 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     first = build_casefile(request)
     repeated = build_casefile(request)
 
-    assert first.schema_version == 2
+    assert first.schema_version == 3
     assert first.canonical_hash() == repeated.canonical_hash()
     assert first.member_snapshot_sha256 == "a" * 64
     assert first.evidence == reconciliation
@@ -72,6 +72,9 @@ def test_casefile_freezes_reconciled_evidence_and_pinned_snapshots() -> None:
     assert first.patient_identity.value == "rajesh kumar"
     assert first.clinical_condition.value == "viral fever"
     assert first.line_items.value == ["billing.line_items.consultation_fee=100000"]
+    assert first.line_item_facts[0].concept == "consultation_fee"
+    assert first.line_item_facts[0].amount_paise == 100_000
+    assert first.line_item_facts[0].evidence_refs == (f"{7:064x}",)
 
 
 def test_casefile_cannot_be_built_from_insufficient_evidence() -> None:

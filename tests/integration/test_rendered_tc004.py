@@ -291,7 +291,7 @@ async def test_rendered_tc004_runs_the_real_recorded_pipeline_to_exact_approval(
     ]
     trace = await processor.inspect_trace(claim_id)
     assert trace is not None
-    assert trace.casefile.content.schema_version == 2
+    assert trace.casefile.content.schema_version == 3
     assert trace.casefile.content.evidence is not None
     assert trace.casefile.content.billed_paise.value == 150_000
     assert trace.casefile.content.clinical_condition.value == "viral fever"

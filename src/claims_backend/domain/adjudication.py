@@ -38,6 +38,15 @@ class EvidenceFact(BaseModel):
     evidence_refs: tuple[str, ...]
 
 
+class CasefileLineItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    fact_path: str = Field(pattern=r"^billing\.line_items\.[a-z0-9_]+$")
+    concept: str = Field(pattern=r"^[a-z0-9_]+$")
+    amount_paise: int = Field(ge=0)
+    evidence_refs: tuple[str, ...] = Field(min_length=1)
+
+
 class ClaimCasefile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -64,6 +73,7 @@ class ClaimCasefile(BaseModel):
     patient_identity: EvidenceFact | None = None
     clinical_condition: EvidenceFact | None = None
     line_items: EvidenceFact | None = None
+    line_item_facts: tuple[CasefileLineItem, ...] = ()
     evidence: EvidenceReconciliation | None = None
 
     def canonical_bytes(self) -> bytes:
