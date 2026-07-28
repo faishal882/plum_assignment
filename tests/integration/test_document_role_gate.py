@@ -782,6 +782,76 @@ async def test_assignment_tc010_network_discount_decision_without_fixture_seed(
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc011_degrades_through_standard_worker_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(
+        database_url=migrated_database_url,
+        data_root=tmp_path / "documents",
+        inject_anomaly_enrichment_failure=True,
+    )
+    app = create_app(settings)
+    await _import_member_utilization(
+        app.state.session_factory,
+        member_id="EMP006",
+        as_of_date="2024-10-28",
+    )
+    prescription, bill = _assignment_tc011_documents()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp006",
+                "Idempotency-Key": "assignment-tc011-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc011_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp006"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "APPROVED",
+        "approved_amount": "4000.00",
+        "currency": "INR",
+    }
+    assert body["handling_status"] == "MANUAL_REVIEW_RECOMMENDED"
+    assert body["processing_quality"] == {
+        "completeness": 0.8,
+        "confidence": 0.8,
+        "degraded_components": [
+            {
+                "component": "ANOMALY_ENRICHMENT",
+                "criticality": "NONCRITICAL",
+                "attempts": 1,
+                "failure_code": "ANOMALY_ENRICHMENT_UNAVAILABLE",
+                "retryable": False,
+                "effect_on_handling": "MANUAL_REVIEW_RECOMMENDED",
+            }
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_assignment_tc012_excluded_treatment_decision_without_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -1334,6 +1404,55 @@ def _assignment_tc010_documents() -> tuple[bytes, bytes]:
                 ],
                 "patient_name": "Deepak Shah",
                 "total": 4500,
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return prescription, bill
+
+
+def _assignment_tc011_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP006",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "ALTERNATIVE_MEDICINE",
+        "treatment_date": "2024-10-28",
+        "claimed_amount": "4000.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F021"},
+            {"upload_index": 1, "client_document_id": "F022"},
+        ],
+    }
+
+
+def _assignment_tc011_documents() -> tuple[bytes, bytes]:
+    prescription = _assignment_document_image(
+        "PRESCRIPTION\n"
+        + json.dumps(
+            {
+                "diagnosis": "Chronic Joint Pain",
+                "doctor_name": "Vaidya T. Krishnan",
+                "doctor_registration": "AYUR/KL/2345/2019",
+                "treatment": "Panchakarma Therapy",
+            },
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    bill = _assignment_document_image(
+        "HOSPITAL_BILL\n"
+        + json.dumps(
+            {
+                "hospital_name": "Ayur Wellness Centre",
+                "line_items": [
+                    {"amount": 3000, "description": "Panchakarma Therapy (5 sessions)"},
+                    {"amount": 1000, "description": "Consultation"},
+                ],
+                "total": 4000,
             },
             sort_keys=True,
             indent=2,

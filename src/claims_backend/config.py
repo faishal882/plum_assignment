@@ -42,6 +42,7 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_WORKER_SHUTDOWN_SECONDS",
     "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT",
     "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY",
+    "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE",
 )
 
 
@@ -93,6 +94,7 @@ class Settings:
     worker_shutdown_seconds: int = 120
     observability_capture_content: bool = False
     observability_synthetic_only: bool = False
+    inject_anomaly_enrichment_failure: bool = False
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -140,6 +142,10 @@ class Settings:
             or not self.observability_synthetic_only
         ):
             raise ValueError("Observability content capture requires synthetic live intelligence.")
+        if self.inject_anomaly_enrichment_failure and (
+            self.execution_profile is not ExecutionProfile.RECORDED_LOCAL
+        ):
+            raise ValueError("Anomaly failure injection is limited to recorded local execution.")
 
     @classmethod
     def from_env(cls, env_file: Path | None = None) -> "Settings":
@@ -205,6 +211,9 @@ class Settings:
             ),
             observability_synthetic_only=_environment_boolean(
                 values, "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY"
+            ),
+            inject_anomaly_enrichment_failure=_environment_boolean(
+                values, "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE"
             ),
         )
 

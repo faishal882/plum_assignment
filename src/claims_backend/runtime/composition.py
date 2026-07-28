@@ -31,6 +31,7 @@ from claims_backend.infrastructure.postgres.page_artifacts import PostgresPageAr
 from claims_backend.infrastructure.postgres.structured_model import (
     PostgresStructuredModelRepository,
 )
+from claims_backend.infrastructure.processing_failures import ConfiguredAnomalyFailureInjector
 from claims_backend.model.application import StructuredModelApplication
 from claims_backend.model.routing import ModelRouter
 from claims_backend.model.transport import StructuredModelTransport
@@ -146,6 +147,11 @@ def create_claim_processor(runtime: ProcessRuntime) -> PostgresClaimProcessor:
             evidence,
         ),
         evidence_repository=evidence,
+        anomaly_enricher=(
+            ConfiguredAnomalyFailureInjector()
+            if settings.inject_anomaly_enrichment_failure
+            else None
+        ),
     )
 
 

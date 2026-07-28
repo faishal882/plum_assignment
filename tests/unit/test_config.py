@@ -40,6 +40,7 @@ _ENVIRONMENT = {
     "CLAIMS_WORKER_SHUTDOWN_SECONDS": "121",
     "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT": "0",
     "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY": "0",
+    "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE": "0",
 }
 
 
@@ -86,6 +87,7 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.worker_shutdown_seconds == 121
     assert settings.observability_capture_content is False
     assert settings.observability_synthetic_only is False
+    assert settings.inject_anomaly_enrichment_failure is False
 
 
 def test_process_environment_overrides_env_file(
@@ -164,6 +166,23 @@ def test_paid_aws_authorization_does_not_enable_live_profile(
 
     assert settings.execution_profile is ExecutionProfile.RECORDED_LOCAL
     assert settings.run_live_aws is True
+
+
+def test_anomaly_failure_injection_is_limited_to_recorded_local(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_configuration(monkeypatch)
+    recorded = {**_ENVIRONMENT, "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE": "1"}
+    assert Settings.from_env(_write_env(tmp_path, recorded)).inject_anomaly_enrichment_failure
+
+    live = {
+        **recorded,
+        "CLAIMS_EXECUTION_PROFILE": "LIVE_INTELLIGENCE",
+        "CLAIMS_RUN_LIVE_AWS": "1",
+    }
+    with pytest.raises(ValueError, match="limited to recorded local"):
+        Settings.from_env(_write_env(tmp_path, live))
 
 
 def _clear_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
