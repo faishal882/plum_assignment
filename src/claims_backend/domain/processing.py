@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
-from claims_backend.domain.adjudication import RuleResult
+from claims_backend.domain.adjudication import ClaimCasefile, RuleResult
 
 
 class ProcessingRoute(StrEnum):
@@ -48,9 +48,16 @@ class PagePreparationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CasefilePreparationResult:
+    reference: FrozenCasefileRef | None
+    action: EarlyGateResult | None
+
+
+@dataclass(frozen=True, slots=True)
 class CasefileTrace:
     id: UUID
     content_hash: str
+    content: ClaimCasefile
 
 
 @dataclass(frozen=True, slots=True)

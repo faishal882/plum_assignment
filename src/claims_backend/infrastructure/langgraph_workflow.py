@@ -45,6 +45,7 @@ class WorkflowState(TypedDict):
     rendered_page_count: int
     ocr_observation_count: int
     evidence_candidate_count: int
+    extraction_completed: bool
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -74,13 +75,14 @@ class WorkflowUpdate(TypedDict, total=False):
     rendered_page_count: int
     ocr_observation_count: int
     evidence_candidate_count: int
+    extraction_completed: bool
     terminal_committed: bool
     effect_count: int
 
 
 class LangGraphClaimWorkflow(WorkflowRuntime):
     graph_name = "claim-processing"
-    graph_version = "claim-processing-v5"
+    graph_version = "claim-processing-v6"
 
     def __init__(
         self,
@@ -123,6 +125,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 builder.add_node("render_documents", self._render_documents)
                 builder.add_node("ocr_documents", self._ocr_documents)
                 builder.add_node("extract_evidence", self._extract_evidence)
+                builder.add_node("reconcile_casefile", self._reconcile_casefile)
                 builder.add_node("commit_member_action", self._commit_member_action)
                 builder.add_edge("load_claim", "media_inspect")
                 builder.add_conditional_edges(
@@ -154,7 +157,22 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     },
                 )
                 builder.add_edge("ocr_documents", "extract_evidence")
-                builder.add_edge("extract_evidence", "finalize")
+                builder.add_conditional_edges(
+                    "extract_evidence",
+                    _after_extraction,
+                    {
+                        "reconcile_casefile": "reconcile_casefile",
+                        "finalize": "finalize",
+                    },
+                )
+                builder.add_conditional_edges(
+                    "reconcile_casefile",
+                    _after_reconciliation,
+                    {
+                        "commit_member_action": "commit_member_action",
+                        "adjudicate": "adjudicate",
+                    },
+                )
                 builder.add_edge("commit_member_action", END)
             builder.add_edge(START, "load_claim")
             builder.add_edge("finalize", END)
@@ -192,6 +210,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "rendered_page_count": 0,
                     "ocr_observation_count": 0,
                     "evidence_candidate_count": 0,
+                    "extraction_completed": False,
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -467,6 +486,62 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         await self._after_effect("extract_evidence")
         return {
             "evidence_candidate_count": candidate_count,
+            "extraction_completed": True,
+            "effect_count": state["effect_count"] + int(created),
+        }
+
+    async def _reconcile_casefile(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("reconcile_casefile")
+        result = await self._required_processor().reconcile_casefile(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        if result.reference is not None:
+            reconciled = await self._repository.record_effect(
+                _workflow_run_id(state),
+                f"evidence-reconciled:v{state['claim_version']}",
+                "EVIDENCE_RECONCILED",
+                {
+                    "evidence_candidate_count": state["evidence_candidate_count"],
+                    "sufficient": True,
+                },
+            )
+            frozen = await self._repository.record_effect(
+                _workflow_run_id(state),
+                f"casefile-frozen:v{state['claim_version']}",
+                "CASEFILE_FROZEN",
+                {
+                    "casefile_id": str(result.reference.id),
+                    "content_hash": result.reference.content_hash,
+                },
+            )
+            await self._after_effect("reconcile_casefile")
+            return {
+                "casefile_id": str(result.reference.id),
+                "casefile_hash": result.reference.content_hash,
+                "effect_count": state["effect_count"] + int(reconciled) + int(frozen),
+            }
+        action = result.action
+        if action is None:
+            raise WorkflowIncompleteError("Reconciliation produced no terminal result.")
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"evidence-reconciliation-required:v{state['claim_version']}",
+            "EVIDENCE_RECONCILIATION_REQUIRED",
+            {
+                "evidence_candidate_count": state["evidence_candidate_count"],
+                "sufficient": False,
+                "action_code": action.code,
+            },
+        )
+        await self._after_effect("reconcile_casefile")
+        return {
+            "action_required": True,
+            "action_code": action.code or "",
+            "action_message": action.message or "",
+            "observed_roles": list(action.observed_roles),
+            "required_roles": list(action.required_roles),
+            "affected_documents": [],
+            "identity_conflict": [],
             "effect_count": state["effect_count"] + int(created),
         }
 
@@ -544,6 +619,18 @@ def _after_rendering(
     state: WorkflowState,
 ) -> Literal["commit_member_action", "ocr_documents"]:
     return "commit_member_action" if state["action_required"] else "ocr_documents"
+
+
+def _after_extraction(
+    state: WorkflowState,
+) -> Literal["reconcile_casefile", "finalize"]:
+    return "reconcile_casefile" if state["extraction_completed"] else "finalize"
+
+
+def _after_reconciliation(
+    state: WorkflowState,
+) -> Literal["commit_member_action", "adjudicate"]:
+    return "commit_member_action" if state["action_required"] else "adjudicate"
 
 
 def _checkpoint_url(database_url: str) -> str:

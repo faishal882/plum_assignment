@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Protocol
 from uuid import UUID
 
 from claims_backend.domain.adjudication import (
@@ -9,6 +10,7 @@ from claims_backend.domain.adjudication import (
 from claims_backend.domain.reconciliation import (
     EvidenceReconciliation,
     EvidenceSufficiency,
+    ProvenancedEvidenceCandidate,
     ReconciledFact,
     ReconciledFactState,
 )
@@ -18,6 +20,13 @@ class EvidenceInsufficientForCasefileError(ValueError):
     def __init__(self, sufficiency: EvidenceSufficiency) -> None:
         self.sufficiency = sufficiency
         super().__init__("Material evidence is unresolved; casefile cannot be frozen.")
+
+
+class ProvenancedEvidenceRepository(Protocol):
+    async def list_provenanced_candidates(
+        self,
+        document_version_id: UUID,
+    ) -> tuple[ProvenancedEvidenceCandidate, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)

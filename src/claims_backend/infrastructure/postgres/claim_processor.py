@@ -1,10 +1,17 @@
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from claims_backend.application.casefiles import (
+    CasefileBuildRequest,
+    ProvenancedEvidenceRepository,
+    build_casefile,
+)
 from claims_backend.application.intelligence import (
     OcrApplication,
     OcrRepository,
@@ -28,6 +35,7 @@ from claims_backend.domain.evidence import (
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
     AffectedDocument,
+    CasefilePreparationResult,
     CasefileTrace,
     ClaimProcessingTrace,
     DecisionTrace,
@@ -38,8 +46,12 @@ from claims_backend.domain.processing import (
     ProcessingRoute,
 )
 from claims_backend.domain.reconciliation import (
+    EvidenceCandidateSource,
+    EvidenceSourceType,
     IdentityCandidate,
     IdentityState,
+    ProvenancedEvidenceCandidate,
+    reconcile_evidence,
     reconcile_patient_identity,
 )
 from claims_backend.domain.work import WorkLease
@@ -82,6 +94,7 @@ class PostgresClaimProcessor:
         ocr: OcrApplication | None = None,
         ocr_repository: OcrRepository | None = None,
         structured_model: StructuredModelApplication | None = None,
+        evidence_repository: ProvenancedEvidenceRepository | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._adjudicator = DeterministicPolicyAdjudicator()
@@ -90,6 +103,7 @@ class PostgresClaimProcessor:
         self._ocr = ocr
         self._ocr_repository = ocr_repository
         self._structured_model = structured_model
+        self._evidence_repository = evidence_repository
 
     async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
         async with self._session_factory() as session:
@@ -227,6 +241,209 @@ class PostgresClaimProcessor:
             session.add(row)
             await session.flush((row,))
             return FrozenCasefileRef(row.id, row.content_hash)
+
+    async def reconcile_casefile(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> CasefilePreparationResult:
+        if self._evidence_repository is None:
+            raise ProcessingInvariantError("Evidence reconciliation repository is not configured.")
+        async with self._session_factory() as session:
+            existing = await session.scalar(
+                select(CasefileRow).where(
+                    CasefileRow.claim_id == workflow_run.claim_id,
+                    CasefileRow.claim_version == workflow_run.claim_version,
+                )
+            )
+            if existing is not None:
+                return CasefilePreparationResult(
+                    reference=FrozenCasefileRef(existing.id, existing.content_hash),
+                    action=None,
+                )
+            claim = (
+                await session.scalars(select(ClaimRow).where(ClaimRow.id == workflow_run.claim_id))
+            ).one()
+            if claim.policy_version_id is None or claim.member_version_id is None:
+                raise ProcessingInvariantError("Claim snapshot pins are incomplete.")
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
+            member_version = (
+                await session.scalars(
+                    select(MemberVersionRow).where(MemberVersionRow.id == claim.member_version_id)
+                )
+            ).one()
+            triage_rows = (
+                await session.scalars(
+                    select(DocumentTriageResultRow)
+                    .where(
+                        DocumentTriageResultRow.claim_id == workflow_run.claim_id,
+                        DocumentTriageResultRow.claim_version == workflow_run.claim_version,
+                    )
+                    .order_by(DocumentTriageResultRow.client_document_id)
+                )
+            ).all()
+            utilization = await session.scalar(
+                select(UtilizationSnapshotRow)
+                .where(
+                    UtilizationSnapshotRow.member_id == member_version.member_id,
+                    UtilizationSnapshotRow.setup_import_id == member_version.setup_import_id,
+                )
+                .order_by(UtilizationSnapshotRow.as_of_date.desc())
+                .limit(1)
+            )
+        if not triage_rows:
+            raise ProcessingInvariantError("Document triage provenance is incomplete.")
+
+        document_candidates: list[ProvenancedEvidenceCandidate] = []
+        for triage in triage_rows:
+            document_candidates.extend(
+                await self._evidence_repository.list_provenanced_candidates(
+                    triage.document_version_id
+                )
+            )
+        claim_snapshot = {
+            "claim_id": str(claim.id),
+            "claim_version": workflow_run.claim_version,
+            "member_id": claim.member_id,
+            "policy_id": claim.policy_id,
+            "category": claim.category,
+            "treatment_date": claim.treatment_date.isoformat(),
+            "claimed_paise": claim.claimed_paise,
+            "currency": claim.currency,
+            "submission": claim_version.submission,
+        }
+        member_snapshot = {
+            "member_version_id": str(member_version.id),
+            "member_record_id": str(member_version.member_id),
+            "version": member_version.version,
+            "setup_import_id": str(member_version.setup_import_id),
+            "name": member_version.name,
+            "date_of_birth": member_version.date_of_birth.isoformat(),
+            "gender": member_version.gender,
+            "relationship": member_version.relationship,
+            "join_date": (
+                None if member_version.join_date is None else member_version.join_date.isoformat()
+            ),
+            "dependent_ids": member_version.dependent_ids,
+            "source_pointer": member_version.source_pointer,
+        }
+        claim_snapshot_sha256 = _canonical_sha256(claim_snapshot)
+        member_snapshot_sha256 = _canonical_sha256(member_snapshot)
+        trusted_candidates = (
+            _snapshot_candidate(
+                fact_path="claim.claimed_amount",
+                value=claim.claimed_paise,
+                producer="CLAIM_SNAPSHOT",
+                producer_version=f"claim-version-{workflow_run.claim_version}",
+                source_type=EvidenceSourceType.CLAIM_SNAPSHOT,
+                source_ref=f"claim-version:{claim_version.id}",
+                source_sha256=claim_snapshot_sha256,
+            ),
+            _snapshot_candidate(
+                fact_path="treatment.date",
+                value=claim.treatment_date.isoformat(),
+                producer="CLAIM_SNAPSHOT",
+                producer_version=f"claim-version-{workflow_run.claim_version}",
+                source_type=EvidenceSourceType.CLAIM_SNAPSHOT,
+                source_ref=f"claim-version:{claim_version.id}",
+                source_sha256=claim_snapshot_sha256,
+            ),
+            _snapshot_candidate(
+                fact_path="patient.name",
+                value=member_version.name,
+                producer="MEMBER_SNAPSHOT",
+                producer_version=f"member-version-{member_version.version}",
+                source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                source_ref=f"member-version:{member_version.id}",
+                source_sha256=member_snapshot_sha256,
+            ),
+            _snapshot_candidate(
+                fact_path="member.join_date",
+                value=(
+                    None
+                    if member_version.join_date is None
+                    else member_version.join_date.isoformat()
+                ),
+                producer="MEMBER_SNAPSHOT",
+                producer_version=f"member-version-{member_version.version}",
+                source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                source_ref=f"member-version:{member_version.id}",
+                source_sha256=member_snapshot_sha256,
+            ),
+        )
+        reconciliation = reconcile_evidence(
+            tuple(document_candidates) + trusted_candidates,
+            material_fact_paths=(
+                "billing.total",
+                "claim.claimed_amount",
+                "clinical.condition",
+                "member.join_date",
+                "patient.name",
+                "treatment.date",
+            ),
+        )
+        observed_roles = tuple(triage.role for triage in triage_rows)
+        if not reconciliation.sufficiency.sufficient:
+            actions = ", ".join(
+                f"{item.fact_path} ({item.requested_action})"
+                for item in reconciliation.sufficiency.corrective_actions
+            )
+            return CasefilePreparationResult(
+                reference=None,
+                action=EarlyGateResult(
+                    action_required=True,
+                    code="EVIDENCE_RECONCILIATION_REQUIRED",
+                    message=f"Evidence must be corrected before adjudication: {actions}.",
+                    observed_roles=observed_roles,
+                    required_roles=(),
+                ),
+            )
+        casefile = build_casefile(
+            CasefileBuildRequest(
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                member_id=claim.member_id,
+                member_version_id=member_version.id,
+                member_snapshot_sha256=member_snapshot_sha256,
+                policy_version_id=claim.policy_version_id,
+                category=claim.category,
+                claimed_paise=claim.claimed_paise,
+                currency=claim.currency,
+                eligibility_evidence_ref=f"member-version:{member_version.id}",
+                document_roles=observed_roles,
+                document_role_evidence_refs=tuple(
+                    f"document-triage:{triage.id}" for triage in triage_rows
+                ),
+                ytd_used_paise=None if utilization is None else utilization.used_paise,
+                utilization_evidence_ref=(
+                    None if utilization is None else f"utilization:{utilization.id}"
+                ),
+                reconciliation=reconciliation,
+            )
+        )
+        async with self._session_factory.begin() as session:
+            row = CasefileRow(
+                id=uuid4(),
+                claim_id=claim.id,
+                claim_version=workflow_run.claim_version,
+                policy_version_id=claim.policy_version_id,
+                member_version_id=member_version.id,
+                content=casefile.model_dump(mode="json"),
+                content_hash=casefile.canonical_hash(),
+                created_at=datetime.now(UTC),
+            )
+            session.add(row)
+            await session.flush((row,))
+        return CasefilePreparationResult(
+            reference=FrozenCasefileRef(row.id, row.content_hash),
+            action=None,
+        )
 
     async def evaluate_casefile(self, casefile_id: UUID) -> str:
         async with self._session_factory() as session:
@@ -894,7 +1111,11 @@ class PostgresClaimProcessor:
                 )
             ).all()
         return ClaimProcessingTrace(
-            casefile=CasefileTrace(casefile.id, casefile.content_hash),
+            casefile=CasefileTrace(
+                casefile.id,
+                casefile.content_hash,
+                ClaimCasefile.model_validate(casefile.content),
+            ),
             decision=DecisionTrace(
                 decision.id,
                 decision.recommendation,
@@ -945,3 +1166,48 @@ def _rule_result(row: RuleResultRow) -> RuleResult:
             "amount_after_paise": row.amount_after_paise,
         }
     )
+
+
+def _snapshot_candidate(
+    *,
+    fact_path: str,
+    value: str | int | None,
+    producer: str,
+    producer_version: str,
+    source_type: EvidenceSourceType,
+    source_ref: str,
+    source_sha256: str,
+) -> ProvenancedEvidenceCandidate:
+    payload = {
+        "fact_path": fact_path,
+        "value": value,
+        "normalized_value": value,
+        "producer": producer,
+        "producer_version": producer_version,
+        "schema_version": "trusted-snapshot-v1",
+        "confidence": 1.0,
+        "sources": [
+            EvidenceCandidateSource(
+                source_type=source_type,
+                source_ref=source_ref,
+                source_sha256=source_sha256,
+            ).model_dump(mode="json")
+        ],
+    }
+    return ProvenancedEvidenceCandidate.model_validate(
+        {
+            "candidate_id": _canonical_sha256(payload),
+            **payload,
+        }
+    )
+
+
+def _canonical_sha256(value: object) -> str:
+    return sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()

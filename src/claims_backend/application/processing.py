@@ -2,6 +2,7 @@ from typing import Protocol
 from uuid import UUID
 
 from claims_backend.domain.processing import (
+    CasefilePreparationResult,
     EarlyGateResult,
     FrozenCasefileRef,
     PagePreparationResult,
@@ -20,6 +21,11 @@ class ClaimProcessor(Protocol):
         self,
         workflow_run: WorkflowRun,
     ) -> FrozenCasefileRef: ...
+
+    async def reconcile_casefile(
+        self,
+        workflow_run: WorkflowRun,
+    ) -> CasefilePreparationResult: ...
 
     async def evaluate_casefile(self, casefile_id: UUID) -> str: ...
 
