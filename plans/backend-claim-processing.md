@@ -139,19 +139,21 @@ Introduce the versioned claim-action contract used later for document correction
 
 **User stories**: 53, 54, 55
 
+**Status**: Complete — 2026-07-28
+
 ### What to build
 
 Turn queued claims into durable local work. A worker leases due work using PostgreSQL locking, commits the lease, performs a minimal typed workflow step, and persists its outcome without holding locks across external work.
 
 ### Acceptance criteria
 
-- [ ] Work items expose operation key, availability, status, attempt limits, lease owner, and lease expiry.
-- [ ] Concurrent workers cannot lease the same operation simultaneously.
-- [ ] Leasing uses PostgreSQL locking with skip-locked behavior and commits before processing begins.
-- [ ] No provider or workflow execution occurs inside the leasing transaction.
-- [ ] Retryable work is rescheduled through a future availability timestamp rather than process sleep.
-- [ ] A unique operation key prevents duplicate logical work.
-- [ ] Integration tests prove enqueue atomicity, lease exclusivity, due-time ordering, and retry scheduling.
+- [x] Work items expose operation key, availability, status, attempt limits, lease owner, and lease expiry.
+- [x] Concurrent workers cannot lease the same operation simultaneously.
+- [x] Leasing uses PostgreSQL locking with skip-locked behavior and commits before processing begins.
+- [x] No provider or workflow execution occurs inside the leasing transaction.
+- [x] Retryable work is rescheduled through a future availability timestamp rather than process sleep.
+- [x] A unique operation key prevents duplicate logical work.
+- [x] Integration tests prove enqueue atomicity, lease exclusivity, due-time ordering, and retry scheduling.
 
 ---
 
