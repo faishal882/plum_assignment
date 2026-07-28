@@ -209,13 +209,13 @@ Compile the immutable source policy and explicit assignment overlay into version
 
 ### Acceptance criteria
 
-- [ ] The assignment overlay has an independent version and hash and contains no test-case identifiers.
-- [ ] Compilation emits schema, semantic, referential, vocabulary, and contradiction findings.
-- [ ] Invalid or unresolved-error policy versions cannot activate.
-- [ ] The compiled IR explicitly represents category-over-general precedence, ₹5,000 consultation limit, conditional MRI/CT authorization, and mandatory PET authorization.
-- [ ] Activation is an auditable local CLI action and does not mutate source policy content.
-- [ ] A newly accepted claim pins policy source, overlay, IR, and member snapshot versions.
-- [ ] Compiler determinism tests produce the same IR hash for the same canonical inputs.
+- [x] The assignment overlay has an independent version and hash and contains no test-case identifiers.
+- [x] Compilation emits schema, semantic, referential, vocabulary, and contradiction findings.
+- [x] Invalid or unresolved-error policy versions cannot activate.
+- [x] The compiled IR explicitly represents category-over-general precedence, ₹5,000 consultation limit, conditional MRI/CT authorization, and mandatory PET authorization.
+- [x] Activation is an auditable local CLI action and does not mutate source policy content.
+- [x] A newly accepted claim pins policy source, overlay, IR, and member snapshot versions.
+- [x] Compiler determinism tests produce the same IR hash for the same canonical inputs.
 
 ---
 
