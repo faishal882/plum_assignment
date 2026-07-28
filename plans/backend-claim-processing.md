@@ -352,14 +352,14 @@ Combine roster, history, Textract, and Bedrock candidates into a canonical evide
 
 ### Acceptance criteria
 
-- [ ] Candidates retain producer, producer version, document version, page, geometry, schema version, confidence, and source hash.
-- [ ] Candidates are grouped by canonical fact path without discarding their original representation.
-- [ ] Reconciled facts explicitly distinguish known, unknown, and conflict.
-- [ ] Bill totals, line items, claimed amounts, treatment dates, patient identity, and clinical concepts have deterministic reconciliation rules.
-- [ ] Evidence sufficiency identifies every unresolved material fact and its required corrective action.
-- [ ] Policy evaluation cannot begin until an immutable casefile version is frozen.
-- [ ] The frozen casefile has a canonical content hash and pins all contributing evidence and member snapshots.
-- [ ] Reconciliation property tests prove stable output under candidate reordering.
+- [x] Candidates retain producer, producer version, document version, page, geometry, schema version, confidence, and source hash.
+- [x] Candidates are grouped by canonical fact path without discarding their original representation.
+- [x] Reconciled facts explicitly distinguish known, unknown, and conflict.
+- [x] Bill totals, line items, claimed amounts, treatment dates, patient identity, and clinical concepts have deterministic reconciliation rules.
+- [x] Evidence sufficiency identifies every unresolved material fact and its required corrective action.
+- [x] Policy evaluation cannot begin until an immutable casefile version is frozen.
+- [x] The frozen casefile has a canonical content hash and pins all contributing evidence and member snapshots.
+- [x] Reconciliation property tests prove stable output under candidate reordering.
 
 ---
 
@@ -373,14 +373,14 @@ Replace structured TC004 evidence with generated claim documents submitted throu
 
 ### Acceptance criteria
 
-- [ ] The rendered fixture enters only through `POST /v1/claims`.
-- [ ] Production request DTOs never receive the case identifier, actual type, extracted text, expected decision, or expected amount.
-- [ ] The worker completes every required workflow stage and persists its checkpoints.
-- [ ] The casefile contains document- and page-linked evidence for all material adjudication facts.
-- [ ] The final recommendation is `APPROVED` for exactly ₹1,350 with the 10% co-pay explanation.
-- [ ] The rendered run and structured-component run produce equivalent material facts and decision traces.
-- [ ] The case remains reproducible in the default recorded profile with no AWS calls.
-- [ ] A separately tagged live-intelligence run exercises real Textract and Bedrock without changing expected policy behavior.
+- [x] The rendered fixture enters only through `POST /v1/claims`.
+- [x] Production request DTOs never receive the case identifier, actual type, extracted text, expected decision, or expected amount.
+- [x] The worker completes every required workflow stage and persists its checkpoints.
+- [x] The casefile contains document- and page-linked evidence for all material adjudication facts.
+- [x] The final recommendation is `APPROVED` for exactly ₹1,350 with the 10% co-pay explanation.
+- [x] The rendered run and structured-component run produce equivalent material facts and decision traces.
+- [x] The case remains reproducible in the default recorded profile with no AWS calls.
+- [x] A separately tagged live-intelligence run exercises real Textract and Bedrock without changing expected policy behavior.
 
 ---
 
@@ -394,13 +394,13 @@ Add deterministic waiting-period evaluation using policy dates, member enrollmen
 
 ### Acceptance criteria
 
-- [ ] Waiting-period rules are compiled into Policy IR rather than embedded in workflow routing.
-- [ ] Required member, condition, enrollment, and treatment-date facts come from the pinned snapshot and frozen casefile.
-- [ ] Missing or conflicting material dates route to action or review instead of producing a guessed result.
-- [ ] TC005 produces `REJECTED` with the `WAITING_PERIOD` reason.
-- [ ] The explanation states the exact date from which diabetes-related claims become eligible.
-- [ ] The rule trace links the policy path and each supporting date fact.
-- [ ] Date-boundary property tests cover the day before, day of, and day after eligibility.
+- [x] Waiting-period rules are compiled into Policy IR rather than embedded in workflow routing.
+- [x] Required member, condition, enrollment, and treatment-date facts come from the pinned snapshot and frozen casefile.
+- [x] Missing or conflicting material dates route to action or review instead of producing a guessed result.
+- [x] TC005 produces `REJECTED` with the `WAITING_PERIOD` reason.
+- [x] The explanation states the exact date from which diabetes-related claims become eligible.
+- [x] The rule trace links the policy path and each supporting date fact.
+- [x] Date-boundary property tests cover the day before, day of, and day after eligibility.
 
 ---
 
