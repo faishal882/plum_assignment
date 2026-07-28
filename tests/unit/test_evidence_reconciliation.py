@@ -89,6 +89,35 @@ def test_unknown_and_conflicting_material_facts_return_specific_corrections() ->
     ]
 
 
+def test_null_snapshot_candidate_remains_explicitly_unknown() -> None:
+    candidate = ProvenancedEvidenceCandidate(
+        candidate_id="9" * 64,
+        fact_path="member.join_date",
+        value=None,
+        normalized_value=None,
+        producer="MEMBER_SNAPSHOT",
+        producer_version="member-version-1",
+        schema_version="trusted-snapshot-v1",
+        confidence=1,
+        sources=(
+            EvidenceCandidateSource(
+                source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                source_ref="member-version:missing-date",
+                source_sha256="8" * 64,
+            ),
+        ),
+    )
+
+    result = reconcile_evidence(
+        (candidate,),
+        material_fact_paths=("member.join_date",),
+    )
+
+    assert result.facts[0].state is ReconciledFactState.UNKNOWN
+    assert result.facts[0].candidate_ids == (candidate.candidate_id,)
+    assert result.sufficiency.corrective_actions[0].fact_path == "member.join_date"
+
+
 def test_trusted_snapshot_and_document_sources_share_one_evidence_graph() -> None:
     member_candidate = ProvenancedEvidenceCandidate(
         candidate_id="c" * 64,

@@ -78,6 +78,7 @@ from claims_backend.infrastructure.postgres.models import (
 )
 from claims_backend.model.application import StructuredModelApplication
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
+from claims_backend.policy.explanation import render_member_explanation
 
 
 class ProcessingInvariantError(RuntimeError):
@@ -507,7 +508,7 @@ class PostgresClaimProcessor:
                 lifecycle_status="DECIDED",
                 approved_paise=proposal.approved_paise,
                 currency=proposal.currency,
-                engine_version="deterministic-adjudicator-v1",
+                engine_version="deterministic-adjudicator-v2",
                 canonical_hash=proposal.canonical_hash,
                 created_at=now,
             )
@@ -537,14 +538,16 @@ class PostgresClaimProcessor:
             claim.adjudication_recommendation = proposal.recommendation.value
             claim.approved_paise = proposal.approved_paise
             claim.current_action = None
+            explanation = render_member_explanation(proposal)
             claim.member_explanation = {
-                "summary": "₹1,350.00 approved after a 10% consultation co-pay.",
+                "summary": explanation.summary,
                 "deductions": [
                     {
-                        "code": "CATEGORY_COPAY_APPLIED",
-                        "label": "10% consultation co-pay",
-                        "amount_paise": 15_000,
+                        "code": deduction.code,
+                        "label": deduction.label,
+                        "amount_paise": deduction.amount_paise,
                     }
+                    for deduction in explanation.deductions
                 ],
             }
             claim.updated_at = now

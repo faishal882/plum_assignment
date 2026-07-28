@@ -169,11 +169,17 @@ def _reconcile_fact(
             candidate_ids=(),
         )
     canonical_values = {
-        _canonical_fact_value(fact_path, candidate.normalized_value) for candidate in candidates
+        canonical
+        for candidate in candidates
+        if (canonical := _canonical_fact_value(fact_path, candidate.normalized_value))
+        is not None
     }
-    state = (
-        ReconciledFactState.KNOWN if len(canonical_values) == 1 else ReconciledFactState.CONFLICT
-    )
+    if not canonical_values:
+        state = ReconciledFactState.UNKNOWN
+    elif len(canonical_values) == 1:
+        state = ReconciledFactState.KNOWN
+    else:
+        state = ReconciledFactState.CONFLICT
     return ReconciledFact(
         fact_path=fact_path,
         state=state,
