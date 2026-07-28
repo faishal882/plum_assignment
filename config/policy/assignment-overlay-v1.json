@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "overlay_id": "assignment-overlay",
-  "version": 1,
+  "version": 2,
   "base_policy_sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce",
   "approval": {
     "status": "APPROVED",
