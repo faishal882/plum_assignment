@@ -96,6 +96,7 @@ def create_claim_worker(runtime: ProcessRuntime) -> ClaimWorker:
         repository,
         processor=create_claim_processor(runtime),
         observability=runtime.observability,
+        execution_profile=runtime.profile.value,
     )
     processor = ClaimWorkflowProcessor(repository, workflow)
     service = WorkerService(

@@ -118,6 +118,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         before_node: BeforeNodeHook | None = None,
         after_effect: BeforeNodeHook | None = None,
         observability: Observability | None = None,
+        execution_profile: str = "UNSPECIFIED",
     ) -> None:
         self._checkpoint_url = _checkpoint_url(database_url)
         self._repository = repository
@@ -125,6 +126,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         self._before_node = before_node or _no_op_hook
         self._after_effect = after_effect or _no_op_hook
         self._observability = observability
+        self._execution_profile = execution_profile
 
     async def setup(self) -> None:
         async with AsyncPostgresSaver.from_conn_string(self._checkpoint_url) as checkpointer:
@@ -297,6 +299,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "workflow.run_id": str(workflow_run.id),
                     "workflow.graph_name": self.graph_name,
                     "workflow.graph_version": self.graph_version,
+                    "workflow.execution_profile": self._execution_profile,
                     "work.attempt": lease.attempt_number,
                 }
                 with self._observability.span(

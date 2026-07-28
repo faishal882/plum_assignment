@@ -78,6 +78,8 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     ]
     assert all(span.context.trace_id == root.context.trace_id for span in nodes)
     assert all(span.parent and span.parent.span_id == root.context.span_id for span in nodes)
+    assert root.attributes["session.id"] == str(claim_id)
+    assert root.attributes["workflow.execution_profile"] == "UNSPECIFIED"
     assert [
         (event.sequence, event.node_name, event.event_type, event.outcome) for event in events
     ] == [
