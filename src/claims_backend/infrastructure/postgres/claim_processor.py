@@ -49,6 +49,7 @@ from claims_backend.domain.reconciliation import (
     IdentityCandidate,
     IdentityState,
     ProvenancedEvidenceCandidate,
+    ReconciledFactState,
     reconcile_evidence,
     reconcile_patient_identity,
 )
@@ -297,6 +298,16 @@ class PostgresClaimProcessor:
                             fixture.payload_sha256,
                         )
                     )
+                if document.clinical_treatment is not None:
+                    candidates.append(
+                        _structured_fixture_candidate(
+                            "clinical.treatment",
+                            document.clinical_treatment,
+                            evidence.schema_version,
+                            source_ref,
+                            fixture.payload_sha256,
+                        )
+                    )
                 if document.billed_paise is not None:
                     candidates.append(
                         _structured_fixture_candidate(
@@ -319,7 +330,13 @@ class PostgresClaimProcessor:
                 )
             reconciliation = reconcile_evidence(
                 tuple(candidates),
-                material_fact_paths=_material_fact_paths(claim.category),
+                material_fact_paths=_material_fact_paths(
+                    claim.category,
+                    pre_authorization_present=any(
+                        document.role is DocumentRole.PRE_AUTHORIZATION
+                        for document in evidence.documents
+                    ),
+                ),
             )
             casefile = build_casefile(
                 CasefileBuildRequest(
@@ -521,9 +538,42 @@ class PostgresClaimProcessor:
             )
         reconciliation = reconcile_evidence(
             all_candidates,
-            material_fact_paths=_material_fact_paths(claim.category),
+            material_fact_paths=_material_fact_paths(
+                claim.category,
+                pre_authorization_present=any(
+                    triage.role == DocumentRole.PRE_AUTHORIZATION.value
+                    for triage in triage_rows
+                ),
+            ),
         )
         observed_roles = tuple(triage.role for triage in triage_rows)
+        authorization_conflicts = tuple(
+            fact
+            for fact in reconciliation.facts
+            if fact.fact_path.startswith("document.pre_authorization.")
+            and fact.state is ReconciledFactState.CONFLICT
+        )
+        if authorization_conflicts:
+            preserved_candidates = sum(
+                len(fact.candidate_ids) for fact in authorization_conflicts
+            )
+            paths = ", ".join(
+                fact.fact_path for fact in authorization_conflicts
+            )
+            return CasefilePreparationResult(
+                reference=None,
+                action=EarlyGateResult(
+                    action_required=True,
+                    code="PRE_AUTHORIZATION_REVIEW_REQUIRED",
+                    message=(
+                        "Conflicting pre-authorization evidence requires manual "
+                        f"review: {paths}. All {preserved_candidates} candidates "
+                        "were preserved."
+                    ),
+                    observed_roles=observed_roles,
+                    required_roles=(),
+                ),
+            )
         if not reconciliation.sufficiency.sufficient:
             actions = ", ".join(
                 f"{item.fact_path} ({item.requested_action})"
@@ -1403,7 +1453,11 @@ def _canonical_sha256(value: object) -> str:
     ).hexdigest()
 
 
-def _material_fact_paths(category: str) -> tuple[str, ...]:
+def _material_fact_paths(
+    category: str,
+    *,
+    pre_authorization_present: bool = False,
+) -> tuple[str, ...]:
     common = (
         "billing.total",
         "claim.claimed_amount",
@@ -1411,4 +1465,17 @@ def _material_fact_paths(category: str) -> tuple[str, ...]:
         "patient.name",
         "treatment.date",
     )
-    return common if category == "DENTAL" else (*common, "clinical.condition")
+    category_paths = (
+        common if category == "DENTAL" else (*common, "clinical.condition")
+    )
+    if not pre_authorization_present:
+        return category_paths
+    return (
+        *category_paths,
+        "document.pre_authorization.patient_name",
+        "document.pre_authorization.treatment",
+        "document.pre_authorization.valid_from",
+        "document.pre_authorization.valid_to",
+        "document.pre_authorization.reference",
+        "document.pre_authorization.applicable_amount",
+    )

@@ -154,6 +154,170 @@ async def test_tc004_structured_fixture_commits_exact_member_decision(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "case_id",
+        "username",
+        "member_id",
+        "category",
+        "treatment_date",
+        "claimed_amount",
+        "document_ids",
+        "expected_reason",
+        "summary_fragments",
+    ),
+    [
+        (
+            "tc007",
+            "member.emp007",
+            "EMP007",
+            "DIAGNOSTIC",
+            "2024-11-02",
+            "15000.00",
+            ("F012", "F013", "F014"),
+            "PRE_AUTH_MISSING",
+            ("₹15,000.00", "₹10,000.00", "resubmit"),
+        ),
+        (
+            "tc008",
+            "member.emp003",
+            "EMP003",
+            "CONSULTATION",
+            "2024-10-20",
+            "7500.00",
+            ("F015", "F016"),
+            "PER_CLAIM_EXCEEDED",
+            ("₹7,500.00", "₹5,000.00"),
+        ),
+    ],
+)
+async def test_tc007_and_tc008_structured_tracers(
+    migrated_database_url: str,
+    tmp_path,
+    case_id: str,
+    username: str,
+    member_id: str,
+    category: str,
+    treatment_date: str,
+    claimed_amount: str,
+    document_ids: tuple[str, ...],
+    expected_reason: str,
+    summary_fragments: tuple[str, ...],
+) -> None:
+    engine = create_async_engine(migrated_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    await SetupDataApplication(
+        PostgresSetupImportRepository(factory)
+    ).import_sources(
+        POLICY_BYTES,
+        source_name="policy_terms.json",
+        member_data_bytes=json.dumps(
+            {
+                "policy_id": "PLUM_GHI_2024",
+                "as_of_date": treatment_date,
+                "claim_history": [],
+                "utilization": [
+                    {
+                        "member_id": member_id,
+                        "period_start": "2024-04-01",
+                        "period_end": "2025-03-31",
+                        "used_amount": "0.00",
+                        "currency": "INR",
+                        "as_of_date": treatment_date,
+                    }
+                ],
+            }
+        ).encode(),
+        member_data_source_name=f"{case_id}-member-facts.json",
+    )
+    app = create_app(
+        Settings(database_url=migrated_database_url, data_root=tmp_path)
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": username,
+                "Idempotency-Key": f"{case_id}-structured",
+            },
+            data={
+                "metadata": json.dumps(
+                    {
+                        "member_id": member_id,
+                        "policy_id": "PLUM_GHI_2024",
+                        "claim_category": category,
+                        "treatment_date": treatment_date,
+                        "claimed_amount": claimed_amount,
+                        "currency": "INR",
+                        "documents": [
+                            {
+                                "upload_index": index,
+                                "client_document_id": document_id,
+                            }
+                            for index, document_id in enumerate(document_ids)
+                        ],
+                    }
+                )
+            },
+            files=[
+                (
+                    "files",
+                    (f"{document_id}.pdf", _pdf_bytes(), "application/pdf"),
+                )
+                for document_id in document_ids
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        fixtures = StructuredComponentFixtureAdapter(factory)
+        if case_id == "tc007":
+            await fixtures.seed_tc007(claim_id, 1)
+        else:
+            await fixtures.seed_tc008(claim_id, 1)
+
+        scheduler = PostgresWorkScheduler(app.state.session_factory)
+        workflows = PostgresWorkflowRepository(app.state.session_factory)
+        processor = PostgresClaimProcessor(app.state.session_factory)
+        runtime = LangGraphClaimWorkflow(
+            migrated_database_url,
+            workflows,
+            processor=processor,
+        )
+        await runtime.setup()
+        assert await WorkerService(scheduler).run_once(
+            f"{case_id}-worker",
+            ClaimWorkflowProcessor(workflows, runtime).process,
+        )
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": username},
+        )
+
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"] == {
+        "recommendation": "REJECTED",
+        "approved_amount": "0.00",
+        "currency": "INR",
+    }
+    assert body["explanation"]["deductions"][0]["code"] == expected_reason
+    assert all(
+        fragment in body["explanation"]["summary"]
+        for fragment in summary_fragments
+    )
+    trace = await processor.inspect_trace(claim_id)
+    assert trace is not None
+    assert trace.rule_results[-1].reason_code == expected_reason
+    assert trace.rule_results[-1].status == "FAIL"
+    assert trace.decision.approved_paise == 0
+
+    await app.state.engine.dispose()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_audit_failure_rolls_back_the_entire_terminal_commit(
     migrated_database_url: str,
     tmp_path,
