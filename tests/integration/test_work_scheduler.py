@@ -344,6 +344,15 @@ async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
     assert claim.lifecycle_status == "PROCESSING_FAILED"
     assert claim.current_action is None
     assert claim.adjudication_recommendation is None
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        projection = await client.get(
+            f"/v1/claims/{claim.id}",
+            headers={"X-Dev-Username": "member.emp001"},
+        )
+    assert projection.json()["processing_failure"] == {
+        "code": "MODEL_SEMANTIC_VALIDATION_FAILED",
+        "retry_guidance": "Please try again later. If the problem continues, contact support.",
+    }
     await app.state.engine.dispose()
 
 

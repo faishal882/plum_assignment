@@ -69,6 +69,7 @@ class ClaimResponse(BaseModel):
     action: "MemberActionResponse | None" = None
     handling_status: str | None = None
     processing_quality: "ProcessingQualityResponse | None" = None
+    processing_failure: "ProcessingFailureResponse | None" = None
     created_at: datetime
     updated_at: datetime
 
@@ -100,6 +101,11 @@ class ProcessingQualityResponse(BaseModel):
     completeness: float
     confidence: float
     degraded_components: list[DegradedComponentResponse]
+
+
+class ProcessingFailureResponse(BaseModel):
+    code: str
+    retry_guidance: str
 
 
 class MemberDeductionResponse(BaseModel):

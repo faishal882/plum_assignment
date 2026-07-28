@@ -23,6 +23,7 @@ from claims_backend.api.schemas import (
     MemberDeductionResponse,
     MemberExplanationResponse,
     MemberLineItemExplanationResponse,
+    ProcessingFailureResponse,
     ProcessingQualityResponse,
     ProgressResponse,
     ReplaceDocumentCommandRequest,
@@ -433,8 +434,24 @@ def _to_response(claim: Claim) -> ClaimResponse:
                 ],
             )
         ),
+        processing_failure=_processing_failure(claim),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
+    )
+
+
+def _processing_failure(claim: Claim) -> ProcessingFailureResponse | None:
+    if claim.lifecycle is not ClaimLifecycle.PROCESSING_FAILED:
+        return None
+    quality = claim.processing_quality
+    code = (
+        quality.degraded_components[0].failure_code
+        if quality is not None and quality.degraded_components
+        else "PROCESSING_FAILED"
+    )
+    return ProcessingFailureResponse(
+        code=code,
+        retry_guidance="Please try again later. If the problem continues, contact support.",
     )
 
 
