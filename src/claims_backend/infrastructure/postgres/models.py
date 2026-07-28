@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
@@ -36,6 +37,122 @@ class PolicySourceRow(Base):
     source_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     source_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PolicyOverlayRow(Base):
+    __tablename__ = "policy_overlays"
+    __table_args__ = (
+        CheckConstraint("octet_length(source_bytes) > 0", name="policy_overlays_bytes_nonempty"),
+        UniqueConstraint(
+            "overlay_id",
+            "version",
+            name="policy_overlays_identity_version_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    overlay_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    base_policy_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    source_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    approval_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PolicyVersionRow(Base):
+    __tablename__ = "policy_versions"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="policy_versions_version_positive"),
+        CheckConstraint(
+            "status IN ('INVALID', 'COMPILED', 'ACTIVE', 'RETIRED')",
+            name="policy_versions_status_supported",
+        ),
+        UniqueConstraint(
+            "policy_id",
+            "version",
+            name="policy_versions_policy_version_uq",
+        ),
+        UniqueConstraint(
+            "policy_source_id",
+            "policy_overlay_id",
+            "compiler_version",
+            name="policy_versions_compilation_identity_uq",
+        ),
+        Index(
+            "policy_versions_one_active_uq",
+            "policy_id",
+            unique=True,
+            postgresql_where=text("status = 'ACTIVE'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    policy_source_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    policy_overlay_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_overlays.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    compiler_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    ir: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    ir_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    compiled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    activated_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+class PolicyFindingRow(Base):
+    __tablename__ = "policy_findings"
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_pointer: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_by_overlay: Mapped[bool] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PolicyActivationEventRow(Base):
+    __tablename__ = "policy_activation_events"
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    policy_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("policy_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    actor: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    to_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class SetupImportRow(Base):

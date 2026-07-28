@@ -28,7 +28,8 @@ def migrated_database_url(postgres_database_url: str) -> Iterator[str]:
                 "TRUNCATE TABLE workflow_effects, workflow_runs, claim_actions, "
                 "idempotency_keys, document_versions, documents, claim_work_items, "
                 "audit_events, claim_versions, claims, member_utilization_snapshots, "
-                "member_claim_history, import_findings, member_versions, members, "
+                "member_claim_history, policy_activation_events, policy_findings, "
+                "policy_versions, policy_overlays, import_findings, member_versions, members, "
                 "setup_imports, policy_sources RESTART IDENTITY CASCADE"
             )
         )
