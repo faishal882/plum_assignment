@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
 
 from claims_backend.api.dependencies import (
@@ -66,6 +66,7 @@ _IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def submit_claim(
+    request_context: Request,
     metadata: Annotated[str, Form()],
     files: Annotated[list[UploadFile], File()],
     application: ClaimsApplicationDependency,
@@ -144,6 +145,19 @@ async def submit_claim(
         ) from error
     except DocumentIngestionError as error:
         raise _document_error(error) from error
+    observability = request_context.app.state.observability
+    if observability is not None:
+        with observability.span(
+            "api.claim_submitted",
+            component="api",
+            attributes={
+                "session.id": str(claim.id),
+                "claim.id": str(claim.id),
+                "claim.version": claim.version,
+                "outcome": claim.lifecycle.value,
+            },
+        ):
+            pass
     return ClaimReceiptResponse(
         claim_id=claim.id,
         version=claim.version,
