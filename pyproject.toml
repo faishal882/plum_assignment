@@ -53,6 +53,7 @@ packages = ["src/claims_backend"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 asyncio_mode = "auto"
+pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "clean_setup_data: run with empty policy and member setup tables",
