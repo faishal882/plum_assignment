@@ -86,6 +86,8 @@ from claims_backend.observability import (
     create_observability,
     scan_telemetry_for_phi,
 )
+from claims_backend.runtime.composition import create_process_runtime
+from claims_backend.worker.application import create_claim_worker
 from evaluation_workbench import (
     ActualCaseResult,
     EvaluationRunBuilder,
@@ -377,40 +379,21 @@ async def _run_rendered_case(
         rendered,
         idempotency_suffix="rendered-gate",
     )
-    triage = _triage_output(raw_case, rendered)
-    await StructuredComponentFixtureAdapter(factory).seed_recorded_triage(
-        claim_id,
-        1,
-        triage,
-    )
-    document_versions = await _document_versions(factory, claim_id)
-    processor = _processor(
-        factory,
-        document_root,
-        raw_case,
-        document_versions,
-    )
-    if case_id == "TC011":
-        processor = _processor(
-            factory,
-            document_root,
-            raw_case,
-            document_versions,
-            anomaly_enricher=EvaluationAnomalyFailureInjector(),
-        )
-    workflows = PostgresWorkflowRepository(factory)
-    runtime = LangGraphClaimWorkflow(
-        database_url,
-        workflows,
-        processor=processor,
+    runtime = create_process_runtime(
+        Settings(
+            database_url=database_url,
+            data_root=document_root,
+            inject_anomaly_enrichment_failure=(case_id == "TC011"),
+        ),
+        process_name="worker",
         observability=worker_observability,
     )
-    await runtime.setup()
-    processed = await WorkerService(PostgresWorkScheduler(factory)).run_once(
-        f"{case_id.casefold()}-rendered-worker",
-        ClaimWorkflowProcessor(workflows, runtime).process,
-    )
-    assert processed is True
+    worker = create_claim_worker(runtime)
+    try:
+        await worker.setup()
+        assert await worker.run_once()
+    finally:
+        await worker.close()
     if case_id == "TC009":
         listed = await client.get(
             "/v1/review-tasks",
