@@ -12,12 +12,14 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
     ReadTimeoutError,
 )
 from langchain_aws import ChatBedrockConverse
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 from pydantic import BaseModel
 
 from claims_backend.config import Settings
 from claims_backend.domain.extraction import ModelProviderError, ModelSchemaValidationError
 from claims_backend.model.routing import ModelRouteConfig
 from claims_backend.model.transport import ModelInvocation
+from claims_backend.observability import EngineeringLogEvent, Observability
 
 
 class ChatBedrockConverseTransport:
@@ -27,6 +29,7 @@ class ChatBedrockConverseTransport:
         connect_timeout_seconds: int = 30,
         read_timeout_seconds: int = 90,
         concurrency_limit: int = 2,
+        observability: Observability | None = None,
     ) -> None:
         for name, value in (
             ("connect_timeout_seconds", connect_timeout_seconds),
@@ -38,15 +41,79 @@ class ChatBedrockConverseTransport:
         self._connect_timeout_seconds = connect_timeout_seconds
         self._read_timeout_seconds = read_timeout_seconds
         self._permit = BoundedSemaphore(concurrency_limit)
+        self._observability = observability
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> "ChatBedrockConverseTransport":
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        observability: Observability | None = None,
+    ) -> "ChatBedrockConverseTransport":
         return cls(
             read_timeout_seconds=settings.bedrock_timeout_seconds,
             concurrency_limit=settings.bedrock_concurrency_limit,
+            observability=observability,
         )
 
     def invoke(
+        self,
+        config: ModelRouteConfig,
+        schema: type[BaseModel],
+        messages: list[tuple[str, str]],
+    ) -> ModelInvocation:
+        if self._observability is None:
+            return self._invoke(config, schema, messages)
+        with self._observability.span(
+            "bedrock.converse",
+            component="bedrock",
+            span_kind=OpenInferenceSpanKindValues.LLM.value,
+            attributes={
+                "provider.name": "AWS_BEDROCK",
+                "model.route": config.route.value,
+                "model.id": config.model_id,
+                "model.prompt_version": config.prompt_version,
+                "model.schema_version": config.schema_version,
+                "model.structured_output_method": config.structured_output_method,
+            },
+        ) as span:
+            try:
+                invocation = self._invoke(config, schema, messages)
+            except Exception as error:
+                self._observability.log(
+                    EngineeringLogEvent(
+                        event_name="bedrock_request_failed",
+                        component="bedrock",
+                        outcome="ERROR",
+                        duration_ms=0,
+                        provider_name="AWS_BEDROCK",
+                        error_type=type(error).__name__,
+                    )
+                )
+                raise
+            self._observability.set_attributes(
+                span,
+                {
+                    "provider.request_id": invocation.provider_request_id,
+                    "llm.token_count.prompt": invocation.input_tokens,
+                    "llm.token_count.completion": invocation.output_tokens,
+                    "model.latency_ms": invocation.latency_ms,
+                    "model.stop_reason": invocation.stop_reason,
+                },
+            )
+            self._observability.log(
+                EngineeringLogEvent(
+                    event_name="bedrock_request_finished",
+                    component="bedrock",
+                    outcome="OK",
+                    duration_ms=invocation.latency_ms,
+                    provider_name="AWS_BEDROCK",
+                    provider_request_id=invocation.provider_request_id,
+                )
+            )
+            return invocation
+
+    def _invoke(
         self,
         config: ModelRouteConfig,
         schema: type[BaseModel],

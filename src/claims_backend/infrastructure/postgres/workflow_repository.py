@@ -1,14 +1,24 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from claims_backend.application.workflow import WorkflowRepository
 from claims_backend.domain.work import WorkLease
-from claims_backend.domain.workflow import WorkflowEffect, WorkflowRun, WorkflowRunStatus
-from claims_backend.infrastructure.postgres.models import WorkflowEffectRow, WorkflowRunRow
+from claims_backend.domain.workflow import (
+    NewWorkflowEvent,
+    WorkflowEffect,
+    WorkflowEvent,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
+from claims_backend.infrastructure.postgres.models import (
+    WorkflowEffectRow,
+    WorkflowEventRow,
+    WorkflowRunRow,
+)
 
 
 class PostgresWorkflowRepository(WorkflowRepository):
@@ -132,6 +142,60 @@ class PostgresWorkflowRepository(WorkflowRepository):
             ).all()
         return tuple(_to_effect(row) for row in rows)
 
+    async def record_event(
+        self,
+        workflow_run_id: UUID,
+        event: NewWorkflowEvent,
+    ) -> WorkflowEvent:
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
+            run = await session.scalar(
+                select(WorkflowRunRow)
+                .where(WorkflowRunRow.id == workflow_run_id)
+                .with_for_update()
+            )
+            if run is None:
+                raise WorkflowTransitionError
+            sequence = (
+                await session.scalar(
+                    select(func.max(WorkflowEventRow.sequence)).where(
+                        WorkflowEventRow.workflow_run_id == workflow_run_id
+                    )
+                )
+                or 0
+            ) + 1
+            row = WorkflowEventRow(
+                id=uuid4(),
+                workflow_run_id=workflow_run_id,
+                sequence=sequence,
+                node_name=event.node_name,
+                event_type=event.event_type,
+                attempt_number=event.attempt_number,
+                duration_ms=event.duration_ms,
+                outcome=event.outcome,
+                trace_id=event.trace_id,
+                span_id=event.span_id,
+                error_type=event.error_type,
+                created_at=now,
+            )
+            session.add(row)
+            await session.flush((row,))
+            return _to_event(row)
+
+    async def list_events(
+        self,
+        workflow_run_id: UUID,
+    ) -> tuple[WorkflowEvent, ...]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(WorkflowEventRow)
+                    .where(WorkflowEventRow.workflow_run_id == workflow_run_id)
+                    .order_by(WorkflowEventRow.sequence)
+                )
+            ).all()
+        return tuple(_to_event(row) for row in rows)
+
     async def _transition(
         self,
         workflow_run_id: UUID,
@@ -194,5 +258,22 @@ def _to_effect(row: WorkflowEffectRow) -> WorkflowEffect:
         effect_key=row.effect_key,
         effect_type=row.effect_type,
         payload=row.payload,
+        created_at=row.created_at,
+    )
+
+
+def _to_event(row: WorkflowEventRow) -> WorkflowEvent:
+    return WorkflowEvent(
+        id=row.id,
+        workflow_run_id=row.workflow_run_id,
+        sequence=row.sequence,
+        node_name=row.node_name,
+        event_type=row.event_type,
+        attempt_number=row.attempt_number,
+        duration_ms=row.duration_ms,
+        outcome=row.outcome,
+        trace_id=row.trace_id,
+        span_id=row.span_id,
+        error_type=row.error_type,
         created_at=row.created_at,
     )

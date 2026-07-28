@@ -26,6 +26,15 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_RETRY_BASE_SECONDS",
     "CLAIMS_RETRY_MAX_SECONDS",
     "CLAIMS_RETRY_JITTER_RATIO",
+    "CLAIMS_OBSERVABILITY_ENABLED",
+    "CLAIMS_PHOENIX_ENDPOINT",
+    "CLAIMS_PHOENIX_PROJECT",
+    "CLAIMS_LOG_ROOT",
+    "CLAIMS_LOG_MAX_BYTES",
+    "CLAIMS_LOG_BACKUP_COUNT",
+    "CLAIMS_EXECUTION_PROFILE",
+    "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT",
+    "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY",
 )
 
 
@@ -63,6 +72,15 @@ class Settings:
     retry_base_seconds: int = 2
     retry_max_seconds: int = 60
     retry_jitter_ratio: float = 0.25
+    observability_enabled: bool = False
+    phoenix_endpoint: str = "http://127.0.0.1:6006/v1/traces"
+    phoenix_project: str = "plum-claims-local"
+    log_root: Path = Path("data/logs")
+    log_max_bytes: int = 5 * 1024 * 1024
+    log_backup_count: int = 5
+    execution_profile: str = "LOCAL"
+    observability_capture_content: bool = False
+    observability_synthetic_only: bool = False
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -80,6 +98,8 @@ class Settings:
             ("provider_max_attempts", self.provider_max_attempts),
             ("retry_base_seconds", self.retry_base_seconds),
             ("retry_max_seconds", self.retry_max_seconds),
+            ("log_max_bytes", self.log_max_bytes),
+            ("log_backup_count", self.log_backup_count),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
@@ -91,6 +111,23 @@ class Settings:
             raise ValueError("retry_jitter_ratio must be between 0 and 1")
         if not self.aws_region or not self.bedrock_region or not self.bedrock_model_id:
             raise ValueError("AWS and Bedrock configuration cannot be empty")
+        if not self.phoenix_endpoint or not self.phoenix_project:
+            raise ValueError("Phoenix configuration cannot be empty")
+        if self.execution_profile not in {
+            "LOCAL",
+            "UNIT",
+            "STRUCTURED_COMPONENT",
+            "RENDERED_RECORDED",
+            "LIVE_INTELLIGENCE",
+        }:
+            raise ValueError("execution_profile is unsupported")
+        if self.observability_capture_content and (
+            self.execution_profile != "LIVE_INTELLIGENCE"
+            or not self.observability_synthetic_only
+        ):
+            raise ValueError(
+                "Observability content capture requires synthetic live intelligence."
+            )
 
     @classmethod
     def from_env(cls, env_file: Path | None = None) -> "Settings":
@@ -135,6 +172,21 @@ class Settings:
             retry_base_seconds=_environment_integer(values, "CLAIMS_RETRY_BASE_SECONDS"),
             retry_max_seconds=_environment_integer(values, "CLAIMS_RETRY_MAX_SECONDS"),
             retry_jitter_ratio=_environment_ratio(values, "CLAIMS_RETRY_JITTER_RATIO"),
+            observability_enabled=_environment_boolean(
+                values, "CLAIMS_OBSERVABILITY_ENABLED"
+            ),
+            phoenix_endpoint=_environment_value(values, "CLAIMS_PHOENIX_ENDPOINT"),
+            phoenix_project=_environment_value(values, "CLAIMS_PHOENIX_PROJECT"),
+            log_root=Path(_environment_value(values, "CLAIMS_LOG_ROOT")),
+            log_max_bytes=_environment_integer(values, "CLAIMS_LOG_MAX_BYTES"),
+            log_backup_count=_environment_integer(values, "CLAIMS_LOG_BACKUP_COUNT"),
+            execution_profile=_environment_value(values, "CLAIMS_EXECUTION_PROFILE"),
+            observability_capture_content=_environment_boolean(
+                values, "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT"
+            ),
+            observability_synthetic_only=_environment_boolean(
+                values, "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY"
+            ),
         )
 
 
@@ -194,3 +246,10 @@ def _environment_ratio(values: Mapping[str, str | None], name: str) -> float:
     if not 0 <= value <= 1:
         raise ConfigurationError(f"{name} must be between 0 and 1")
     return value
+
+
+def _environment_boolean(values: Mapping[str, str | None], name: str) -> bool:
+    raw = _environment_value(values, name)
+    if raw not in {"0", "1"}:
+        raise ConfigurationError(f"{name} must be 0 or 1")
+    return raw == "1"

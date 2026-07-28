@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import monotonic
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,17 +11,36 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from claims_backend.api.review_routes import router as review_router
 from claims_backend.api.routes import router
 from claims_backend.config import Settings
+from claims_backend.observability import (
+    EngineeringLogEvent,
+    Observability,
+    ObservabilityConfig,
+    create_observability,
+)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    observability: Observability | None = None,
+) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
     engine = create_async_engine(resolved_settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    owned_observability = observability is None and resolved_settings.observability_enabled
+    resolved_observability = observability
+    if resolved_observability is None and resolved_settings.observability_enabled:
+        resolved_observability = create_observability(
+            _observability_config(resolved_settings),
+            process_name="api",
+        )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
         await engine.dispose()
+        if owned_observability and resolved_observability is not None:
+            resolved_observability.shutdown()
 
     app = FastAPI(
         title="Plum Claims Backend",
@@ -30,11 +50,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.observability = resolved_observability
+    if resolved_observability is not None:
+        _install_observability_middleware(app, resolved_observability)
     app.include_router(router)
     app.include_router(review_router)
     app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.add_exception_handler(HTTPException, _http_error)
     return app
+
+
+def _install_observability_middleware(
+    app: FastAPI,
+    observability: Observability,
+) -> None:
+    @app.middleware("http")
+    async def observe_request(request: Request, call_next: Any) -> Any:
+        started = monotonic()
+        with observability.span(
+            "api.request",
+            component="api",
+            attributes={"http.request.method": request.method},
+        ) as span:
+            try:
+                response = await call_next(request)
+            except Exception as error:
+                duration_ms = max(0, round((monotonic() - started) * 1000))
+                observability.log(
+                    EngineeringLogEvent(
+                        event_name="api_request_failed",
+                        component="api",
+                        outcome="ERROR",
+                        duration_ms=duration_ms,
+                        error_type=type(error).__name__,
+                    )
+                )
+                raise
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", "unmatched")
+            duration_ms = max(0, round((monotonic() - started) * 1000))
+            observability.set_attributes(
+                span,
+                {
+                    "http.route": str(route_path),
+                    "http.response.status_code": response.status_code,
+                },
+            )
+            observability.log(
+                EngineeringLogEvent(
+                    event_name="api_request_finished",
+                    component="api",
+                    outcome=("OK" if response.status_code < 500 else "ERROR"),
+                    duration_ms=duration_ms,
+                )
+            )
+            return response
+
+
+def _observability_config(settings: Settings) -> ObservabilityConfig:
+    return ObservabilityConfig(
+        log_root=settings.log_root,
+        enabled=settings.observability_enabled,
+        phoenix_endpoint=settings.phoenix_endpoint,
+        project_name=settings.phoenix_project,
+        log_max_bytes=settings.log_max_bytes,
+        log_backup_count=settings.log_backup_count,
+        execution_profile=settings.execution_profile,
+        capture_content=settings.observability_capture_content,
+        synthetic_only=settings.observability_synthetic_only,
+    )
 
 
 async def _request_validation_error(

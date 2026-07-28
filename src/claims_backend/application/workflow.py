@@ -7,7 +7,13 @@ from claims_backend.application.failure_policy import (
 )
 from claims_backend.application.work import WorkCommitted, WorkCompleted, WorkFailed, WorkRetry
 from claims_backend.domain.work import WorkLease
-from claims_backend.domain.workflow import WorkflowEffect, WorkflowRun, WorkflowRunStatus
+from claims_backend.domain.workflow import (
+    NewWorkflowEvent,
+    WorkflowEffect,
+    WorkflowEvent,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
 
 
 class WorkflowRepository(Protocol):
@@ -33,6 +39,14 @@ class WorkflowRepository(Protocol):
     ) -> bool: ...
 
     async def list_effects(self, workflow_run_id: UUID) -> tuple[WorkflowEffect, ...]: ...
+
+    async def record_event(
+        self,
+        workflow_run_id: UUID,
+        event: NewWorkflowEvent,
+    ) -> WorkflowEvent: ...
+
+    async def list_events(self, workflow_run_id: UUID) -> tuple[WorkflowEvent, ...]: ...
 
 
 class WorkflowRuntime(Protocol):

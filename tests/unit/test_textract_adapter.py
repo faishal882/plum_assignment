@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event, Lock
 from unittest.mock import Mock, patch
 from uuid import UUID
@@ -8,6 +9,9 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ReadTimeoutError
 from botocore.stub import Stubber
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from claims_backend.application.intelligence import RenderedPage
 from claims_backend.domain.evidence import DocumentRole
@@ -19,11 +23,20 @@ from claims_backend.domain.ocr import (
     TextractProfile,
 )
 from claims_backend.infrastructure.aws.textract import TextractAdapter, create_textract_client
+from claims_backend.observability import ObservabilityConfig, create_observability
 
 
-def test_textract_profiles_send_page_bytes_and_map_project_observations() -> None:
+def test_textract_profiles_send_page_bytes_and_map_project_observations(
+    tmp_path: Path,
+) -> None:
     client = _client()
-    adapter = TextractAdapter(client)
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path),
+        process_name="worker",
+        span_exporter=exporter,
+    )
+    adapter = TextractAdapter(client, observability=observability)
     page = _page()
     with Stubber(client) as stubber:
         stubber.add_response(
@@ -64,6 +77,19 @@ def test_textract_profiles_send_page_bytes_and_map_project_observations() -> Non
     }
     assert forms.observations[0].text == "Patient: Rajesh Kumar"
     assert text.observations == forms.observations
+    observability.shutdown()
+    spans = exporter.get_finished_spans()
+    assert [span.attributes["textract.profile"] for span in spans] == [
+        "EXPENSE",
+        "FORMS_TABLES",
+        "TEXT",
+    ]
+    assert [span.attributes["provider.request_id"] for span in spans] == [
+        "expense-1",
+        "analyze-1",
+        "text-1",
+    ]
+    assert all("ocr_text" not in span.attributes for span in spans)
 
 
 def test_malformed_textract_response_has_a_non_retryable_typed_failure() -> None:

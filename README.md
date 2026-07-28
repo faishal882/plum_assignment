@@ -39,6 +39,11 @@ The configured keys are:
   `CLAIMS_BEDROCK_TIMEOUT_SECONDS`, and `CLAIMS_BEDROCK_CONCURRENCY_LIMIT`.
 - Provider retry policy: `CLAIMS_PROVIDER_MAX_ATTEMPTS`, `CLAIMS_RETRY_BASE_SECONDS`,
   `CLAIMS_RETRY_MAX_SECONDS`, and `CLAIMS_RETRY_JITTER_RATIO`.
+- Local diagnostics: `CLAIMS_OBSERVABILITY_ENABLED`, `CLAIMS_PHOENIX_ENDPOINT`,
+  `CLAIMS_PHOENIX_PROJECT`, `CLAIMS_LOG_ROOT`, `CLAIMS_LOG_MAX_BYTES`,
+  `CLAIMS_LOG_BACKUP_COUNT`, and `CLAIMS_EXECUTION_PROFILE`.
+- Synthetic-only content controls: `CLAIMS_OBSERVABILITY_CAPTURE_CONTENT` and
+  `CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY`; both remain disabled for normal development.
 - Explicit paid-test gate: `CLAIMS_RUN_LIVE_AWS`, disabled by default.
 
 Do not put AWS access keys in `.env`. Boto3 and the AWS CLI use the standard credential chain.
@@ -62,6 +67,27 @@ uv run uvicorn claims_backend.api.app:app --reload
 ```
 
 The OpenAPI document is available at `http://127.0.0.1:8000/docs`.
+
+## Local agent observability
+
+Phoenix is an optional local development process. Install and start it with:
+
+```bash
+uv sync --group observability
+uv run --group observability phoenix serve
+```
+
+Then set `CLAIMS_OBSERVABILITY_ENABLED=1` before starting the API or worker. The application
+exports OpenTelemetry/OpenInference spans to
+`http://127.0.0.1:6006/v1/traces` and writes separate rotating JSONL files under
+`data/logs/api.jsonl`, `data/logs/worker.jsonl`, and `data/logs/evaluation.jsonl`.
+
+Default spans and logs contain identifiers, versions, durations, outcomes, sanitized exception
+classes, provider request IDs, and token counts. They reject patient names, diagnoses, OCR text,
+document bytes, local paths, raw prompts/responses, and credential fields. Rich content capture
+requires both an explicit `LIVE_INTELLIGENCE` profile and a synthetic-only assertion. Phoenix and
+JSONL logs are diagnostic copies; PostgreSQL workflow events and decision records remain the
+reconstruction authority.
 
 Submit a claim as multipart form data:
 

@@ -1,9 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from threading import Event, Lock
 from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ReadTimeoutError
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
@@ -12,9 +16,12 @@ from claims_backend.domain.extraction import (
 )
 from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
 from claims_backend.model.routing import ModelRouter
+from claims_backend.observability import ObservabilityConfig, create_observability
 
 
-def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() -> None:
+def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output(
+    tmp_path: Path,
+) -> None:
     config = ModelRouter.default(
         region="us-west-2",
         model_id="qwen.qwen3-235b-a22b-2507-v1:0",
@@ -44,6 +51,12 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     }
     model = Mock()
     model.with_structured_output.return_value = runnable
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path),
+        process_name="worker",
+        span_exporter=exporter,
+    )
 
     with patch(
         "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
@@ -51,6 +64,7 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     ) as constructor:
         result = ChatBedrockConverseTransport(
             read_timeout_seconds=91,
+            observability=observability,
         ).invoke(
             config,
             ComplexExtractionOutput,
@@ -81,6 +95,18 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output() 
     assert result.output_tokens == 8
     assert result.stop_reason == "end_turn"
     assert result.latency_ms >= 0
+    observability.shutdown()
+    span = exporter.get_finished_spans()[0]
+    assert span.name == "bedrock.converse"
+    assert span.attributes["model.route"] == "COMPLEX_EXTRACTION"
+    assert span.attributes["model.id"] == "qwen.qwen3-235b-a22b-2507-v1:0"
+    assert span.attributes["model.prompt_version"] == "complex-extraction-prompt-v2"
+    assert span.attributes["model.schema_version"] == "complex-extraction-v1"
+    assert span.attributes["llm.token_count.prompt"] == 12
+    assert span.attributes["llm.token_count.completion"] == 8
+    assert span.attributes["provider.request_id"] == "bedrock-request-1"
+    assert "input.value" not in span.attributes
+    assert "output.value" not in span.attributes
 
 
 def test_bedrock_transport_bounds_concurrent_provider_calls() -> None:

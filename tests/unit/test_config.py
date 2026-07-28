@@ -25,6 +25,15 @@ _ENVIRONMENT = {
     "CLAIMS_RETRY_BASE_SECONDS": "2",
     "CLAIMS_RETRY_MAX_SECONDS": "40",
     "CLAIMS_RETRY_JITTER_RATIO": "0.2",
+    "CLAIMS_OBSERVABILITY_ENABLED": "1",
+    "CLAIMS_PHOENIX_ENDPOINT": "http://127.0.0.1:6006/v1/traces",
+    "CLAIMS_PHOENIX_PROJECT": "claims-test",
+    "CLAIMS_LOG_ROOT": "local-logs",
+    "CLAIMS_LOG_MAX_BYTES": "4096",
+    "CLAIMS_LOG_BACKUP_COUNT": "3",
+    "CLAIMS_EXECUTION_PROFILE": "LOCAL",
+    "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT": "0",
+    "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY": "0",
 }
 
 
@@ -57,6 +66,15 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.retry_base_seconds == 2
     assert settings.retry_max_seconds == 40
     assert settings.retry_jitter_ratio == 0.2
+    assert settings.observability_enabled is True
+    assert settings.phoenix_endpoint == "http://127.0.0.1:6006/v1/traces"
+    assert settings.phoenix_project == "claims-test"
+    assert settings.log_root == Path("local-logs")
+    assert settings.log_max_bytes == 4096
+    assert settings.log_backup_count == 3
+    assert settings.execution_profile == "LOCAL"
+    assert settings.observability_capture_content is False
+    assert settings.observability_synthetic_only is False
 
 
 def test_process_environment_overrides_env_file(
@@ -93,6 +111,14 @@ def test_missing_or_invalid_configuration_fails_at_startup(
         match="CLAIMS_RETRY_JITTER_RATIO must be between 0 and 1",
     ):
         Settings.from_env(invalid_ratio_file)
+
+    invalid_boolean = {**_ENVIRONMENT, "CLAIMS_OBSERVABILITY_ENABLED": "sometimes"}
+    invalid_boolean_file = _write_env(tmp_path, invalid_boolean)
+    with pytest.raises(
+        ConfigurationError,
+        match="CLAIMS_OBSERVABILITY_ENABLED must be 0 or 1",
+    ):
+        Settings.from_env(invalid_boolean_file)
 
 
 def _clear_configuration(monkeypatch: pytest.MonkeyPatch) -> None:

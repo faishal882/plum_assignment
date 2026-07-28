@@ -13,6 +13,7 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
     EndpointConnectionError,
     ReadTimeoutError,
 )
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 
 from claims_backend.application.intelligence import RenderedPage
 from claims_backend.config import Settings
@@ -27,6 +28,7 @@ from claims_backend.domain.ocr import (
     OcrTimeoutError,
     TextractProfile,
 )
+from claims_backend.observability import EngineeringLogEvent, Observability
 
 
 class TextractClient(Protocol):
@@ -54,13 +56,72 @@ class TextractAdapter:
     provider_name = "AMAZON_TEXTRACT"
     provider_version = "boto3-textract-v1"
 
-    def __init__(self, client: TextractClient, *, concurrency_limit: int = 2) -> None:
+    def __init__(
+        self,
+        client: TextractClient,
+        *,
+        concurrency_limit: int = 2,
+        observability: Observability | None = None,
+    ) -> None:
         if concurrency_limit <= 0:
             raise ValueError("concurrency_limit must be greater than zero")
         self._client = client
         self._permit = BoundedSemaphore(concurrency_limit)
+        self._observability = observability
 
     def analyze(
+        self,
+        page: RenderedPage,
+        role: DocumentRole,
+    ) -> OcrPageResult:
+        if self._observability is None:
+            return self._analyze_with_errors(page, role)
+        profile = _profile(role)
+        with self._observability.span(
+            "textract.analyze_page",
+            component="textract",
+            span_kind=OpenInferenceSpanKindValues.TOOL.value,
+            attributes={
+                "provider.name": self.provider_name,
+                "textract.profile": profile.value,
+                "textract.page_number": page.page_number,
+            },
+        ) as span:
+            try:
+                result = self._analyze_with_errors(page, role)
+            except Exception as error:
+                self._observability.log(
+                    EngineeringLogEvent(
+                        event_name="textract_request_failed",
+                        component="textract",
+                        outcome="ERROR",
+                        duration_ms=0,
+                        provider_name=self.provider_name,
+                        error_type=type(error).__name__,
+                    )
+                )
+                raise
+            self._observability.set_attributes(
+                span,
+                {
+                    "provider.request_id": result.provider_request_id,
+                    "provider.retry_count": result.retry_attempts,
+                    "textract.observation_count": len(result.observations),
+                },
+            )
+            self._observability.log(
+                EngineeringLogEvent(
+                    event_name="textract_request_finished",
+                    component="textract",
+                    outcome="OK",
+                    duration_ms=0,
+                    provider_name=self.provider_name,
+                    provider_request_id=result.provider_request_id,
+                )
+            )
+            return result
+
+    def _analyze_with_errors(
         self,
         page: RenderedPage,
         role: DocumentRole,
@@ -105,6 +166,7 @@ class TextractAdapter:
                 retryable=True,
                 provider_code=type(error).__name__,
             ) from error
+
     def _analyze(
         self,
         page: RenderedPage,
@@ -176,6 +238,7 @@ def textract_adapter_from_settings(
     settings: Settings,
     *,
     client_factory: Callable[..., object] | None = None,
+    observability: Observability | None = None,
 ) -> TextractAdapter:
     return TextractAdapter(
         create_textract_client(
@@ -184,6 +247,7 @@ def textract_adapter_from_settings(
             client_factory=client_factory,
         ),
         concurrency_limit=settings.textract_concurrency_limit,
+        observability=observability,
     )
 
 

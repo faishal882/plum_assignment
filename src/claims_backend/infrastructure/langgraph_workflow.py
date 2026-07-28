@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Literal, TypedDict
+from time import monotonic
+from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
@@ -17,9 +18,30 @@ from claims_backend.domain.processing import (
     ProcessingRoute,
 )
 from claims_backend.domain.work import WorkLease
-from claims_backend.domain.workflow import WorkflowRun, WorkflowRunStatus
+from claims_backend.domain.workflow import NewWorkflowEvent, WorkflowRun, WorkflowRunStatus
+from claims_backend.observability import (
+    EngineeringLogEvent,
+    Observability,
+    trace_identifiers,
+)
 
 type BeforeNodeHook = Callable[[str], Awaitable[None]]
+type WorkflowNode = Callable[..., Any]
+
+_NODE_COMPONENTS = {
+    "load_claim": "persistence",
+    "finalize": "persistence",
+    "media_inspect": "document_intelligence",
+    "freeze_casefile": "reconciliation",
+    "adjudicate": "policy",
+    "commit_decision": "persistence",
+    "triage_documents": "identity",
+    "render_documents": "document_intelligence",
+    "ocr_documents": "textract",
+    "extract_evidence": "bedrock",
+    "reconcile_casefile": "reconciliation",
+    "commit_member_action": "persistence",
+}
 
 
 class WorkflowState(TypedDict):
@@ -82,7 +104,7 @@ class WorkflowUpdate(TypedDict, total=False):
 
 class LangGraphClaimWorkflow(WorkflowRuntime):
     graph_name = "claim-processing"
-    graph_version = "claim-processing-v6"
+    graph_version = "claim-processing-v7"
 
     def __init__(
         self,
@@ -92,12 +114,14 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         processor: ClaimProcessor | None = None,
         before_node: BeforeNodeHook | None = None,
         after_effect: BeforeNodeHook | None = None,
+        observability: Observability | None = None,
     ) -> None:
         self._checkpoint_url = _checkpoint_url(database_url)
         self._repository = repository
         self._processor = processor
         self._before_node = before_node or _no_op_hook
         self._after_effect = after_effect or _no_op_hook
+        self._observability = observability
 
     async def setup(self) -> None:
         async with AsyncPostgresSaver.from_conn_string(self._checkpoint_url) as checkpointer:
@@ -112,21 +136,51 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     ) -> bool:
         async with AsyncPostgresSaver.from_conn_string(self._checkpoint_url) as checkpointer:
             builder = StateGraph(WorkflowState)
-            builder.add_node("load_claim", self._load_claim)
-            builder.add_node("finalize", self._finalize)
+            builder.add_node("load_claim", self._node("load_claim", self._load_claim))
+            builder.add_node("finalize", self._node("finalize", self._finalize))
             if self._processor is None:
                 builder.add_edge("load_claim", "finalize")
             else:
-                builder.add_node("media_inspect", self._media_inspect)
-                builder.add_node("freeze_casefile", self._freeze_casefile)
-                builder.add_node("adjudicate", self._adjudicate)
-                builder.add_node("commit_decision", self._commit_decision)
-                builder.add_node("triage_documents", self._triage_documents)
-                builder.add_node("render_documents", self._render_documents)
-                builder.add_node("ocr_documents", self._ocr_documents)
-                builder.add_node("extract_evidence", self._extract_evidence)
-                builder.add_node("reconcile_casefile", self._reconcile_casefile)
-                builder.add_node("commit_member_action", self._commit_member_action)
+                builder.add_node(
+                    "media_inspect",
+                    self._node("media_inspect", self._media_inspect),
+                )
+                builder.add_node(
+                    "freeze_casefile",
+                    self._node("freeze_casefile", self._freeze_casefile),
+                )
+                builder.add_node(
+                    "adjudicate",
+                    self._node("adjudicate", self._adjudicate),
+                )
+                builder.add_node(
+                    "commit_decision",
+                    self._node("commit_decision", self._commit_decision),
+                )
+                builder.add_node(
+                    "triage_documents",
+                    self._node("triage_documents", self._triage_documents),
+                )
+                builder.add_node(
+                    "render_documents",
+                    self._node("render_documents", self._render_documents),
+                )
+                builder.add_node(
+                    "ocr_documents",
+                    self._node("ocr_documents", self._ocr_documents),
+                )
+                builder.add_node(
+                    "extract_evidence",
+                    self._node("extract_evidence", self._extract_evidence),
+                )
+                builder.add_node(
+                    "reconcile_casefile",
+                    self._node("reconcile_casefile", self._reconcile_casefile),
+                )
+                builder.add_node(
+                    "commit_member_action",
+                    self._node("commit_member_action", self._commit_member_action),
+                )
                 builder.add_edge("load_claim", "media_inspect")
                 builder.add_conditional_edges(
                     "media_inspect",
@@ -221,10 +275,223 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "max_attempts": lease.max_attempts,
                     "effect_count": 0,
                 }
-            result = await graph.ainvoke(initial_state, config=config)
+            if self._observability is None:
+                result = await graph.ainvoke(initial_state, config=config)
+            else:
+                started = monotonic()
+                root_attributes: dict[str, str | int] = {
+                    "claim.id": str(workflow_run.claim_id),
+                    "claim.version": workflow_run.claim_version,
+                    "workflow.run_id": str(workflow_run.id),
+                    "workflow.graph_name": self.graph_name,
+                    "workflow.graph_version": self.graph_version,
+                    "work.attempt": lease.attempt_number,
+                }
+                with self._observability.span(
+                    "claim.workflow",
+                    component="workflow",
+                    attributes=root_attributes,
+                ):
+                    self._observability.log(
+                        EngineeringLogEvent(
+                            event_name="workflow_started",
+                            component="workflow",
+                            claim_id=str(workflow_run.claim_id),
+                            workflow_run_id=str(workflow_run.id),
+                            attempt=lease.attempt_number,
+                            duration_ms=0,
+                            outcome="RUNNING",
+                        )
+                    )
+                    try:
+                        result = await graph.ainvoke(initial_state, config=config)
+                    except Exception as error:
+                        self._observability.log(
+                            EngineeringLogEvent(
+                                event_name="workflow_failed",
+                                component="workflow",
+                                claim_id=str(workflow_run.claim_id),
+                                workflow_run_id=str(workflow_run.id),
+                                attempt=lease.attempt_number,
+                                duration_ms=max(
+                                    0,
+                                    round((monotonic() - started) * 1000),
+                                ),
+                                outcome="ERROR",
+                                error_type=type(error).__name__,
+                            )
+                        )
+                        raise
+                    self._observability.log(
+                        EngineeringLogEvent(
+                            event_name="workflow_finished",
+                            component="workflow",
+                            claim_id=str(workflow_run.claim_id),
+                            workflow_run_id=str(workflow_run.id),
+                            attempt=lease.attempt_number,
+                            duration_ms=max(
+                                0,
+                                round((monotonic() - started) * 1000),
+                            ),
+                            outcome="OK",
+                        )
+                    )
             if not result["finalized"] and not result["terminal_committed"]:
                 raise WorkflowIncompleteError
             return bool(result["terminal_committed"])
+
+    def _node(self, node_name: str, handler: WorkflowNode) -> WorkflowNode:
+        async def observed(state: WorkflowState) -> WorkflowUpdate:
+            started = monotonic()
+            run_id = _workflow_run_id(state)
+            if self._observability is None:
+                await self._repository.record_event(
+                    run_id,
+                    NewWorkflowEvent(
+                        node_name=node_name,
+                        event_type="ENTRY",
+                        attempt_number=state["attempt_number"],
+                        duration_ms=0,
+                        outcome="RUNNING",
+                        trace_id=None,
+                        span_id=None,
+                    ),
+                )
+                try:
+                    result = cast(WorkflowUpdate, await handler(state))
+                except Exception as error:
+                    await self._record_node_event(
+                        state,
+                        node_name=node_name,
+                        event_type="ERROR",
+                        started=started,
+                        outcome="ERROR",
+                        error_type=type(error).__name__,
+                    )
+                    raise
+                await self._record_node_event(
+                    state,
+                    node_name=node_name,
+                    event_type="EXIT",
+                    started=started,
+                    outcome="OK",
+                )
+                return result
+
+            with self._observability.span(
+                f"claim.workflow.{node_name}",
+                component=_NODE_COMPONENTS[node_name],
+                attributes={
+                    "claim.id": state["claim_id"],
+                    "claim.version": state["claim_version"],
+                    "workflow.run_id": state["workflow_run_id"],
+                    "node.name": node_name,
+                    "work.attempt": state["attempt_number"],
+                },
+            ):
+                trace_id, span_id = trace_identifiers()
+                await self._repository.record_event(
+                    run_id,
+                    NewWorkflowEvent(
+                        node_name=node_name,
+                        event_type="ENTRY",
+                        attempt_number=state["attempt_number"],
+                        duration_ms=0,
+                        outcome="RUNNING",
+                        trace_id=trace_id,
+                        span_id=span_id,
+                    ),
+                )
+                self._log_node(state, node_name, "node_entered", 0, "RUNNING")
+                try:
+                    result = cast(WorkflowUpdate, await handler(state))
+                except Exception as error:
+                    duration_ms = max(0, round((monotonic() - started) * 1000))
+                    await self._record_node_event(
+                        state,
+                        node_name=node_name,
+                        event_type="ERROR",
+                        started=started,
+                        outcome="ERROR",
+                        error_type=type(error).__name__,
+                    )
+                    self._log_node(
+                        state,
+                        node_name,
+                        "node_failed",
+                        duration_ms,
+                        "ERROR",
+                        error_type=type(error).__name__,
+                    )
+                    raise
+                duration_ms = max(0, round((monotonic() - started) * 1000))
+                await self._record_node_event(
+                    state,
+                    node_name=node_name,
+                    event_type="EXIT",
+                    started=started,
+                    outcome="OK",
+                )
+                self._log_node(
+                    state,
+                    node_name,
+                    "node_finished",
+                    duration_ms,
+                    "OK",
+                )
+                return result
+
+        return observed
+
+    async def _record_node_event(
+        self,
+        state: WorkflowState,
+        *,
+        node_name: str,
+        event_type: str,
+        started: float,
+        outcome: str,
+        error_type: str | None = None,
+    ) -> None:
+        trace_id, span_id = trace_identifiers()
+        await self._repository.record_event(
+            _workflow_run_id(state),
+            NewWorkflowEvent(
+                node_name=node_name,
+                event_type=event_type,
+                attempt_number=state["attempt_number"],
+                duration_ms=max(0, round((monotonic() - started) * 1000)),
+                outcome=outcome,
+                trace_id=trace_id,
+                span_id=span_id,
+                error_type=error_type,
+            ),
+        )
+
+    def _log_node(
+        self,
+        state: WorkflowState,
+        node_name: str,
+        event_name: str,
+        duration_ms: int,
+        outcome: str,
+        *,
+        error_type: str | None = None,
+    ) -> None:
+        if self._observability is None:
+            return
+        self._observability.log(
+            EngineeringLogEvent(
+                event_name=event_name,
+                component=f"workflow.{node_name}",
+                claim_id=state["claim_id"],
+                workflow_run_id=state["workflow_run_id"],
+                attempt=state["attempt_number"],
+                duration_ms=duration_ms,
+                outcome=outcome,
+                error_type=error_type,
+            )
+        )
 
     async def _load_claim(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("load_claim")

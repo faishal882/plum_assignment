@@ -753,6 +753,44 @@ class WorkflowEffectRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class WorkflowEventRow(Base):
+    __tablename__ = "workflow_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_run_id",
+            "sequence",
+            name="workflow_events_run_sequence_uq",
+        ),
+        CheckConstraint("sequence > 0", name="workflow_events_sequence_positive"),
+        CheckConstraint(
+            "attempt_number > 0",
+            name="workflow_events_attempt_positive",
+        ),
+        CheckConstraint(
+            "duration_ms >= 0",
+            name="workflow_events_duration_nonnegative",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    workflow_run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("workflow_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    node_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    span_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ProcessingFixtureRow(Base):
     __tablename__ = "processing_fixtures"
     __table_args__ = (
