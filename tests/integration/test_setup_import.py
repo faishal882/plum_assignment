@@ -204,8 +204,7 @@ async def test_invalid_member_data_relationship_becomes_a_finding(
 
     assert receipt.history_records_created == 0
     assert any(
-        finding.code == "UNKNOWN_MEMBER_REFERENCE"
-        and finding.subject_id == "NOT-A-MEMBER"
+        finding.code == "UNKNOWN_MEMBER_REFERENCE" and finding.subject_id == "NOT-A-MEMBER"
         for finding in receipt.findings
     )
     await engine.dispose()
@@ -237,9 +236,9 @@ async def test_changed_policy_source_creates_new_member_versions(
     assert current.name == "Rajesh Kumar Updated"
     async with session_factory() as session:
         versions = (
-                await session.scalars(
-                    select(MemberVersionRow)
-                    .join(MemberRow, MemberRow.id == MemberVersionRow.member_id)
+            await session.scalars(
+                select(MemberVersionRow)
+                .join(MemberRow, MemberRow.id == MemberVersionRow.member_id)
                 .where(MemberRow.external_member_id == "EMP001")
                 .order_by(MemberVersionRow.version)
             )
@@ -279,12 +278,7 @@ def test_local_cli_imports_and_inspects_without_http_routes(
     assert member["primary_member_id"] == "EMP001"
     assert member["utilization_state"] == "UNKNOWN"
 
-    assert (
-        cli_main(
-            ["setup", "inspect-import", "--import-id", imported["import_id"]]
-        )
-        == 0
-    )
+    assert cli_main(["setup", "inspect-import", "--import-id", imported["import_id"]]) == 0
     inspected = json.loads(capsys.readouterr().out)
     assert inspected == imported
 

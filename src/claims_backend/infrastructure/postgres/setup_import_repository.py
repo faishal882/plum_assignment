@@ -37,9 +37,7 @@ class PostgresSetupImportRepository:
                 {"policy_id": bundle.policy_id},
             )
             existing = await session.scalar(
-                select(SetupImportRow).where(
-                    SetupImportRow.request_sha256 == bundle.request_sha256
-                )
+                select(SetupImportRow).where(SetupImportRow.request_sha256 == bundle.request_sha256)
             )
             if existing is not None:
                 return await self._receipt(session, existing)
@@ -171,13 +169,9 @@ class PostgresSetupImportRepository:
             dependent_ids=tuple(version.dependent_ids),
             source_sha256=source.source_sha256,
             source_pointer=version.source_pointer,
-            utilization_state=(
-                FactState.UNKNOWN if utilization is None else FactState.KNOWN
-            ),
+            utilization_state=(FactState.UNKNOWN if utilization is None else FactState.KNOWN),
             used_paise=None if utilization is None else utilization.used_paise,
-            utilization_as_of_date=(
-                None if utilization is None else utilization.as_of_date
-            ),
+            utilization_as_of_date=(None if utilization is None else utilization.as_of_date),
         )
 
     async def get_import(self, import_id: UUID) -> SetupImportReceipt | None:
@@ -230,9 +224,7 @@ class PostgresSetupImportRepository:
                     external_member_id=item.external_member_id,
                     created_at=now,
                 )
-                .on_conflict_do_nothing(
-                    constraint="members_policy_external_id_uq"
-                )
+                .on_conflict_do_nothing(constraint="members_policy_external_id_uq")
             )
         rows = (
             await session.scalars(
@@ -262,9 +254,7 @@ class PostgresSetupImportRepository:
                 )
             )
             primary = (
-                None
-                if item.primary_member_id is None
-                else members.get(item.primary_member_id)
+                None if item.primary_member_id is None else members.get(item.primary_member_id)
             )
             session.add(
                 MemberVersionRow(

@@ -105,9 +105,7 @@ class SetupDataApplication:
             else _parse_model(_MemberDataSource, member_data_bytes, "member data source")
         )
         if member_data is not None and member_data.policy_id != policy.policy_id:
-            raise InvalidSetupSourceError(
-                "Member data policy_id does not match the policy source."
-            )
+            raise InvalidSetupSourceError("Member data policy_id does not match the policy source.")
         if member_data_bytes is not None and not member_data_source_name:
             raise InvalidSetupSourceError(
                 "member_data_source_name is required when member data bytes are supplied."
@@ -117,9 +115,7 @@ class SetupDataApplication:
         member_data_hash = (
             None if member_data_bytes is None else sha256(member_data_bytes).hexdigest()
         )
-        request_hash = sha256(
-            f"{policy_hash}:{member_data_hash or '-'}".encode()
-        ).hexdigest()
+        request_hash = sha256(f"{policy_hash}:{member_data_hash or '-'}".encode()).hexdigest()
         members, findings = _members_and_findings(policy)
         history, utilization, data_findings = _member_facts(member_data, members)
         bundle = SetupImportBundle(
@@ -335,10 +331,6 @@ def _money(value: str, pointer: str) -> int:
         amount = Decimal(value)
     except InvalidOperation as error:
         raise InvalidSetupSourceError(f"{pointer} is not a decimal amount.") from error
-    if (
-        not amount.is_finite()
-        or amount < 0
-        or amount != amount.quantize(Decimal("0.01"))
-    ):
+    if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")):
         raise InvalidSetupSourceError(f"{pointer} must be non-negative with at most 2 decimals.")
     return int(amount * 100)

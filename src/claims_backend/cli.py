@@ -27,9 +27,7 @@ def main(arguments: list[str] | None = None) -> int:
     try:
         if args.action == "import":
             policy_path = Path(args.policy)
-            member_data_path = (
-                None if args.member_data is None else Path(args.member_data)
-            )
+            member_data_path = None if args.member_data is None else Path(args.member_data)
             result = asyncio.run(
                 _import(
                     policy_path.read_bytes(),
