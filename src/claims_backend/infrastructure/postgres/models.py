@@ -959,3 +959,44 @@ class IdentityReconciliationRow(Base):
     member_name: Mapped[str] = mapped_column(String(128), nullable=False)
     candidates: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DocumentPageArtifactRow(Base):
+    __tablename__ = "document_page_artifacts"
+    __table_args__ = (
+        CheckConstraint("page_number > 0", name="page_artifacts_page_positive"),
+        CheckConstraint("size_bytes > 0", name="page_artifacts_size_positive"),
+        UniqueConstraint(
+            "document_version_id",
+            "page_number",
+            "render_version",
+            name="document_page_artifacts_version_page_render_uq",
+        ),
+        UniqueConstraint(
+            "relative_path",
+            name="document_page_artifacts_relative_path_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    document_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    original_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    rendered_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    relative_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    render_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
