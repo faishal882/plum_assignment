@@ -44,11 +44,7 @@ def validate_complex_output(
         raise ModelSemanticValidationError(
             "Complex extraction output used with the wrong model route."
         )
-    forbidden = _find_authority_fields(raw)
-    if forbidden:
-        raise ModelAuthorityViolation(
-            f"Model output crossed the financial authority boundary: {forbidden[0]}."
-        )
+    reject_authority_fields(raw)
     try:
         output = ComplexExtractionOutput.model_validate(raw)
     except ValidationError as error:
@@ -90,6 +86,14 @@ def validate_complex_output(
             )
         )
     return tuple(candidates)
+
+
+def reject_authority_fields(raw: Mapping[str, object]) -> None:
+    forbidden = _find_authority_fields(raw)
+    if forbidden:
+        raise ModelAuthorityViolation(
+            f"Model output crossed the financial authority boundary: {forbidden[0]}."
+        )
 
 
 def _find_authority_fields(value: object, path: str = "") -> list[str]:
