@@ -11,6 +11,36 @@ The current implementation follows the phased plan in
 - `uv`
 - Docker with Docker Compose
 
+## Environment configuration
+
+All local runtime configuration is declared in the root `.env`. The real `.env` is ignored by
+Git; `.env.example` is the committed, non-secret configuration contract. For a fresh checkout:
+
+```bash
+cp .env.example .env
+```
+
+The API, CLI, Alembic, Docker Compose, and AWS integration tests consume this configuration.
+Explicit process environment variables take precedence over values in `.env`, which makes
+one-command overrides possible without editing the file. Application startup fails with a list
+of missing keys instead of silently selecting a database, region, or model.
+
+The configured keys are:
+
+- PostgreSQL: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT`,
+  `CLAIMS_DATABASE_URL`, and `CLAIMS_TEST_DATABASE_URL`.
+- Local storage and upload bounds: `CLAIMS_DATA_ROOT`, `CLAIMS_MAX_DOCUMENTS`,
+  `CLAIMS_MAX_FILE_BYTES`, `CLAIMS_MAX_CLAIM_BYTES`, `CLAIMS_MAX_DOCUMENT_PAGES`, and
+  `CLAIMS_UPLOAD_CHUNK_BYTES`.
+- Rendering and Textract: `CLAIMS_MAX_TEXTRACT_PAGE_BYTES`, `CLAIMS_PAGE_RENDER_DPI`, and
+  `CLAIMS_AWS_REGION`.
+- Bedrock: `CLAIMS_BEDROCK_REGION` and `CLAIMS_BEDROCK_MODEL_ID`.
+- Explicit paid-test gate: `CLAIMS_RUN_LIVE_AWS`, disabled by default.
+
+Do not put AWS access keys in `.env`. Boto3 and the AWS CLI use the standard credential chain.
+If a named local profile is needed, set `AWS_PROFILE` in the shell or uncomment its placeholder
+in `.env`.
+
 ## Run locally
 
 Install the locked dependencies and start PostgreSQL:
@@ -207,9 +237,9 @@ are not stored.
 
 Relevant configuration:
 
-- `CLAIMS_AWS_REGION` (default `ap-south-1`)
-- `CLAIMS_PAGE_RENDER_DPI` (default `180`)
-- `CLAIMS_MAX_TEXTRACT_PAGE_BYTES` (default `5242880`)
+- `CLAIMS_AWS_REGION` (`ap-south-1` in `.env.example`)
+- `CLAIMS_PAGE_RENDER_DPI` (`180` in `.env.example`)
+- `CLAIMS_MAX_TEXTRACT_PAGE_BYTES` (`5242880` in `.env.example`)
 
 The default suite uses recorded and Botocore-stubbed responses. A real synthetic page can be
 tested explicitly with:
@@ -229,7 +259,7 @@ router independently configures `FAST_TRIAGE` and `COMPLEX_EXTRACTION`, includin
 AWS region, prompt version, schema version, enablement, evaluation approval, and temperature.
 Both currently resolve to `qwen.qwen3-235b-a22b-2507-v1:0`, with temperature zero and
 function-calling structured output. Bedrock uses its own `CLAIMS_BEDROCK_REGION` setting
-(`us-west-2` by default) because this Qwen model is not available in the Textract default region.
+(`us-west-2` in `.env.example`) because this Qwen model is not available in the Textract region.
 Override the identifier locally through `CLAIMS_BEDROCK_MODEL_ID`.
 
 `ChatBedrockConverseTransport` uses Bedrock Converse through LangChain AWS native structured
