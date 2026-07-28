@@ -37,6 +37,8 @@ class StructuredComponentFixtureAdapter:
                     identity_observations=(
                         IdentityObservation(kind="PATIENT_NAME", value="Rajesh Kumar"),
                     ),
+                    treatment_date="2024-11-01",
+                    clinical_condition="Viral Fever",
                 ),
                 StructuredDocumentEvidence(
                     evidence_id="F008",
@@ -47,6 +49,12 @@ class StructuredComponentFixtureAdapter:
                         IdentityObservation(kind="PATIENT_NAME", value="Rajesh Kumar"),
                     ),
                     billed_paise=150_000,
+                    treatment_date="2024-11-01",
+                    line_items_paise={
+                        "consultation_fee": 100_000,
+                        "cbc": 30_000,
+                        "ns1": 20_000,
+                    },
                 ),
             )
         )

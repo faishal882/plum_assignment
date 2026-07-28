@@ -23,8 +23,6 @@ from claims_backend.application.intelligence import (
 from claims_backend.domain.adjudication import (
     AdjudicationProposal,
     ClaimCasefile,
-    EvidenceFact,
-    FactState,
     RuleResult,
 )
 from claims_backend.domain.evidence import (
@@ -163,6 +161,14 @@ class PostgresClaimProcessor:
             ).one()
             if claim.policy_version_id is None or claim.member_version_id is None:
                 raise ProcessingInvariantError("Claim snapshot pins are incomplete.")
+            claim_version = (
+                await session.scalars(
+                    select(ClaimVersionRow).where(
+                        ClaimVersionRow.claim_id == workflow_run.claim_id,
+                        ClaimVersionRow.version == workflow_run.claim_version,
+                    )
+                )
+            ).one()
             fixture = (
                 await session.scalars(
                     select(ProcessingFixtureRow).where(
@@ -193,41 +199,159 @@ class PostgresClaimProcessor:
                 raise ProcessingInvariantError(
                     "Structured adjudication requires one reconciled bill."
                 )
-            casefile = ClaimCasefile(
-                claim_id=claim.id,
-                claim_version=workflow_run.claim_version,
-                member_id=claim.member_id,
-                member_version_id=member_version.id,
-                policy_version_id=claim.policy_version_id,
-                category=claim.category,
-                claimed_paise=claim.claimed_paise,
-                currency=claim.currency,
-                eligibility=EvidenceFact(
-                    state=FactState.KNOWN,
-                    value=True,
-                    evidence_refs=(f"member-version:{member_version.id}",),
+            claim_snapshot_sha256 = _canonical_sha256(
+                {
+                    "claim_id": str(claim.id),
+                    "claim_version": workflow_run.claim_version,
+                    "member_id": claim.member_id,
+                    "policy_id": claim.policy_id,
+                    "category": claim.category,
+                    "treatment_date": claim.treatment_date.isoformat(),
+                    "claimed_paise": claim.claimed_paise,
+                    "currency": claim.currency,
+                    "submission": claim_version.submission,
+                }
+            )
+            member_snapshot_sha256 = _canonical_sha256(
+                _member_snapshot(member_version)
+            )
+            candidates = [
+                _snapshot_candidate(
+                    fact_path="claim.claimed_amount",
+                    value=claim.claimed_paise,
+                    producer="CLAIM_SNAPSHOT",
+                    producer_version=f"claim-version-{workflow_run.claim_version}",
+                    source_type=EvidenceSourceType.CLAIM_SNAPSHOT,
+                    source_ref=f"claim-version:{claim_version.id}",
+                    source_sha256=claim_snapshot_sha256,
                 ),
-                document_roles=EvidenceFact(
-                    state=FactState.KNOWN,
-                    value=[document.role.value for document in evidence.documents],
-                    evidence_refs=tuple(
-                        f"fixture:{document.evidence_id}" for document in evidence.documents
+                _snapshot_candidate(
+                    fact_path="treatment.date",
+                    value=claim.treatment_date.isoformat(),
+                    producer="CLAIM_SNAPSHOT",
+                    producer_version=f"claim-version-{workflow_run.claim_version}",
+                    source_type=EvidenceSourceType.CLAIM_SNAPSHOT,
+                    source_ref=f"claim-version:{claim_version.id}",
+                    source_sha256=claim_snapshot_sha256,
+                ),
+                _snapshot_candidate(
+                    fact_path="patient.name",
+                    value=member_version.name,
+                    producer="MEMBER_SNAPSHOT",
+                    producer_version=f"member-version-{member_version.version}",
+                    source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                    source_ref=f"member-version:{member_version.id}",
+                    source_sha256=member_snapshot_sha256,
+                ),
+                _snapshot_candidate(
+                    fact_path="member.join_date",
+                    value=(
+                        None
+                        if member_version.join_date is None
+                        else member_version.join_date.isoformat()
                     ),
+                    producer="MEMBER_SNAPSHOT",
+                    producer_version=f"member-version-{member_version.version}",
+                    source_type=EvidenceSourceType.MEMBER_SNAPSHOT,
+                    source_ref=f"member-version:{member_version.id}",
+                    source_sha256=member_snapshot_sha256,
                 ),
-                billed_paise=EvidenceFact(
-                    state=FactState.KNOWN,
-                    value=billed[0].billed_paise,
-                    evidence_refs=(f"fixture:{billed[0].evidence_id}",),
+            ]
+            for document in evidence.documents:
+                source_ref = f"structured-fixture:{fixture.id}:{document.evidence_id}"
+                for identity in document.identity_observations:
+                    if identity.kind == "PATIENT_NAME":
+                        candidates.append(
+                            _snapshot_candidate(
+                                fact_path="patient.name",
+                                value=identity.value,
+                                producer="STRUCTURED_FIXTURE",
+                                producer_version=(
+                                    f"structured-fixture-v{evidence.schema_version}"
+                                ),
+                                source_type=EvidenceSourceType.STRUCTURED_FIXTURE,
+                                source_ref=source_ref,
+                                source_sha256=fixture.payload_sha256,
+                            )
+                        )
+                if document.treatment_date is not None:
+                    candidates.append(
+                        _structured_fixture_candidate(
+                            "treatment.date",
+                            document.treatment_date,
+                            evidence.schema_version,
+                            source_ref,
+                            fixture.payload_sha256,
+                        )
+                    )
+                if document.clinical_condition is not None:
+                    candidates.append(
+                        _structured_fixture_candidate(
+                            "clinical.condition",
+                            document.clinical_condition,
+                            evidence.schema_version,
+                            source_ref,
+                            fixture.payload_sha256,
+                        )
+                    )
+                if document.billed_paise is not None:
+                    candidates.append(
+                        _structured_fixture_candidate(
+                            "billing.total",
+                            _paise_as_rupees(document.billed_paise),
+                            evidence.schema_version,
+                            source_ref,
+                            fixture.payload_sha256,
+                        )
+                    )
+                candidates.extend(
+                    _structured_fixture_candidate(
+                        f"billing.line_items.{name}",
+                        _paise_as_rupees(paise),
+                        evidence.schema_version,
+                        source_ref,
+                        fixture.payload_sha256,
+                    )
+                    for name, paise in sorted(document.line_items_paise.items())
+                )
+            reconciliation = reconcile_evidence(
+                tuple(candidates),
+                material_fact_paths=(
+                    "billing.total",
+                    "claim.claimed_amount",
+                    "clinical.condition",
+                    "member.join_date",
+                    "patient.name",
+                    "treatment.date",
                 ),
-                ytd_used_paise=EvidenceFact(
-                    state=(FactState.UNKNOWN if utilization is None else FactState.KNOWN),
-                    value=None if utilization is None else utilization.used_paise,
-                    evidence_refs=(
-                        ()
-                        if utilization is None
-                        else (f"utilization:{utilization.as_of_date.isoformat()}",)
+            )
+            casefile = build_casefile(
+                CasefileBuildRequest(
+                    claim_id=claim.id,
+                    claim_version=workflow_run.claim_version,
+                    member_id=claim.member_id,
+                    member_version_id=member_version.id,
+                    member_snapshot_sha256=member_snapshot_sha256,
+                    policy_version_id=claim.policy_version_id,
+                    category=claim.category,
+                    claimed_paise=claim.claimed_paise,
+                    currency=claim.currency,
+                    eligibility_evidence_ref=f"member-version:{member_version.id}",
+                    document_roles=tuple(
+                        document.role.value for document in evidence.documents
                     ),
-                ),
+                    document_role_evidence_refs=tuple(
+                        f"structured-fixture:{fixture.id}:{document.evidence_id}"
+                        for document in evidence.documents
+                    ),
+                    ytd_used_paise=(
+                        None if utilization is None else utilization.used_paise
+                    ),
+                    utilization_evidence_ref=(
+                        None if utilization is None else f"utilization:{utilization.id}"
+                    ),
+                    reconciliation=reconciliation,
+                )
             )
             row = CasefileRow(
                 id=uuid4(),
@@ -1203,6 +1327,48 @@ def _snapshot_candidate(
             **payload,
         }
     )
+
+
+def _structured_fixture_candidate(
+    fact_path: str,
+    value: str,
+    schema_version: int,
+    source_ref: str,
+    source_sha256: str,
+) -> ProvenancedEvidenceCandidate:
+    return _snapshot_candidate(
+        fact_path=fact_path,
+        value=value,
+        producer="STRUCTURED_FIXTURE",
+        producer_version=f"structured-fixture-v{schema_version}",
+        source_type=EvidenceSourceType.STRUCTURED_FIXTURE,
+        source_ref=source_ref,
+        source_sha256=source_sha256,
+    )
+
+
+def _member_snapshot(member_version: MemberVersionRow) -> dict[str, object]:
+    return {
+        "member_version_id": str(member_version.id),
+        "member_record_id": str(member_version.member_id),
+        "version": member_version.version,
+        "setup_import_id": str(member_version.setup_import_id),
+        "name": member_version.name,
+        "date_of_birth": member_version.date_of_birth.isoformat(),
+        "gender": member_version.gender,
+        "relationship": member_version.relationship,
+        "join_date": (
+            None
+            if member_version.join_date is None
+            else member_version.join_date.isoformat()
+        ),
+        "dependent_ids": member_version.dependent_ids,
+        "source_pointer": member_version.source_pointer,
+    }
+
+
+def _paise_as_rupees(paise: int) -> str:
+    return f"{paise // 100}.{paise % 100:02d}"
 
 
 def _canonical_sha256(value: object) -> str:

@@ -37,7 +37,11 @@ from claims_backend.infrastructure.page_artifacts import (
 )
 from claims_backend.infrastructure.page_renderer import LocalPageRenderer
 from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
-from claims_backend.infrastructure.postgres.models import DocumentRow, DocumentVersionRow
+from claims_backend.infrastructure.postgres.models import (
+    DocumentRow,
+    DocumentVersionRow,
+    WorkflowRunRow,
+)
 from claims_backend.infrastructure.postgres.ocr import PostgresOcrRepository
 from claims_backend.infrastructure.postgres.page_artifacts import (
     PostgresPageArtifactRepository,
@@ -226,12 +230,53 @@ async def test_rendered_tc004_runs_the_real_recorded_pipeline_to_exact_approval(
             "tc004-rendered-worker",
             ClaimWorkflowProcessor(workflows, runtime).process,
         )
+        async with factory() as session:
+            rendered_run = (
+                await session.scalars(
+                    select(WorkflowRunRow).where(WorkflowRunRow.claim_id == claim_id)
+                )
+            ).one()
+        rendered_effects = await workflows.list_effects(rendered_run.id)
         projection = await client.get(
             f"/v1/claims/{claim_id}",
             headers={"X-Dev-Username": "member.emp001"},
         )
+        structured_submission = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "tc004-structured-comparison",
+            },
+            data={"metadata": json.dumps(_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("hospital-bill.jpg", bill, "image/jpeg")),
+            ],
+        )
+        assert structured_submission.status_code == 202
+        structured_claim_id = UUID(structured_submission.json()["claim_id"])
+        await StructuredComponentFixtureAdapter(factory).seed_tc004(
+            structured_claim_id,
+            1,
+        )
+        assert await WorkerService(PostgresWorkScheduler(factory)).run_once(
+            "tc004-structured-comparison-worker",
+            ClaimWorkflowProcessor(workflows, runtime).process,
+        )
 
     assert projection.status_code == 200
+    assert [effect.effect_type for effect in rendered_effects] == [
+        "CLAIM_VERSION_LOADED",
+        "LOCAL_MEDIA_INSPECTED",
+        "DOCUMENT_TRIAGE_COMPLETED",
+        "DOCUMENT_PAGES_RENDERED",
+        "PAGE_OCR_COMPLETED",
+        "STRUCTURED_EXTRACTION_COMPLETED",
+        "EVIDENCE_RECONCILED",
+        "CASEFILE_FROZEN",
+        "ADJUDICATION_PROPOSED",
+        "DECISION_COMMITTED",
+    ]
     assert projection.json()["adjudication"] == {
         "recommendation": "APPROVED",
         "approved_amount": "1350.00",
@@ -257,6 +302,12 @@ async def test_rendered_tc004_runs_the_real_recorded_pipeline_to_exact_approval(
         for source in candidate.sources
     )
     assert [result.amount_after_paise for result in trace.rule_results][-1] == 135_000
+    structured_trace = await processor.inspect_trace(structured_claim_id)
+    assert structured_trace is not None
+    assert _material_signature(structured_trace.casefile.content) == _material_signature(
+        trace.casefile.content
+    )
+    assert _decision_signature(structured_trace) == _decision_signature(trace)
     await app.state.engine.dispose()
     await engine.dispose()
 
@@ -342,3 +393,35 @@ def _document_image(text: str) -> bytes:
     output = BytesIO()
     image.save(output, format="JPEG", quality=95)
     return output.getvalue()
+
+
+def _material_signature(casefile) -> tuple[object, ...]:
+    return (
+        casefile.claimed_amount.value,
+        casefile.billed_paise.value,
+        casefile.treatment_date.value,
+        casefile.member_join_date.value,
+        casefile.patient_identity.value,
+        casefile.clinical_condition.value,
+        casefile.line_items.value,
+    )
+
+
+def _decision_signature(trace) -> tuple[object, ...]:
+    return (
+        trace.decision.recommendation,
+        trace.decision.approved_paise,
+        tuple(
+            (
+                result.rule_id,
+                result.status,
+                result.reason_code,
+                result.policy_path,
+                result.inputs,
+                result.amount_before_paise,
+                result.adjustment_paise,
+                result.amount_after_paise,
+            )
+            for result in trace.rule_results
+        ),
+    )
