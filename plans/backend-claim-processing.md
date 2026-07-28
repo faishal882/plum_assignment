@@ -497,14 +497,14 @@ Make financial transformations an ordered, inspectable pipeline. TC010 proves th
 
 ### Acceptance criteria
 
-- [ ] The deterministic rule order places exclusions before limits, network discount before co-pay, and final recommendation last.
-- [ ] TC010 applies a 20% network discount to ₹4,500, yielding ₹3,600.
-- [ ] A 10% co-pay then deducts ₹360 and yields exactly ₹3,240.
-- [ ] Every amount step records the before value, operation, adjustment, after value, policy path, and evidence references.
-- [ ] Reversing discount and co-pay is detected by a trace-order regression test even if selected arithmetic happens to commute.
-- [ ] Increasing co-pay cannot increase the approved amount.
-- [ ] Approved amount always remains between zero and the eligible claimed amount.
-- [ ] The member projection renders the complete discount and co-pay breakdown.
+- [x] The deterministic rule order places exclusions before limits, network discount before co-pay, and final recommendation last.
+- [x] TC010 applies a 20% network discount to ₹4,500, yielding ₹3,600.
+- [x] A 10% co-pay then deducts ₹360 and yields exactly ₹3,240.
+- [x] Every amount step records the before value, operation, adjustment, after value, policy path, and evidence references.
+- [x] Reversing discount and co-pay is detected by a trace-order regression test even if selected arithmetic happens to commute.
+- [x] Increasing co-pay cannot increase the approved amount.
+- [x] Approved amount always remains between zero and the eligible claimed amount.
+- [x] The member projection renders the complete discount and co-pay breakdown.
 
 ---
 
@@ -518,16 +518,16 @@ Evaluate deterministic history-based anomaly signals and introduce durable human
 
 ### Acceptance criteria
 
-- [ ] Same-day history is read from the pinned PostgreSQL member snapshot, never supplied by the claim request.
-- [ ] TC009 records each triggering velocity signal and routes the claim to `IN_REVIEW`.
-- [ ] The assignment-compatible projection reports manual review without storing it as an adjudication outcome.
-- [ ] `GET /v1/review-tasks` returns only tasks visible to an authorized reviewer.
-- [ ] Reviewer detail includes evidence, conflicts, rules, calculations, failures, and allowed actions.
-- [ ] Reviewer commands require an expected claim version and idempotency key.
-- [ ] Accept, amend, reject, and request-document actions require structured reasons and respect task-specific allowed transitions.
-- [ ] Human resolution preserves the original machine recommendation and records immutable before/after values and actor identity.
-- [ ] Concurrent or repeated reviewer commands cannot produce conflicting resolutions.
-- [ ] Member projections exclude internal provider, risk, and reviewer-only evidence details.
+- [x] Same-day history is read from the pinned PostgreSQL member snapshot, never supplied by the claim request.
+- [x] TC009 records each triggering velocity signal and routes the claim to `IN_REVIEW`.
+- [x] The assignment-compatible projection reports manual review without storing it as an adjudication outcome.
+- [x] `GET /v1/review-tasks` returns only tasks visible to an authorized reviewer.
+- [x] Reviewer detail includes evidence, conflicts, rules, calculations, failures, and allowed actions.
+- [x] Reviewer commands require an expected claim version and idempotency key.
+- [x] Accept, amend, reject, and request-document actions require structured reasons and respect task-specific allowed transitions.
+- [x] Human resolution preserves the original machine recommendation and records immutable before/after values and actor identity.
+- [x] Concurrent or repeated reviewer commands cannot produce conflicting resolutions.
+- [x] Member projections exclude internal provider, risk, and reviewer-only evidence details.
 
 ---
 
