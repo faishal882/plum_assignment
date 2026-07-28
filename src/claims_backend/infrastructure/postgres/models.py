@@ -1074,3 +1074,76 @@ class OcrObservationRow(Base):
     region: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     source_id: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ModelExtractionRow(Base):
+    __tablename__ = "model_extractions"
+    __table_args__ = (
+        CheckConstraint(
+            "input_tokens >= 0 AND output_tokens >= 0",
+            name="model_extractions_tokens_nonnegative",
+        ),
+        CheckConstraint(
+            "latency_ms >= 0",
+            name="model_extractions_latency_nonnegative",
+        ),
+        UniqueConstraint(
+            "document_version_id",
+            "route",
+            "model_id",
+            "prompt_version",
+            "schema_version",
+            "input_sha256",
+            name="model_extractions_replay_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    document_version_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("document_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    route: Mapped[str] = mapped_column(String(32), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    region: Mapped[str] = mapped_column(String(32), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    stop_reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EvidenceCandidateRow(Base):
+    __tablename__ = "evidence_candidates"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="evidence_candidates_confidence_range",
+        ),
+        UniqueConstraint(
+            "candidate_id",
+            name="evidence_candidates_candidate_id_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    model_extraction_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("model_extractions.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    fact_path: Mapped[str] = mapped_column(String(128), nullable=False)
+    value: Mapped[object] = mapped_column(JSONB, nullable=True)
+    normalized_value: Mapped[object] = mapped_column(JSONB, nullable=True)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    producer: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
