@@ -175,6 +175,28 @@ class RecordedDiscoveryOcrProvider:
                 "total": 4500,
             },
         ),
+        "e45c76002c0b4a8604e7314aee3c036ce1034cb0d4b3a379d8ba3ce442433ec4": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Kavita Nair",
+            content={
+                "date": "2024-10-28",
+                "diagnosis": "Chronic Joint Pain",
+                "treatment": "Panchakarma Therapy",
+            },
+        ),
+        "b4cb7ba36fadf8b349c24f5b1dc2505bac15fab7d2f22ce50282893b763f1124": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Kavita Nair",
+            content={
+                "date": "2024-10-28",
+                "hospital_name": "Ayur Wellness Centre",
+                "line_items": [
+                    {"description": "Panchakarma Therapy 5 sessions", "amount": 3000},
+                    {"description": "Consultation", "amount": 1000},
+                ],
+                "total": 4000,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
