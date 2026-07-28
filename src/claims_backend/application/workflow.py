@@ -8,6 +8,7 @@ from claims_backend.application.failure_policy import (
 from claims_backend.application.work import WorkCommitted, WorkCompleted, WorkFailed, WorkRetry
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import (
+    ExecutionContract,
     NewWorkflowEvent,
     WorkflowEffect,
     WorkflowEvent,
@@ -22,6 +23,7 @@ class WorkflowRepository(Protocol):
         lease: WorkLease,
         graph_name: str,
         graph_version: str,
+        execution_contract: ExecutionContract,
     ) -> WorkflowRun: ...
 
     async def get_by_work_item(self, work_item_id: UUID) -> WorkflowRun | None: ...
@@ -52,6 +54,7 @@ class WorkflowRepository(Protocol):
 class WorkflowRuntime(Protocol):
     graph_name: str
     graph_version: str
+    execution_contract: ExecutionContract
 
     async def setup(self) -> None: ...
 
@@ -88,6 +91,7 @@ class ClaimWorkflowProcessor:
             lease,
             self._runtime.graph_name,
             self._runtime.graph_version,
+            self._runtime.execution_contract,
         )
         if workflow_run.status is WorkflowRunStatus.COMPLETED:
             return WorkCompleted()

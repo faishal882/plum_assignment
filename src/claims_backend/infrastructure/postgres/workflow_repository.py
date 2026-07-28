@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from claims_backend.application.workflow import WorkflowRepository
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import (
+    ExecutionContract,
     NewWorkflowEvent,
     WorkflowEffect,
     WorkflowEvent,
@@ -30,6 +31,7 @@ class PostgresWorkflowRepository(WorkflowRepository):
         lease: WorkLease,
         graph_name: str,
         graph_version: str,
+        execution_contract: ExecutionContract,
     ) -> WorkflowRun:
         now = datetime.now(UTC)
         workflow_run_id = uuid4()
@@ -44,6 +46,7 @@ class PostgresWorkflowRepository(WorkflowRepository):
                     operation_key=lease.operation_key,
                     graph_name=graph_name,
                     graph_version=graph_version,
+                    execution_contract=execution_contract.as_dict(),
                     status=WorkflowRunStatus.PENDING.value,
                     created_at=now,
                     updated_at=now,
@@ -73,6 +76,7 @@ class PostgresWorkflowRepository(WorkflowRepository):
                 or row.operation_key != lease.operation_key
                 or row.graph_name != graph_name
                 or row.graph_version != graph_version
+                or row.execution_contract != execution_contract.as_dict()
             ):
                 raise WorkflowRunConflictError
             return _to_run(row)
@@ -242,11 +246,42 @@ def _to_run(row: WorkflowRunRow) -> WorkflowRun:
         operation_key=row.operation_key,
         graph_name=row.graph_name,
         graph_version=row.graph_version,
+        execution_contract=_execution_contract(row.execution_contract),
         status=WorkflowRunStatus(row.status),
         created_at=row.created_at,
         updated_at=row.updated_at,
         completed_at=row.completed_at,
     )
+
+
+def _execution_contract(value: dict[str, object]) -> ExecutionContract:
+    ocr = value.get("ocr_provider")
+    model = value.get("model_provider")
+    routes = value.get("model_routes")
+    if not isinstance(ocr, dict) or not isinstance(model, dict) or not isinstance(routes, list):
+        raise WorkflowRunConflictError("Stored execution contract is malformed.")
+    normalized_routes: list[tuple[str, str, str, str, str]] = []
+    for route in routes:
+        if not isinstance(route, dict):
+            raise WorkflowRunConflictError("Stored execution contract route is malformed.")
+        fields = tuple(
+            route.get(key)
+            for key in ("route", "model_id", "region", "prompt_version", "schema_version")
+        )
+        if not all(isinstance(field, str) and field for field in fields):
+            raise WorkflowRunConflictError("Stored execution contract route is malformed.")
+        normalized_routes.append(fields)  # type: ignore[arg-type]
+    fields = (
+        value.get("schema_version"),
+        value.get("execution_profile"),
+        ocr.get("name"),
+        ocr.get("version"),
+        model.get("name"),
+        model.get("version"),
+    )
+    if not all(isinstance(field, str) and field for field in fields):
+        raise WorkflowRunConflictError("Stored execution contract is malformed.")
+    return ExecutionContract(*fields, tuple(normalized_routes))  # type: ignore[arg-type]
 
 
 def _to_effect(row: WorkflowEffectRow) -> WorkflowEffect:

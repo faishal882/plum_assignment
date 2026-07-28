@@ -721,6 +721,7 @@ class WorkflowRunRow(Base):
     operation_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
     graph_name: Mapped[str] = mapped_column(String(64), nullable=False)
     graph_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    execution_contract: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

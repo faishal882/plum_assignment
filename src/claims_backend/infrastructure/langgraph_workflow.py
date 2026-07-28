@@ -18,7 +18,12 @@ from claims_backend.domain.processing import (
     ProcessingRoute,
 )
 from claims_backend.domain.work import WorkLease
-from claims_backend.domain.workflow import NewWorkflowEvent, WorkflowRun, WorkflowRunStatus
+from claims_backend.domain.workflow import (
+    ExecutionContract,
+    NewWorkflowEvent,
+    WorkflowRun,
+    WorkflowRunStatus,
+)
 from claims_backend.observability import (
     EngineeringLogEvent,
     Observability,
@@ -119,6 +124,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         after_effect: BeforeNodeHook | None = None,
         observability: Observability | None = None,
         execution_profile: str = "UNSPECIFIED",
+        execution_contract: ExecutionContract | None = None,
     ) -> None:
         self._checkpoint_url = _checkpoint_url(database_url)
         self._repository = repository
@@ -127,6 +133,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         self._after_effect = after_effect or _no_op_hook
         self._observability = observability
         self._execution_profile = execution_profile
+        self.execution_contract = execution_contract or ExecutionContract.unspecified()
 
     async def setup(self) -> None:
         async with AsyncPostgresSaver.from_conn_string(self._checkpoint_url) as checkpointer:
@@ -548,7 +555,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _media_inspect(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("media_inspect")
         processor = self._required_processor()
-        run = _workflow_run(state, self.graph_name, self.graph_version)
+        run = _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         inspection = await processor.inspect_media(run)
         route = await processor.route(run)
         created = await self._repository.record_effect(
@@ -568,7 +575,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         await self._before_node("freeze_casefile")
         processor = self._required_processor()
         reference = await processor.freeze_casefile(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         created = await self._repository.record_effect(
             _workflow_run_id(state),
@@ -608,7 +615,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
 
     async def _commit_decision(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("commit_decision")
-        run = _workflow_run(state, self.graph_name, self.graph_version)
+        run = _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         await self._required_processor().commit_decision(
             run,
             _work_lease(state),
@@ -620,7 +627,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _triage_documents(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("triage_documents")
         result = await self._required_processor().triage_documents(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         created = await self._repository.record_effect(
             _workflow_run_id(state),
@@ -659,7 +666,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
 
     async def _commit_member_action(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("commit_member_action")
-        run = _workflow_run(state, self.graph_name, self.graph_version)
+        run = _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         await self._required_processor().commit_member_action(
             run,
             _work_lease(state),
@@ -692,7 +699,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _render_documents(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("render_documents")
         result = await self._required_processor().render_documents(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         action = result.action
         created = await self._repository.record_effect(
@@ -733,7 +740,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _ocr_documents(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("ocr_documents")
         observation_count = await self._required_processor().ocr_documents(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         created = await self._repository.record_effect(
             _workflow_run_id(state),
@@ -753,7 +760,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _discover_documents(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("discover_documents")
         observation_count = await self._required_processor().discover_documents(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         created = await self._repository.record_effect(
             _workflow_run_id(state),
@@ -773,7 +780,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _extract_evidence(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("extract_evidence")
         candidate_count = await self._required_processor().extract_evidence(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         if candidate_count is None:
             return {}
@@ -796,7 +803,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
     async def _reconcile_casefile(self, state: WorkflowState) -> WorkflowUpdate:
         await self._before_node("reconcile_casefile")
         result = await self._required_processor().reconcile_casefile(
-            _workflow_run(state, self.graph_name, self.graph_version)
+            _workflow_run(state, self.graph_name, self.graph_version, self.execution_contract)
         )
         if result.reference is not None:
             reconciled = await self._repository.record_effect(
@@ -870,6 +877,7 @@ def _workflow_run(
     state: WorkflowState,
     graph_name: str,
     graph_version: str,
+    execution_contract: ExecutionContract,
 ) -> WorkflowRun:
     return WorkflowRun(
         id=_workflow_run_id(state),
@@ -879,6 +887,7 @@ def _workflow_run(
         operation_key=state["operation_key"],
         graph_name=graph_name,
         graph_version=graph_version,
+        execution_contract=execution_contract,
         status=WorkflowRunStatus.RUNNING,
         created_at=datetime.fromisoformat(state["leased_at"]),
         updated_at=datetime.fromisoformat(state["leased_at"]),

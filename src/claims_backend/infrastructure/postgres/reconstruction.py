@@ -284,6 +284,7 @@ def _workflow_value(row: WorkflowRunRow) -> dict[str, object]:
         "id": str(row.id),
         "graph_name": row.graph_name,
         "graph_version": row.graph_version,
+        "execution_contract": row.execution_contract,
         "status": row.status,
         "created_at": row.created_at.isoformat(),
         "completed_at": _datetime(row.completed_at),

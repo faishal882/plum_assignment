@@ -71,3 +71,9 @@ class ModelRouter:
                 f"Model route {route.value} is not enabled and evaluation-approved."
             )
         return config
+
+    def enabled_routes(self) -> tuple[ModelRouteConfig, ...]:
+        """Return approved route definitions in stable order for workflow pinning."""
+        return tuple(
+            self.resolve(route) for route in sorted(self._routes, key=lambda item: item.value)
+        )

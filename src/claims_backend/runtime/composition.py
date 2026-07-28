@@ -13,6 +13,7 @@ from claims_backend.application.intelligence import (
     PageArtifactApplication,
 )
 from claims_backend.config import Settings
+from claims_backend.domain.workflow import ExecutionContract
 from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
 from claims_backend.infrastructure.aws.textract import TextractAdapter, create_textract_client
 from claims_backend.infrastructure.fixtures.recorded_intelligence import (
@@ -145,4 +146,37 @@ def create_claim_processor(runtime: ProcessRuntime) -> PostgresClaimProcessor:
             evidence,
         ),
         evidence_repository=evidence,
+    )
+
+
+def create_execution_contract(settings: Settings) -> ExecutionContract:
+    """Describe the provider and model versions selected before a run is leased."""
+    if settings.execution_profile is ExecutionProfile.LIVE_INTELLIGENCE:
+        ocr_name, ocr_version = "AMAZON_TEXTRACT", "boto3-textract-v1"
+        model_name, model_version = "AWS_BEDROCK", "bedrock-converse-v1"
+    else:
+        ocr_name, ocr_version = "RECORDED_DISCOVERY_OCR", "recorded-discovery-v1"
+        model_name, model_version = "RECORDED_DOCUMENT_MODEL", "recorded-document-v1"
+    router = ModelRouter.default(
+        region=settings.bedrock_region,
+        model_id=settings.bedrock_model_id,
+    )
+    routes = tuple(
+        (
+            config.route.value,
+            config.model_id,
+            config.region,
+            config.prompt_version,
+            config.schema_version,
+        )
+        for config in router.enabled_routes()
+    )
+    return ExecutionContract(
+        schema_version="execution-contract-v1",
+        execution_profile=settings.execution_profile.value,
+        ocr_provider_name=ocr_name,
+        ocr_provider_version=ocr_version,
+        model_provider_name=model_name,
+        model_provider_version=model_version,
+        model_routes=routes,
     )

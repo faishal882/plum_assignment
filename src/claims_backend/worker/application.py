@@ -10,7 +10,11 @@ from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
 from claims_backend.observability import EngineeringLogEvent
-from claims_backend.runtime.composition import ProcessRuntime, create_claim_processor
+from claims_backend.runtime.composition import (
+    ProcessRuntime,
+    create_claim_processor,
+    create_execution_contract,
+)
 
 
 @dataclass(slots=True)
@@ -97,6 +101,7 @@ def create_claim_worker(runtime: ProcessRuntime) -> ClaimWorker:
         processor=create_claim_processor(runtime),
         observability=runtime.observability,
         execution_profile=runtime.profile.value,
+        execution_contract=create_execution_contract(settings),
     )
     processor = ClaimWorkflowProcessor(repository, workflow)
     service = WorkerService(

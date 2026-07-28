@@ -16,7 +16,7 @@ from claims_backend.config import Settings
 from claims_backend.domain.extraction import ModelProviderError, ModelSemanticValidationError
 from claims_backend.domain.ocr import OcrMalformedResponseError, OcrTimeoutError
 from claims_backend.domain.work import WorkLease
-from claims_backend.domain.workflow import WorkflowRun, WorkflowRunStatus
+from claims_backend.domain.workflow import ExecutionContract, WorkflowRun, WorkflowRunStatus
 from claims_backend.policy.adjudicator import UnsafeCasefileError
 
 _NOW = datetime(2026, 7, 29, 10, tzinfo=UTC)
@@ -117,6 +117,7 @@ class _Repository:
         lease: WorkLease,
         graph_name: str,
         graph_version: str,
+        execution_contract: ExecutionContract,
     ) -> WorkflowRun:
         return _run(WorkflowRunStatus.PENDING)
 
@@ -127,6 +128,7 @@ class _Repository:
 class _FailingRuntime:
     graph_name = "claim-processing"
     graph_version = "v1"
+    execution_contract = ExecutionContract.unspecified()
 
     def __init__(self, error: Exception) -> None:
         self._error = error
@@ -150,6 +152,7 @@ def _run(status: WorkflowRunStatus) -> WorkflowRun:
         operation_key="claim:1:process:v1",
         graph_name="claim-processing",
         graph_version="v1",
+        execution_contract=ExecutionContract.unspecified(),
         status=status,
         created_at=_NOW,
         updated_at=_NOW,

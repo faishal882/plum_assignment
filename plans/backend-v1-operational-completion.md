@@ -82,8 +82,10 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
 - [x] Repository formatting, lint, strict typing, and Alembic drift checks (`9cffc2e`).
+- [x] Immutable workflow execution-contract persistence and changed-runtime recovery guard.
 - [ ] Operational no-fixture clean-decision tracer and all remaining recorded cases.
-- [ ] Pinned execution-contract persistence and recovery from persisted provider/model versions.
+- [ ] Recovery construction from persisted provider/model versions when a compatible historical
+  adapter is not present in the current process.
 - [ ] Complete Phoenix claim-session correlation and evaluation metrics.
 - [ ] Explicit live AWS complete tracer, versioned alias compatibility, and closure artifacts.
 
