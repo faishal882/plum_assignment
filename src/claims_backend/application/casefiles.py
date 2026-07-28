@@ -1,0 +1,117 @@
+from dataclasses import dataclass
+from uuid import UUID
+
+from claims_backend.domain.adjudication import (
+    ClaimCasefile,
+    EvidenceFact,
+    FactState,
+)
+from claims_backend.domain.reconciliation import (
+    EvidenceReconciliation,
+    EvidenceSufficiency,
+    ReconciledFact,
+    ReconciledFactState,
+)
+
+
+class EvidenceInsufficientForCasefileError(ValueError):
+    def __init__(self, sufficiency: EvidenceSufficiency) -> None:
+        self.sufficiency = sufficiency
+        super().__init__("Material evidence is unresolved; casefile cannot be frozen.")
+
+
+@dataclass(frozen=True, slots=True)
+class CasefileBuildRequest:
+    claim_id: UUID
+    claim_version: int
+    member_id: str
+    member_version_id: UUID
+    member_snapshot_sha256: str
+    policy_version_id: UUID
+    category: str
+    claimed_paise: int
+    currency: str
+    eligibility_evidence_ref: str
+    document_roles: tuple[str, ...]
+    document_role_evidence_refs: tuple[str, ...]
+    ytd_used_paise: int | None
+    utilization_evidence_ref: str | None
+    reconciliation: EvidenceReconciliation
+
+
+def build_casefile(request: CasefileBuildRequest) -> ClaimCasefile:
+    if not request.reconciliation.sufficiency.sufficient:
+        raise EvidenceInsufficientForCasefileError(request.reconciliation.sufficiency)
+    facts = {fact.fact_path: fact for fact in request.reconciliation.facts}
+    line_item_facts = tuple(
+        fact
+        for fact in request.reconciliation.facts
+        if fact.fact_path.startswith("billing.line_items.")
+        and fact.state is ReconciledFactState.KNOWN
+    )
+    line_item_refs = tuple(
+        candidate_id for fact in line_item_facts for candidate_id in fact.candidate_ids
+    )
+    return ClaimCasefile(
+        schema_version=2,
+        claim_id=request.claim_id,
+        claim_version=request.claim_version,
+        member_id=request.member_id,
+        member_version_id=request.member_version_id,
+        member_snapshot_sha256=request.member_snapshot_sha256,
+        policy_version_id=request.policy_version_id,
+        category=request.category,
+        claimed_paise=request.claimed_paise,
+        currency=request.currency,
+        eligibility=EvidenceFact(
+            state=FactState.KNOWN,
+            value=True,
+            evidence_refs=(request.eligibility_evidence_ref,),
+        ),
+        document_roles=EvidenceFact(
+            state=FactState.KNOWN,
+            value=list(request.document_roles),
+            evidence_refs=request.document_role_evidence_refs,
+        ),
+        billed_paise=_evidence_fact(_required_fact(facts, "billing.total")),
+        claimed_amount=_evidence_fact(_required_fact(facts, "claim.claimed_amount")),
+        treatment_date=_evidence_fact(_required_fact(facts, "treatment.date")),
+        member_join_date=_evidence_fact(_required_fact(facts, "member.join_date")),
+        patient_identity=_evidence_fact(_required_fact(facts, "patient.name")),
+        clinical_condition=_evidence_fact(_required_fact(facts, "clinical.condition")),
+        line_items=EvidenceFact(
+            state=FactState.KNOWN if line_item_facts else FactState.UNKNOWN,
+            value=[f"{fact.fact_path}={fact.value}" for fact in line_item_facts],
+            evidence_refs=line_item_refs,
+        ),
+        ytd_used_paise=EvidenceFact(
+            state=(FactState.KNOWN if request.ytd_used_paise is not None else FactState.UNKNOWN),
+            value=request.ytd_used_paise,
+            evidence_refs=(
+                ()
+                if request.utilization_evidence_ref is None
+                else (request.utilization_evidence_ref,)
+            ),
+        ),
+        evidence=request.reconciliation,
+    )
+
+
+def _required_fact(
+    facts: dict[str, ReconciledFact],
+    fact_path: str,
+) -> ReconciledFact:
+    fact = facts.get(fact_path)
+    if fact is None or fact.state is not ReconciledFactState.KNOWN:
+        raise ValueError(f"Required reconciled fact is unavailable: {fact_path}.")
+    return fact
+
+
+def _evidence_fact(fact: ReconciledFact) -> EvidenceFact:
+    return EvidenceFact.model_validate(
+        {
+            "state": FactState.KNOWN,
+            "value": fact.value,
+            "evidence_refs": fact.candidate_ids,
+        }
+    )

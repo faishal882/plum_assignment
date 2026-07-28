@@ -183,6 +183,16 @@ def _reconcile_fact(
 
 
 def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScalar:
+    if fact_path == "claim.claimed_amount":
+        if isinstance(value, bool) or value is None:
+            return value
+        if isinstance(value, int):
+            return value
+        cleaned = str(value).replace("INR", "").replace("₹", "").replace(",", "").strip()
+        try:
+            return int(Decimal(cleaned) * 100)
+        except InvalidOperation:
+            return cleaned.casefold()
     if fact_path == "billing.total" or fact_path.startswith("billing.line_items."):
         if isinstance(value, bool) or value is None:
             return value

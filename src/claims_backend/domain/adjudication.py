@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from claims_backend.domain.reconciliation import EvidenceReconciliation
+
 type JsonScalar = str | int | bool | None
 type EvidenceValue = JsonScalar | list[str]
 
@@ -52,6 +54,17 @@ class ClaimCasefile(BaseModel):
     document_roles: EvidenceFact
     billed_paise: EvidenceFact
     ytd_used_paise: EvidenceFact
+    member_snapshot_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    claimed_amount: EvidenceFact | None = None
+    treatment_date: EvidenceFact | None = None
+    member_join_date: EvidenceFact | None = None
+    patient_identity: EvidenceFact | None = None
+    clinical_condition: EvidenceFact | None = None
+    line_items: EvidenceFact | None = None
+    evidence: EvidenceReconciliation | None = None
 
     def canonical_bytes(self) -> bytes:
         return json.dumps(
