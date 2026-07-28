@@ -150,9 +150,7 @@ class PostgresWorkflowRepository(WorkflowRepository):
         now = datetime.now(UTC)
         async with self._session_factory.begin() as session:
             run = await session.scalar(
-                select(WorkflowRunRow)
-                .where(WorkflowRunRow.id == workflow_run_id)
-                .with_for_update()
+                select(WorkflowRunRow).where(WorkflowRunRow.id == workflow_run_id).with_for_update()
             )
             if run is None:
                 raise WorkflowTransitionError

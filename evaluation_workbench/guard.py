@@ -25,13 +25,9 @@ def execution_guard(
 ) -> Iterator[None]:
     if profile is ExecutionProfile.LIVE_INTELLIGENCE:
         if os.environ.get("CLAIMS_RUN_LIVE_AWS") != "1":
-            raise ProfileAuthorizationError(
-                "LIVE_INTELLIGENCE requires CLAIMS_RUN_LIVE_AWS=1"
-            )
+            raise ProfileAuthorizationError("LIVE_INTELLIGENCE requires CLAIMS_RUN_LIVE_AWS=1")
         if not synthetic_only:
-            raise ProfileAuthorizationError(
-                "LIVE_INTELLIGENCE accepts synthetic inputs only"
-            )
+            raise ProfileAuthorizationError("LIVE_INTELLIGENCE accepts synthetic inputs only")
         yield
         return
 
@@ -69,6 +65,4 @@ def _require_loopback(address: object) -> None:
             return
     except ValueError:
         pass
-    raise ExternalNetworkDenied(
-        f"Recorded evaluation denied external network host {host}"
-    )
+    raise ExternalNetworkDenied(f"Recorded evaluation denied external network host {host}")

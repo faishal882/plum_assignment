@@ -50,9 +50,7 @@ class StructuredComponentFixtureAdapter:
                     payload_sha256=sha256(canonical).hexdigest(),
                     created_at=datetime.now(UTC),
                 )
-                .on_conflict_do_nothing(
-                    constraint="processing_fixtures_claim_version_uq"
-                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
     async def seed_recorded_structured(

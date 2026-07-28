@@ -79,9 +79,7 @@ def test_actuals_are_finalized_before_oracle_scoring() -> None:
                     provenance=documents[case.case_id],
                     trace_complete=True,
                     assumptions=(),
-                    failures=(
-                        ("ANOMALY_ENRICHMENT",) if case.case_id == "TC011" else ()
-                    ),
+                    failures=(("ANOMALY_ENRICHMENT",) if case.case_id == "TC011" else ()),
                 ),
             )
         )
@@ -196,8 +194,6 @@ def _versions(
         graph_version="claim-processing-v7",
         execution_profile=profile,
         ocr_mode=(
-            ocr_mode
-            if ocr_mode is not None
-            else ("ENABLED" if profile.uses_ocr else "BYPASSED")
+            ocr_mode if ocr_mode is not None else ("ENABLED" if profile.uses_ocr else "BYPASSED")
         ),
     )

@@ -79,8 +79,7 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     assert all(span.context.trace_id == root.context.trace_id for span in nodes)
     assert all(span.parent and span.parent.span_id == root.context.span_id for span in nodes)
     assert [
-        (event.sequence, event.node_name, event.event_type, event.outcome)
-        for event in events
+        (event.sequence, event.node_name, event.event_type, event.outcome) for event in events
     ] == [
         (1, "load_claim", "ENTRY", "RUNNING"),
         (2, "load_claim", "EXIT", "OK"),
@@ -91,12 +90,9 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     assert all(event.span_id for event in events)
 
     records = [
-        json.loads(line)
-        for line in (tmp_path / "logs" / "worker.jsonl").read_text().splitlines()
+        json.loads(line) for line in (tmp_path / "logs" / "worker.jsonl").read_text().splitlines()
     ]
-    assert {record["trace_id"] for record in records} == {
-        f"{root.context.trace_id:032x}"
-    }
+    assert {record["trace_id"] for record in records} == {f"{root.context.trace_id:032x}"}
     assert {record["process"] for record in records} == {"worker"}
     scan_telemetry_for_phi(
         [dict(span.attributes) for span in spans],
@@ -160,9 +156,7 @@ async def _submit_claim(client: AsyncClient, idempotency_key: str) -> UUID:
                     "treatment_date": "2024-10-10",
                     "claimed_amount": "1000.00",
                     "currency": "INR",
-                    "documents": [
-                        {"upload_index": 0, "client_document_id": "DOC-1"}
-                    ],
+                    "documents": [{"upload_index": 0, "client_document_id": "DOC-1"}],
                 }
             )
         },

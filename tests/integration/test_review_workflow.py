@@ -274,9 +274,9 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
         "approved_amount": "4320.00",
         "currency": "INR",
     }
-    reconstruction = await PostgresClaimReconstructor(
-        app.state.session_factory
-    ).reconstruct(claim_id)
+    reconstruction = await PostgresClaimReconstructor(app.state.session_factory).reconstruct(
+        claim_id
+    )
     assert reconstruction is not None
     assert reconstruction.review_task is not None
     assert reconstruction.review_task["status"] == "RESOLVED"

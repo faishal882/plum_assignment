@@ -206,10 +206,7 @@ def test_textract_adapter_bounds_concurrent_provider_calls() -> None:
 
     adapter = TextractAdapter(BlockingClient())
     with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = [
-            pool.submit(adapter.analyze, _page(), DocumentRole.UNKNOWN)
-            for _ in range(3)
-        ]
+        futures = [pool.submit(adapter.analyze, _page(), DocumentRole.UNKNOWN) for _ in range(3)]
         assert two_started.wait(timeout=2)
         assert maximum_active == 2
         release.set()

@@ -279,10 +279,7 @@ class PostgresReviewRepository:
                     .join(
                         ClaimWorkItemRow,
                         (ClaimWorkItemRow.claim_id == ReviewTaskRow.claim_id)
-                        & (
-                            ClaimWorkItemRow.claim_version
-                            == ReviewTaskRow.claim_version
-                        ),
+                        & (ClaimWorkItemRow.claim_version == ReviewTaskRow.claim_version),
                     )
                     .join(
                         WorkflowRunRow,
@@ -344,9 +341,7 @@ class PostgresReviewRepository:
                 event_name=event_name,
                 component="review",
                 claim_id=None if parent is None else str(parent.claim_id),
-                workflow_run_id=(
-                    None if parent is None else str(parent.workflow_run_id)
-                ),
+                workflow_run_id=(None if parent is None else str(parent.workflow_run_id)),
                 attempt=None if parent is None else parent.attempt,
                 duration_ms=0,
                 outcome=outcome,

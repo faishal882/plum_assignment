@@ -250,9 +250,7 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
     assert report.passed is True, {
         case.case_id: case.mismatches for case in report.cases if not case.passed
     }
-    assert [case.case_id for case in report.cases] == [
-        f"TC{number:03d}" for number in range(1, 13)
-    ]
+    assert [case.case_id for case in report.cases] == [f"TC{number:03d}" for number in range(1, 13)]
     assert all(case.actual.trace_complete for case in report.cases)
     assert report.versions.execution_profile is ExecutionProfile.RENDERED_RECORDED
     assert report.versions.ocr_mode == "ENABLED"
@@ -261,9 +259,7 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
     for process in ("api", "worker", "evaluation"):
         path = tmp_path / "diagnostics" / f"{process}.jsonl"
         assert path.is_file()
-        records[process] = [
-            json.loads(line) for line in path.read_text().splitlines() if line
-        ]
+        records[process] = [json.loads(line) for line in path.read_text().splitlines() if line]
         assert any(
             all(
                 record[field] is not None
@@ -280,11 +276,7 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
             for record in records[process]
         )
     scan_telemetry_for_phi(
-        [
-            record
-            for process_records in records.values()
-            for record in process_records
-        ],
+        [record for process_records in records.values() for record in process_records],
         phi_canaries=tuple(_MEMBER_NAMES.values()),
     )
     scan_telemetry_for_phi(
@@ -318,9 +310,7 @@ async def test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate(
         process_name="worker",
         span_exporter=exporter,
     )
-    app = create_app(
-        Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
-    )
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path / "documents"))
     builder = EvaluationRunBuilder(
         dataset,
         _source_versions(
@@ -479,9 +469,7 @@ async def _run_structured_case(
         )
     processor = PostgresClaimProcessor(
         factory,
-        anomaly_enricher=(
-            EvaluationAnomalyFailureInjector() if case_id == "TC011" else None
-        ),
+        anomaly_enricher=(EvaluationAnomalyFailureInjector() if case_id == "TC011" else None),
     )
     workflows = PostgresWorkflowRepository(factory)
     runtime = LangGraphClaimWorkflow(
@@ -602,9 +590,7 @@ def _processor(
         ocr_repository=ocr_repository,
         structured_model=StructuredModelApplication(
             ModelRouter.default(region="us-west-2", model_id=_MODEL_ID),
-            RecordedStructuredModelTransport(
-                {ModelRoute.COMPLEX_EXTRACTION: tuple(responses)}
-            ),
+            RecordedStructuredModelTransport({ModelRoute.COMPLEX_EXTRACTION: tuple(responses)}),
             evidence_repository,
         ),
         evidence_repository=evidence_repository,
@@ -706,9 +692,7 @@ def _triage_output(
                             width=0.5,
                             height=0.1,
                         ),
-                        source_text_sha256=sha256(
-                            str(identity_name).encode()
-                        ).hexdigest(),
+                        source_text_sha256=sha256(str(identity_name).encode()).hexdigest(),
                         confidence=0.99,
                     ),
                 ),
@@ -763,25 +747,15 @@ def _structured_payload(raw_case: dict[str, Any]) -> StructuredEvidencePayload:
                     ),
                 ),
                 billed_paise=(
-                    int(round(float(total) * 100))
-                    if isinstance(total, int | float)
-                    else None
+                    int(round(float(total) * 100)) if isinstance(total, int | float) else None
                 ),
-                treatment_date=str(
-                    content.get("date", inputs["treatment_date"])
-                ),
+                treatment_date=str(content.get("date", inputs["treatment_date"])),
                 clinical_condition=(
-                    None
-                    if content.get("diagnosis") is None
-                    else str(content["diagnosis"])
+                    None if content.get("diagnosis") is None else str(content["diagnosis"])
                 ),
-                clinical_treatment=(
-                    None if treatment is None else str(treatment)
-                ),
+                clinical_treatment=(None if treatment is None else str(treatment)),
                 provider_name=(
-                    None
-                    if content.get("hospital_name") is None
-                    else str(content["hospital_name"])
+                    None if content.get("hospital_name") is None else str(content["hospital_name"])
                 ),
                 line_items_paise=line_items,
             )
@@ -838,16 +812,12 @@ def _actual_result(
     claim = reconstruction.claim
     review = reconstruction.review_task
     reasons = {
-        str(rule["reason_code"])
-        for rule in reconstruction.rule_results
-        if rule.get("reason_code")
+        str(rule["reason_code"]) for rule in reconstruction.rule_results if rule.get("reason_code")
     }
     reasons.update(str(action["code"]) for action in reconstruction.member_actions)
     if review is not None:
         reasons.update(str(value) for value in review["signal_codes"])
-    provenance = {
-        str(document["file_id"]) for document in raw_case["input"]["documents"]
-    }
+    provenance = {str(document["file_id"]) for document in raw_case["input"]["documents"]}
     provenance.update(reconstruction.evidence_references)
     return ActualCaseResult(
         case_id=case_id,
@@ -863,9 +833,7 @@ def _actual_result(
                 )
             ),
             approved_paise=(
-                None
-                if claim["approved_paise"] is None
-                else int(claim["approved_paise"])
+                None if claim["approved_paise"] is None else int(claim["approved_paise"])
             ),
             reason_codes=tuple(sorted(reasons)),
             provenance=tuple(sorted(provenance)),

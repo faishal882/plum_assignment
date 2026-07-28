@@ -55,9 +55,7 @@ class RetrySchedule:
         entropy = self.entropy()
         if not 0 <= entropy <= 1:
             raise ValueError("retry entropy must be between zero and one")
-        exponential_seconds = self.base_delay.total_seconds() * (
-            2 ** (attempt_number - 1)
-        )
+        exponential_seconds = self.base_delay.total_seconds() * (2 ** (attempt_number - 1))
         maximum_seconds = self.maximum_delay.total_seconds()
         bounded_seconds = min(exponential_seconds, maximum_seconds)
         jitter_seconds = bounded_seconds * self.jitter_ratio * entropy

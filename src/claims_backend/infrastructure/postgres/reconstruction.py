@@ -60,9 +60,7 @@ class PostgresClaimReconstructor:
                 None
                 if work is None
                 else await session.scalar(
-                    select(WorkflowRunRow).where(
-                        WorkflowRunRow.work_item_id == work.id
-                    )
+                    select(WorkflowRunRow).where(WorkflowRunRow.work_item_id == work.id)
                 )
             )
             workflow_events = (
@@ -209,9 +207,7 @@ class PostgresClaimReconstructor:
             claim=_claim_value(claim),
             submission=version.submission,
             policy=(
-                None
-                if policy is None
-                else _policy_value(policy, policy_source, policy_overlay)
+                None if policy is None else _policy_value(policy, policy_source, policy_overlay)
             ),
             work_item=(None if work is None else _work_value(work)),
             workflow=(None if workflow is None else _workflow_value(workflow)),
@@ -255,9 +251,7 @@ def _policy_value(
     overlay: PolicyOverlayRow | None,
 ) -> dict[str, object]:
     engine_contract_version = (
-        row.ir.get("engine_contract_version")
-        if isinstance(row.ir, dict)
-        else None
+        row.ir.get("engine_contract_version") if isinstance(row.ir, dict) else None
     )
     return {
         "id": str(row.id),

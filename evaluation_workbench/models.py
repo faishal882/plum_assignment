@@ -55,9 +55,7 @@ class SourceVersions(_FrozenModel):
     def enforce_profile_label(self) -> "SourceVersions":
         expected = "ENABLED" if self.execution_profile.uses_ocr else "BYPASSED"
         if self.ocr_mode != expected:
-            raise ValueError(
-                f"{self.execution_profile.value} must label OCR as {expected}"
-            )
+            raise ValueError(f"{self.execution_profile.value} must label OCR as {expected}")
         return self
 
 

@@ -86,15 +86,9 @@ class EvaluationRunBuilder:
     def finalize(self) -> FinalizedEvaluationRun:
         if self._finalized:
             raise RuntimeError("Evaluation run is already finalized")
-        missing = [
-            case_id
-            for case_id in self._selected_case_ids
-            if case_id not in self._actuals
-        ]
+        missing = [case_id for case_id in self._selected_case_ids if case_id not in self._actuals]
         if missing:
-            raise ValueError(
-                f"Cannot finalize evaluation with missing cases: {', '.join(missing)}"
-            )
+            raise ValueError(f"Cannot finalize evaluation with missing cases: {', '.join(missing)}")
         cases = tuple(self._actuals[case_id] for case_id in self._selected_case_ids)
         self._finalized = True
         return FinalizedEvaluationRun(
@@ -172,11 +166,7 @@ def _expected_snapshot(case_id: str, oracle: dict[str, Any]) -> OutcomeSnapshot:
     decision = expected.get("decision")
     adjudication = decision if isinstance(decision, str) else None
     amount = expected.get("approved_amount")
-    approved_paise = (
-        int(round(float(amount) * 100))
-        if isinstance(amount, int | float)
-        else None
-    )
+    approved_paise = int(round(float(amount) * 100)) if isinstance(amount, int | float) else None
     if decision == "REJECTED":
         approved_paise = 0
     if case_id == "TC011":
@@ -185,11 +175,15 @@ def _expected_snapshot(case_id: str, oracle: dict[str, Any]) -> OutcomeSnapshot:
             raise ValueError("TC011 oracle claimed amount is invalid")
         approved_paise = int(round(float(claimed) * 100))
     documents = inputs.get("documents")
-    provenance = tuple(
-        value["file_id"]
-        for value in documents
-        if isinstance(value, dict) and isinstance(value.get("file_id"), str)
-    ) if isinstance(documents, list) else ()
+    provenance = (
+        tuple(
+            value["file_id"]
+            for value in documents
+            if isinstance(value, dict) and isinstance(value.get("file_id"), str)
+        )
+        if isinstance(documents, list)
+        else ()
+    )
     return OutcomeSnapshot(
         lifecycle=_EXPECTED_LIFECYCLE[case_id],
         adjudication=adjudication,

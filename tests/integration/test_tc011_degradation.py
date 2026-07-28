@@ -188,8 +188,7 @@ async def test_tc011_degrades_only_anomaly_enrichment_without_losing_decision(
             select(ComponentFailureRow).where(ComponentFailureRow.claim_id == claim_id)
         )
         audit = await session.scalar(
-            select(AuditEventRow)
-            .where(
+            select(AuditEventRow).where(
                 AuditEventRow.claim_id == claim_id,
                 AuditEventRow.event_type == "CLAIM_DECIDED",
             )
