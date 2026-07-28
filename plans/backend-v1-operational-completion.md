@@ -85,6 +85,7 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   profile, and attempt metadata.
 - [x] Hash-keyed recorded OCR/model corpus supports the TC004-format prescription and hospital
   bill path without a processing fixture.
+- [x] Recorded corpus includes the TC005 diabetes waiting-period document pair.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

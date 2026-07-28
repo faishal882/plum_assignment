@@ -82,6 +82,19 @@ class RecordedDiscoveryOcrProvider:
                 "total": 1500,
             },
         ),
+        "7e7f6c08d420e0e6c1b383441be9850db2662c7ffe49f353700437cbbd381955": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Vikram Joshi",
+            content={
+                "date": "2024-10-15",
+                "diagnosis": "Type 2 Diabetes Mellitus",
+            },
+        ),
+        "540606661182a6f7c5c183d9d8e1f87f4772bb8f2dedc98361ca531f2a65b40c": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Vikram Joshi",
+            content={"date": "2024-10-15", "total": 3000},
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
