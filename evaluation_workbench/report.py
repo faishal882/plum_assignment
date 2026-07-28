@@ -29,15 +29,15 @@ _EXPECTED_LIFECYCLE = {
 }
 _EXPECTED_REASON_CODES = {
     "TC001": ("MISSING_REQUIRED_DOCUMENT",),
-    "TC002": ("DOCUMENT_UNREADABLE",),
-    "TC003": ("IDENTITY_CONFLICT",),
-    "TC004": ("COPAY_APPLIED",),
+    "TC002": ("UNREADABLE_DOCUMENT",),
+    "TC003": ("PATIENT_IDENTITY_CONFLICT",),
+    "TC004": ("CATEGORY_COPAY_APPLIED",),
     "TC005": ("WAITING_PERIOD",),
-    "TC006": ("COSMETIC_DENTAL_EXCLUDED",),
+    "TC006": ("DENTAL_LINE_ITEM_EXCLUDED",),
     "TC007": ("PRE_AUTH_MISSING",),
     "TC008": ("PER_CLAIM_EXCEEDED",),
     "TC009": ("SAME_DAY_CLAIM_VELOCITY",),
-    "TC010": ("NETWORK_DISCOUNT_APPLIED", "COPAY_APPLIED"),
+    "TC010": ("NETWORK_DISCOUNT_APPLIED", "CATEGORY_COPAY_APPLIED"),
     "TC011": (),
     "TC012": ("EXCLUDED_CONDITION",),
 }
@@ -155,6 +155,8 @@ def _expected_snapshot(case_id: str, oracle: dict[str, Any]) -> OutcomeSnapshot:
         if isinstance(amount, int | float)
         else None
     )
+    if decision == "REJECTED":
+        approved_paise = 0
     if case_id == "TC011":
         claimed = inputs.get("claimed_amount")
         if not isinstance(claimed, int | float):
