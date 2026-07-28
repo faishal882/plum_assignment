@@ -117,9 +117,9 @@ It then follows one of three explicit routes:
 Every process work item carries a normalized `claim_version`. Its first execution atomically
 creates one `workflow_runs` record pinned to the work item, claim version, graph name, and graph
 version. The workflow-run UUID is used unchanged as LangGraph's `thread_id`, while the project
-record stores the `skeleton-v1` graph version independently of LangGraph's reserved root checkpoint
-namespace. Graph state is limited to IDs, the operation key, version, booleans, and a small effect
-count—never document bytes, OCR bodies, prompts, or provider responses.
+record stores the `claim-processing-v3` graph version independently of LangGraph's reserved root
+checkpoint namespace. Graph state is limited to IDs, the operation key, version, booleans, and
+small evidence/action summaries—never document bytes, OCR bodies, prompts, or provider responses.
 
 Call `LangGraphClaimWorkflow.setup()` once when initializing a fresh local worker database. The
 LangGraph PostgreSQL adapter owns its checkpoint tables, while Alembic owns `workflow_runs`,
@@ -149,22 +149,37 @@ Canonical JSON hashing makes the complete decision reproducible for identical in
 The terminal transaction writes the decision, ordered rule results, member-safe projection,
 audit event, workflow completion, and work completion together. A failure in any write rolls back
 the entire terminal transition. PostgreSQL also rejects updates and deletes to fixture inputs,
-casefiles, decisions, rule results, triage results, and member actions. TC004 consequently exposes
-an approved ₹1,350 projection and ₹150 co-pay explanation without fixture payloads or internal
-provider data.
+casefiles, decisions, rule results, triage results, identity reconciliations, and member actions.
+TC004 consequently exposes an approved ₹1,350 projection and ₹150 co-pay explanation without
+fixture payloads or internal provider data.
 
 ## Early document-role gate
 
 The `EARLY_TRIAGE` route accepts only schema-constrained per-document outputs: a bounded role
-vocabulary including `UNKNOWN`, a readability enum, and at most two bounded identity
-observations. It requires exactly one result for every submitted document and persists the exact
-document-version reference. Unknown values are preserved rather than guessed.
+vocabulary including `UNKNOWN`, a typed readability observation with preview provenance, and at
+most two bounded identity observations. It requires exactly one result for every submitted
+document and persists the exact document-version reference. Unknown values are preserved rather
+than guessed.
 
 TC001 proves the short-circuit path with two generic JPEG filenames classified as prescriptions.
 The pinned policy requires a hospital bill, so the backend atomically records a
 `MISSING_REQUIRED_DOCUMENT` member action and moves the claim to `ACTION_REQUIRED`. The workflow
 effect trace ends after local media inspection, triage, and action commit. No Textract,
 full-extraction, casefile, policy-adjudication, or financial-decision operation executes.
+
+TC002 uses a deterministic synthetic blur/downsampling transform to produce a repeatable
+unreadable pharmacy bill. Its observation links the `UNREADABLE` result to the immutable document
+version and to a page preview hash and transform version. The member action identifies `F004` and
+requests replacement of that pharmacy bill. A clear replacement creates claim version 2, clears
+the satisfied action, and schedules fresh work while the version 1 triage remains immutable.
+
+Patient-name candidates carry producer and producer version, document version, page, normalized
+region, source-text hash, and confidence. Deterministic reconciliation compares all candidates
+with the pinned member snapshot and records `KNOWN`, `UNKNOWN`, or `CONFLICT`; confidence and
+source order cannot erase disagreement. TC003 preserves Rajesh Kumar from `F005` and Arjun Mehta
+from `F006`, returns only those relevant conflict details to the member, and stops before
+adjudication. Replacing the mismatched document starts a new claim attempt without altering the
+original reconciliation or member action.
 
 ## Setup data import
 
