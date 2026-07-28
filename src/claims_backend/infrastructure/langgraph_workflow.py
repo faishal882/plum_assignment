@@ -74,7 +74,7 @@ class WorkflowUpdate(TypedDict, total=False):
 
 class LangGraphClaimWorkflow(WorkflowRuntime):
     graph_name = "claim-processing"
-    graph_version = "claim-processing-v2"
+    graph_version = "claim-processing-v3"
 
     def __init__(
         self,
