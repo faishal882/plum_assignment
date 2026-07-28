@@ -38,7 +38,10 @@ async def test_claim_acceptance_persists_and_seals_document_versions(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "seal-document-version",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("../../prescription.txt", pdf, "text/plain")},
         )
@@ -96,7 +99,10 @@ async def test_api_accepts_each_supported_document_format(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": f"accept-format-{format_kind}",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": (filename, document_bytes, content_type)},
         )
@@ -133,7 +139,10 @@ async def test_manifest_upload_indexes_control_document_mapping(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "manifest-upload-mapping",
+            },
             data={"metadata": json.dumps(metadata)},
             files=[
                 ("files", ("first.pdf", _pdf_bytes(), "application/pdf")),
@@ -206,7 +215,10 @@ async def test_invalid_document_creates_no_claim_or_artifact(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": f"invalid-document-{case}",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("uploaded.data", content, "application/octet-stream")},
         )
@@ -255,7 +267,10 @@ async def test_api_enforces_configured_per_file_limit(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "configured-file-limit",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf, "application/pdf")},
         )

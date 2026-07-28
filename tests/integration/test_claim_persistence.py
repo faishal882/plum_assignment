@@ -28,6 +28,7 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimWorkItemRow,
     DocumentRow,
     DocumentVersionRow,
+    IdempotencyKeyRow,
     UserRow,
 )
 from claims_backend.infrastructure.postgres.repositories import PostgresClaimsRepository
@@ -64,6 +65,7 @@ async def test_submission_persists_the_complete_initial_claim_unit(
             _submission(),
             _principal(),
             [MemoryUpload(_pdf_bytes())],
+            "persist-complete-unit",
         )
 
     async with session_factory() as session:
@@ -113,7 +115,10 @@ async def test_username_rename_preserves_claim_ownership_and_audit_snapshot(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "rename-preserves-ownership",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", _pdf_bytes(), "application/pdf")},
         )
@@ -176,7 +181,10 @@ async def test_invalid_metadata_creates_no_claim_or_work(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "invalid-metadata-no-state",
+            },
             data={
                 "metadata": json.dumps(
                     {
@@ -249,6 +257,7 @@ async def test_work_item_failure_rolls_back_the_entire_submission(
                     _submission(),
                     _principal(),
                     [MemoryUpload(_pdf_bytes())],
+                    "rollback-entire-submission",
                 )
     finally:
         async with engine.begin() as connection:
@@ -267,11 +276,28 @@ async def test_work_item_failure_rolls_back_the_entire_submission(
                 ClaimWorkItemRow,
                 DocumentRow,
                 DocumentVersionRow,
+                IdempotencyKeyRow,
             )
         ]
 
-    assert counts == [0, 0, 0, 0, 0, 0]
+    assert counts == [0, 0, 0, 0, 0, 0, 0]
     assert list((tmp_path / "objects").rglob("*.pdf")) == []
+
+    async with session_factory() as session:
+        application = ClaimsApplication(
+            PostgresClaimsRepository(session),
+            LocalDocumentStore(tmp_path),
+        )
+        retried = await application.submit(
+            _submission(),
+            _principal(),
+            [MemoryUpload(_pdf_bytes())],
+            "rollback-entire-submission",
+        )
+
+    assert retried.lifecycle.value == "QUEUED"
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(IdempotencyKeyRow)) == 1
 
     await engine.dispose()
 

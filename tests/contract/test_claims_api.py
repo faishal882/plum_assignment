@@ -37,6 +37,68 @@ def pdf_bytes() -> bytes:
 
 
 @pytest.mark.asyncio
+async def test_claim_submission_requires_an_idempotency_key(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    metadata = {
+        "member_id": "EMP001",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "CONSULTATION",
+        "treatment_date": "2024-11-01",
+        "claimed_amount": "1500.00",
+        "currency": "INR",
+        "documents": [{"upload_index": 0, "client_document_id": "doc-prescription"}],
+    }
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/claims",
+            headers={"X-Dev-Username": "member.emp001"},
+            data={"metadata": json.dumps(metadata)},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "IDEMPOTENCY_KEY_REQUIRED",
+            "message": "An Idempotency-Key header is required.",
+            "details": [],
+        }
+    }
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("idempotency_key", ["", " contains-space", "a" * 129])
+async def test_claim_submission_rejects_malformed_idempotency_keys(
+    migrated_database_url: str,
+    tmp_path,
+    idempotency_key: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": idempotency_key,
+            },
+            data={"metadata": "{}"},
+            files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_IDEMPOTENCY_KEY"
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_identity_provider_can_be_replaced_without_changing_claim_routes(
     migrated_database_url: str,
     tmp_path,
@@ -57,7 +119,10 @@ async def test_identity_provider_can_be_replaced_without_changing_claim_routes(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "external-subject"},
+            headers={
+                "X-Dev-Username": "external-subject",
+                "Idempotency-Key": "replaceable-provider",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
@@ -151,7 +216,10 @@ async def test_unknown_local_identity_is_rejected(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "unknown.user"},
+            headers={
+                "X-Dev-Username": "unknown.user",
+                "Idempotency-Key": "unknown-identity",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
@@ -189,7 +257,10 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "MEMBER.EMP001"},
+            headers={
+                "X-Dev-Username": "MEMBER.EMP001",
+                "Idempotency-Key": "submit-and-retrieve",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
@@ -202,7 +273,10 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
 
         retrieved = await client.get(
             receipt["status_url"],
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "owner-isolation",
+            },
         )
 
     assert retrieved.status_code == 200
@@ -247,7 +321,10 @@ async def test_another_member_cannot_discover_a_claim(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         submitted = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "owner-isolation",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
@@ -288,7 +365,10 @@ async def test_non_owner_cannot_submit_for_member(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": username},
+            headers={
+                "X-Dev-Username": username,
+                "Idempotency-Key": f"forbidden-{username}",
+            },
             data={"metadata": json.dumps(metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
@@ -316,7 +396,10 @@ async def test_unknown_claim_returns_a_stable_not_found_error(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(
             f"/v1/claims/{uuid4()}",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "invalid-metadata",
+            },
         )
 
     assert response.status_code == 404
@@ -350,7 +433,10 @@ async def test_invalid_claim_metadata_returns_a_stable_error(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/v1/claims",
-            headers={"X-Dev-Username": "member.emp001"},
+            headers={
+                "X-Dev-Username": "member.emp001",
+                "Idempotency-Key": "invalid-metadata",
+            },
             data={"metadata": json.dumps(invalid_metadata)},
             files={"files": ("prescription.pdf", pdf_bytes(), "application/pdf")},
         )
