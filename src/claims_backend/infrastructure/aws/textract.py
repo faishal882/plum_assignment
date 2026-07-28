@@ -47,6 +47,9 @@ class TextractClient(Protocol):
 
 
 class TextractAdapter:
+    provider_name = "AMAZON_TEXTRACT"
+    provider_version = "boto3-textract-v1"
+
     def __init__(self, client: TextractClient) -> None:
         self._client = client
 

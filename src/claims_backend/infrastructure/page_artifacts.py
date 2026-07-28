@@ -4,7 +4,11 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from claims_backend.application.intelligence import PageArtifactDraft, RenderedPage
+from claims_backend.application.intelligence import (
+    PageArtifact,
+    PageArtifactDraft,
+    RenderedPage,
+)
 
 
 class LocalPageArtifactStore:
@@ -61,6 +65,41 @@ class LocalPageArtifactStore:
             if current.is_symlink() or not current.resolve(strict=True).is_relative_to(self._root):
                 raise OSError("Page artifact path escaped its root.")
         return current
+
+
+class LocalPageArtifactReader:
+    def __init__(self, data_root: Path) -> None:
+        self._root = data_root.resolve(strict=True)
+
+    async def read(self, artifact: PageArtifact) -> RenderedPage:
+        return await asyncio.to_thread(self._read_sync, artifact)
+
+    def _read_sync(self, artifact: PageArtifact) -> RenderedPage:
+        relative = artifact.relative_path
+        if relative.is_absolute() or ".." in relative.parts:
+            raise OSError("Page artifact path is unsafe.")
+        path = self._root / relative
+        if path.is_symlink() or not path.resolve(strict=True).is_relative_to(self._root):
+            raise OSError("Page artifact path escaped its root.")
+        content = path.read_bytes()
+        if (
+            len(content) != artifact.size_bytes
+            or sha256(content).hexdigest() != artifact.rendered_sha256
+        ):
+            raise OSError("Page artifact content changed.")
+        return RenderedPage(
+            document_id=artifact.document_id,
+            document_version_id=artifact.document_version_id,
+            page_number=artifact.page_number,
+            original_sha256=artifact.original_sha256,
+            media_type=artifact.media_type,
+            content=content,
+            sha256=artifact.rendered_sha256,
+            size_bytes=artifact.size_bytes,
+            width=artifact.width,
+            height=artifact.height,
+            render_version=artifact.render_version,
+        )
 
 
 def _fsync_directory(path: Path) -> None:
