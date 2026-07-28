@@ -57,6 +57,35 @@ This header is intentionally a local-development identity mechanism, not authent
 authorization depends on a replaceable identity-provider contract so a JWT or OAuth/OIDC adapter
 can replace it later without changing claim application behavior.
 
+## Local document storage
+
+Claim uploads are streamed into a content-addressed store beneath `CLAIMS_DATA_ROOT`, which
+defaults to `data/documents`. The backend determines the actual format from file signatures and
+structural validation; request MIME types and filenames are never trusted.
+
+Supported formats and default limits:
+
+- PDF, JPEG, and PNG.
+- 10 documents per claim.
+- 20 MiB per document.
+- 50 MiB across one claim.
+- 10 pages per document.
+- 1 MiB streaming chunks.
+
+The corresponding configuration variables are:
+
+- `CLAIMS_MAX_DOCUMENTS`
+- `CLAIMS_MAX_FILE_BYTES`
+- `CLAIMS_MAX_CLAIM_BYTES`
+- `CLAIMS_MAX_DOCUMENT_PAGES`
+- `CLAIMS_UPLOAD_CHUNK_BYTES`
+
+Encrypted, corrupt, unsupported, oversized, and over-page-limit documents produce stable,
+document-specific API errors before a claim is created. Valid artifacts are atomically sealed
+under generated hash-based paths with read-only permissions. PostgreSQL stores only immutable
+document metadata and relative paths. If claim persistence fails, the newly sealed artifacts are
+removed.
+
 ## Verification
 
 The default tests use the PostgreSQL container:
