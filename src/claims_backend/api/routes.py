@@ -11,6 +11,7 @@ from claims_backend.api.dependencies import (
     CurrentPrincipalDependency,
 )
 from claims_backend.api.schemas import (
+    AffectedDocumentResponse,
     ClaimActionResponse,
     ClaimMetadataRequest,
     ClaimReceiptResponse,
@@ -366,6 +367,17 @@ def _to_response(claim: Claim) -> ClaimResponse:
                 message=claim.action.message,
                 observed_document_roles=list(claim.action.observed_document_roles),
                 required_document_roles=list(claim.action.required_document_roles),
+                affected_documents=(
+                    [
+                        AffectedDocumentResponse(
+                            client_document_id=document.client_document_id,
+                            observed_role=document.observed_role,
+                            requested_action=document.requested_action,
+                        )
+                        for document in claim.action.affected_documents
+                    ]
+                    or None
+                ),
             )
         ),
         created_at=claim.created_at,

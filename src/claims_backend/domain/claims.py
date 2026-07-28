@@ -40,11 +40,19 @@ class MemberAdjudication:
 
 
 @dataclass(frozen=True, slots=True)
+class MemberActionDocument:
+    client_document_id: str
+    observed_role: str
+    requested_action: str
+
+
+@dataclass(frozen=True, slots=True)
 class MemberAction:
     code: str
     message: str
     observed_document_roles: tuple[str, ...]
     required_document_roles: tuple[str, ...]
+    affected_documents: tuple[MemberActionDocument, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -24,6 +24,7 @@ from claims_backend.domain.claims import (
     ClaimLifecycle,
     DocumentReplacementResult,
     MemberAction,
+    MemberActionDocument,
     MemberAdjudication,
     MemberDeduction,
     MemberExplanation,
@@ -346,6 +347,7 @@ class PostgresClaimsRepository:
 
             claim_row.current_version = new_claim_version
             claim_row.lifecycle_status = ClaimLifecycle.QUEUED.value
+            claim_row.current_action = None
             claim_row.updated_at = now
             claim_documents = (
                 await self._session.scalars(
@@ -618,6 +620,7 @@ def _to_domain(row: ClaimRow) -> Claim:
     )
     observed_roles = None if action is None else action.get("observed_document_roles")
     required_roles = None if action is None else action.get("required_document_roles")
+    action_documents = None if action is None else action.get("affected_documents")
     return Claim(
         id=row.id,
         owner_user_id=row.owner_user_id,
@@ -655,6 +658,19 @@ def _to_domain(row: ClaimRow) -> Claim:
                 message=str(action["message"]),
                 observed_document_roles=tuple(str(value) for value in observed_roles),
                 required_document_roles=tuple(str(value) for value in required_roles),
+                affected_documents=(
+                    tuple(
+                        MemberActionDocument(
+                            client_document_id=str(item["client_document_id"]),
+                            observed_role=str(item["observed_role"]),
+                            requested_action=str(item["requested_action"]),
+                        )
+                        for item in action_documents
+                        if isinstance(item, dict)
+                    )
+                    if isinstance(action_documents, list)
+                    else ()
+                ),
             )
             if isinstance(observed_roles, list) and isinstance(required_roles, list)
             else None

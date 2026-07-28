@@ -18,12 +18,20 @@ class FrozenCasefileRef:
 
 
 @dataclass(frozen=True, slots=True)
+class AffectedDocument:
+    client_document_id: str
+    observed_role: str
+    requested_action: str
+
+
+@dataclass(frozen=True, slots=True)
 class EarlyGateResult:
     action_required: bool
     code: str | None
     message: str | None
     observed_roles: tuple[str, ...]
     required_roles: tuple[str, ...]
+    affected_documents: tuple[AffectedDocument, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

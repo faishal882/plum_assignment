@@ -104,6 +104,13 @@ class MemberActionResponse(BaseModel):
     message: str
     observed_document_roles: list[str]
     required_document_roles: list[str]
+    affected_documents: list["AffectedDocumentResponse"] | None = None
+
+
+class AffectedDocumentResponse(BaseModel):
+    client_document_id: str
+    observed_role: str
+    requested_action: str
 
 
 class ReplaceDocumentCommandRequest(BaseModel):
