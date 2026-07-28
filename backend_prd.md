@@ -334,7 +334,7 @@ Wrong, missing, unreadable, or conflicting documents are persisted claim states 
 - LangChain and Bedrock types do not enter domain contracts.
 - Direct Boto3 is used for Textract.
 - Two logical Bedrock routes exist: fast triage and complex extraction.
-- Both routes initially point to one configured, enabled, evaluation-approved Claude Sonnet model.
+- Both routes initially point to the configured, enabled, evaluation-approved Qwen 3 235B A22B model.
 - Model identifiers are configuration rather than hardcoded domain constants.
 - Temperature is zero where supported.
 - Pydantic structured output is required.

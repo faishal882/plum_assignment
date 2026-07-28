@@ -227,13 +227,15 @@ This call may incur AWS charges. It uses generated text only and requires creden
 All model calls pass through the project-owned `StructuredModelTransport` boundary. The default
 router independently configures `FAST_TRIAGE` and `COMPLEX_EXTRACTION`, including route, model ID,
 AWS region, prompt version, schema version, enablement, evaluation approval, and temperature.
-Both currently resolve to the explicit cross-region inference profile
-`us.anthropic.claude-sonnet-4-6`, with temperature zero. Override it locally through
-`CLAIMS_BEDROCK_MODEL_ID`.
+Both currently resolve to `qwen.qwen3-235b-a22b-2507-v1:0`, with temperature zero and
+function-calling structured output. Bedrock uses its own `CLAIMS_BEDROCK_REGION` setting
+(`us-west-2` by default) because this Qwen model is not available in the Textract default region.
+Override the identifier locally through `CLAIMS_BEDROCK_MODEL_ID`.
 
 `ChatBedrockConverseTransport` uses Bedrock Converse through LangChain AWS native structured
-output. It returns only the parsed project schema plus request ID, token counts, latency, and stop
-reason. Prompts, raw responses, chain-of-thought, and document bytes are not persisted.
+output via the model-compatible function-calling method. It returns only the parsed project
+schema plus request ID, token counts, latency, and stop reason. Prompts, raw responses,
+chain-of-thought, and document bytes are not persisted.
 `RecordedStructuredModelTransport` supplies the default no-network test path using sanitized,
 version-controlled fixtures.
 
@@ -260,15 +262,14 @@ contract is opt-in:
 
 ```bash
 CLAIMS_RUN_LIVE_AWS=1 \
-CLAIMS_AWS_REGION=us-east-1 \
-CLAIMS_BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-6 \
+CLAIMS_BEDROCK_REGION=us-west-2 \
+CLAIMS_BEDROCK_MODEL_ID=qwen.qwen3-235b-a22b-2507-v1:0 \
   uv run pytest tests/live/test_bedrock_live.py -q
 ```
 
 This call may incur AWS charges and requires Bedrock Converse permission plus model/Marketplace
-access for the configured inference profile. On 2026-07-28, the repository's live invocation
-reached Bedrock but the current AWS account was denied because it lacked a valid payment
-instrument for the model subscription; the live Phase 15 acceptance gate therefore remains open.
+access for the configured model. The synthetic live contract passed against Qwen in `us-west-2`
+on 2026-07-28, including schema adherence, grounding, latency, token usage, and request metadata.
 
 ## Setup data import
 
