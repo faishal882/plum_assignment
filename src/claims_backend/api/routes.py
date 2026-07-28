@@ -16,6 +16,7 @@ from claims_backend.api.schemas import (
     ClaimMetadataRequest,
     ClaimReceiptResponse,
     ClaimResponse,
+    IdentityConflictResponse,
     MemberActionResponse,
     MemberAdjudicationResponse,
     MemberDeductionResponse,
@@ -375,6 +376,16 @@ def _to_response(claim: Claim) -> ClaimResponse:
                             requested_action=document.requested_action,
                         )
                         for document in claim.action.affected_documents
+                    ]
+                    or None
+                ),
+                identity_conflict=(
+                    [
+                        IdentityConflictResponse(
+                            client_document_id=item.client_document_id,
+                            patient_name=item.patient_name,
+                        )
+                        for item in claim.action.identity_conflict
                     ]
                     or None
                 ),

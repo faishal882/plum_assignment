@@ -25,6 +25,12 @@ class AffectedDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityConflictDetail:
+    client_document_id: str
+    patient_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class EarlyGateResult:
     action_required: bool
     code: str | None
@@ -32,6 +38,7 @@ class EarlyGateResult:
     observed_roles: tuple[str, ...]
     required_roles: tuple[str, ...]
     affected_documents: tuple[AffectedDocument, ...] = ()
+    identity_conflict: tuple[IdentityConflictDetail, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

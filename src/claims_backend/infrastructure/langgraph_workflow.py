@@ -13,6 +13,7 @@ from claims_backend.application.workflow import WorkflowRepository, WorkflowRunt
 from claims_backend.domain.processing import (
     AffectedDocument,
     EarlyGateResult,
+    IdentityConflictDetail,
     ProcessingRoute,
 )
 from claims_backend.domain.work import WorkLease
@@ -40,6 +41,7 @@ class WorkflowState(TypedDict):
     observed_roles: list[str]
     required_roles: list[str]
     affected_documents: list[dict[str, str]]
+    identity_conflict: list[dict[str, str]]
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -65,6 +67,7 @@ class WorkflowUpdate(TypedDict, total=False):
     observed_roles: list[str]
     required_roles: list[str]
     affected_documents: list[dict[str, str]]
+    identity_conflict: list[dict[str, str]]
     terminal_committed: bool
     effect_count: int
 
@@ -166,6 +169,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "observed_roles": [],
                     "required_roles": [],
                     "affected_documents": [],
+                    "identity_conflict": [],
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -319,6 +323,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 }
                 for document in result.affected_documents
             ],
+            "identity_conflict": [
+                {
+                    "client_document_id": item.client_document_id,
+                    "patient_name": item.patient_name,
+                }
+                for item in result.identity_conflict
+            ],
             "effect_count": state["effect_count"] + int(created),
         }
 
@@ -341,6 +352,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         requested_action=document["requested_action"],
                     )
                     for document in state["affected_documents"]
+                ),
+                identity_conflict=tuple(
+                    IdentityConflictDetail(
+                        client_document_id=item["client_document_id"],
+                        patient_name=item["patient_name"],
+                    )
+                    for item in state["identity_conflict"]
                 ),
             ),
         )

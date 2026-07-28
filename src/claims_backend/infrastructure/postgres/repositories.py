@@ -28,6 +28,7 @@ from claims_backend.domain.claims import (
     MemberAdjudication,
     MemberDeduction,
     MemberExplanation,
+    MemberIdentityConflict,
     ReplaceDocument,
     SubmitClaim,
 )
@@ -621,6 +622,7 @@ def _to_domain(row: ClaimRow) -> Claim:
     observed_roles = None if action is None else action.get("observed_document_roles")
     required_roles = None if action is None else action.get("required_document_roles")
     action_documents = None if action is None else action.get("affected_documents")
+    identity_conflict = None if action is None else action.get("identity_conflict")
     return Claim(
         id=row.id,
         owner_user_id=row.owner_user_id,
@@ -669,6 +671,18 @@ def _to_domain(row: ClaimRow) -> Claim:
                         if isinstance(item, dict)
                     )
                     if isinstance(action_documents, list)
+                    else ()
+                ),
+                identity_conflict=(
+                    tuple(
+                        MemberIdentityConflict(
+                            client_document_id=str(item["client_document_id"]),
+                            patient_name=str(item["patient_name"]),
+                        )
+                        for item in identity_conflict
+                        if isinstance(item, dict)
+                    )
+                    if isinstance(identity_conflict, list)
                     else ()
                 ),
             )

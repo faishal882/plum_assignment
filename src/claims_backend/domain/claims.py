@@ -47,12 +47,19 @@ class MemberActionDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class MemberIdentityConflict:
+    client_document_id: str
+    patient_name: str
+
+
+@dataclass(frozen=True, slots=True)
 class MemberAction:
     code: str
     message: str
     observed_document_roles: tuple[str, ...]
     required_document_roles: tuple[str, ...]
     affected_documents: tuple[MemberActionDocument, ...] = ()
+    identity_conflict: tuple[MemberIdentityConflict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

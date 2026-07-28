@@ -105,12 +105,18 @@ class MemberActionResponse(BaseModel):
     observed_document_roles: list[str]
     required_document_roles: list[str]
     affected_documents: list["AffectedDocumentResponse"] | None = None
+    identity_conflict: list["IdentityConflictResponse"] | None = None
 
 
 class AffectedDocumentResponse(BaseModel):
     client_document_id: str
     observed_role: str
     requested_action: str
+
+
+class IdentityConflictResponse(BaseModel):
+    client_document_id: str
+    patient_name: str
 
 
 class ReplaceDocumentCommandRequest(BaseModel):
