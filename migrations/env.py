@@ -16,6 +16,20 @@ if database_url is not None:
     config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
+_LANGGRAPH_CHECKPOINT_TABLES = {
+    "checkpoint_migrations",
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+}
+
+
+def include_name(
+    name: str | None,
+    type_: str,
+    _: dict[str, str | None],
+) -> bool:
+    return not (type_ == "table" and name in _LANGGRAPH_CHECKPOINT_TABLES)
 
 
 def run_migrations_offline() -> None:
@@ -25,6 +39,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_name=include_name,
     )
 
     with context.begin_transaction():
@@ -39,7 +54,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_name=include_name,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
