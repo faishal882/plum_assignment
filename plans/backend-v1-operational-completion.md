@@ -73,6 +73,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   `57d4846`).
 - [x] Public no-fixture TC001-style action-required tracer using recorded discovery OCR
   (`7b6c6fa`).
+- [x] Public no-fixture synthetic clean-decision tracer through deterministic adjudication
+  (`f761e68`, `93ffaa9`).
 - [x] Worker lease heartbeat, bounded shutdown behavior, and recovery-safe fencing (`f554bdc`).
 - [x] Public `PROCESSING_FAILED` projection for terminal worker failure (`f9a3077`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
