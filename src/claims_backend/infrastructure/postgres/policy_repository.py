@@ -1,19 +1,26 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from claims_backend.application.policy_admin import PolicySourceArtifact
+from claims_backend.application.policy_admin import (
+    PolicyActivationBlockedError,
+    PolicyActivationGate,
+    PolicySourceArtifact,
+    PolicyVersionNotFoundError,
+)
 from claims_backend.domain.policy import (
     FindingCategory,
+    PolicyActivationEvent,
     PolicyFinding,
     PolicyFindingSeverity,
     PolicyVersionInspection,
     PolicyVersionStatus,
 )
 from claims_backend.infrastructure.postgres.models import (
+    PolicyActivationEventRow,
     PolicyFindingRow,
     PolicyOverlayRow,
     PolicySourceRow,
@@ -124,6 +131,102 @@ class PostgresPolicyRepository:
         async with self._session_factory() as session:
             row = await session.get(PolicyVersionRow, policy_version_id)
             return None if row is None else await self._inspection(session, row)
+
+    async def activate(
+        self,
+        policy_version_id: UUID,
+        actor: str,
+        gate: PolicyActivationGate,
+    ) -> PolicyVersionInspection:
+        now = datetime.now(UTC)
+        async with self._session_factory.begin() as session:
+            version = await session.scalar(
+                select(PolicyVersionRow)
+                .where(PolicyVersionRow.id == policy_version_id)
+                .with_for_update()
+            )
+            if version is None:
+                raise PolicyVersionNotFoundError(policy_version_id)
+            if version.status == PolicyVersionStatus.ACTIVE.value:
+                return await self._inspection(session, version)
+
+            blocked = await session.scalar(
+                select(func.count())
+                .select_from(PolicyFindingRow)
+                .where(
+                    PolicyFindingRow.policy_version_id == policy_version_id,
+                    PolicyFindingRow.severity.in_(
+                        severity.value for severity in gate.blocking_severities
+                    ),
+                    PolicyFindingRow.resolved_by_overlay.is_(False),
+                )
+            )
+            if version.ir is None or version.ir_sha256 is None or blocked:
+                raise PolicyActivationBlockedError(policy_version_id)
+
+            previous_status = PolicyVersionStatus(version.status)
+            await session.execute(
+                update(PolicyVersionRow)
+                .where(
+                    PolicyVersionRow.policy_id == version.policy_id,
+                    PolicyVersionRow.status == PolicyVersionStatus.ACTIVE.value,
+                    PolicyVersionRow.id != version.id,
+                )
+                .values(status=PolicyVersionStatus.RETIRED.value)
+            )
+            await session.flush()
+            version.status = PolicyVersionStatus.ACTIVE.value
+            version.activated_at = now
+            version.activated_by = actor
+            session.add(
+                PolicyActivationEventRow(
+                    id=uuid4(),
+                    policy_version_id=version.id,
+                    actor=actor,
+                    event_type="POLICY_ACTIVATED",
+                    from_status=previous_status.value,
+                    to_status=PolicyVersionStatus.ACTIVE.value,
+                    payload={
+                        "policy_id": version.policy_id,
+                        "policy_version": version.version,
+                        "ir_sha256": version.ir_sha256,
+                        "blocking_severities": sorted(
+                            severity.value for severity in gate.blocking_severities
+                        ),
+                    },
+                    created_at=now,
+                )
+            )
+            await session.flush()
+            return await self._inspection(session, version)
+
+    async def list_activation_events(
+        self,
+        policy_version_id: UUID,
+    ) -> tuple[PolicyActivationEvent, ...]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(PolicyActivationEventRow)
+                    .where(PolicyActivationEventRow.policy_version_id == policy_version_id)
+                    .order_by(
+                        PolicyActivationEventRow.created_at,
+                        PolicyActivationEventRow.id,
+                    )
+                )
+            ).all()
+        return tuple(
+            PolicyActivationEvent(
+                id=row.id,
+                policy_version_id=row.policy_version_id,
+                actor=row.actor,
+                from_status=PolicyVersionStatus(row.from_status),
+                to_status=PolicyVersionStatus(row.to_status),
+                ir_sha256=str(row.payload["ir_sha256"]),
+                created_at=row.created_at,
+            )
+            for row in rows
+        )
 
     async def _get_or_create_overlay(
         self,

@@ -126,3 +126,14 @@ class PolicyVersionInspection:
     compiled_at: datetime
     activated_at: datetime | None
     activated_by: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyActivationEvent:
+    id: UUID
+    policy_version_id: UUID
+    actor: str
+    from_status: PolicyVersionStatus
+    to_status: PolicyVersionStatus
+    ir_sha256: str
+    created_at: datetime
