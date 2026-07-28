@@ -25,6 +25,7 @@ from claims_backend.infrastructure.postgres.setup_import_repository import (
 
 POLICY_PATH = Path("problem_statement/policy_terms.json")
 POLICY_BYTES = POLICY_PATH.read_bytes()
+pytestmark = pytest.mark.clean_setup_data
 
 
 @pytest.mark.asyncio

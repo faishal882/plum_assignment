@@ -29,6 +29,7 @@ POLICY_PATH = Path("problem_statement/policy_terms.json")
 OVERLAY_PATH = Path("config/policy/assignment-overlay-v1.json")
 POLICY_BYTES = POLICY_PATH.read_bytes()
 OVERLAY_BYTES = OVERLAY_PATH.read_bytes()
+pytestmark = pytest.mark.clean_setup_data
 
 
 @pytest.mark.asyncio
