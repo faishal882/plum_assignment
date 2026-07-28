@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -46,6 +47,20 @@ class ClaimWorker:
                 )
             )
         return processed
+
+    async def run_loop(self, stop_event: asyncio.Event) -> None:
+        """Poll durable work without retaining a transaction while idle."""
+        while not stop_event.is_set():
+            processed = await self.run_once()
+            if processed:
+                continue
+            try:
+                await asyncio.wait_for(
+                    stop_event.wait(),
+                    timeout=self.runtime.settings.worker_poll_seconds,
+                )
+            except TimeoutError:
+                continue
 
     async def close(self) -> None:
         await self.runtime.close()

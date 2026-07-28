@@ -1,3 +1,4 @@
+import asyncio
 import json
 from io import BytesIO
 from uuid import UUID
@@ -184,6 +185,58 @@ async def test_public_claim_processes_without_processing_fixture_seed(
         assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
         assert await session.scalar(select(func.count()).select_from(DocumentTriageResultRow)) == 2
     await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_processes_claim_submitted_after_startup(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(
+        database_url=migrated_database_url,
+        data_root=tmp_path / "documents",
+        worker_poll_seconds=1,
+    )
+    app = create_app(settings)
+    runtime = create_process_runtime(settings, process_name="worker")
+    worker = create_claim_worker(runtime)
+    stop_event = asyncio.Event()
+    await worker.setup()
+    worker_task = asyncio.create_task(worker.run_loop(stop_event))
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            assert (await client.get("/health/live")).json() == {"status": "ok"}
+            assert (await client.get("/health/ready")).json() == {"status": "ok"}
+            submitted = await client.post(
+                "/v1/claims",
+                headers={
+                    "X-Dev-Username": "member.emp001",
+                    "Idempotency-Key": "worker-loop-tc001",
+                },
+                data={"metadata": json.dumps(_metadata())},
+                files=[
+                    ("files", ("first.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("second.jpg", _jpeg_bytes(), "image/jpeg")),
+                ],
+            )
+            claim_id = UUID(submitted.json()["claim_id"])
+            lifecycle = "QUEUED"
+            for _ in range(30):
+                await asyncio.sleep(0.1)
+                projection = await client.get(
+                    f"/v1/claims/{claim_id}",
+                    headers={"X-Dev-Username": "member.emp001"},
+                )
+                lifecycle = projection.json()["lifecycle_status"]
+                if lifecycle != "QUEUED":
+                    break
+            assert lifecycle == "ACTION_REQUIRED"
+    finally:
+        stop_event.set()
+        await asyncio.wait_for(worker_task, timeout=2)
+        await worker.close()
+        await app.state.engine.dispose()
 
 
 async def _work_item_id(app) -> UUID:

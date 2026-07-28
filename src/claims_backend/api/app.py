@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from claims_backend.api.health import router as health_router
 from claims_backend.api.review_routes import router as review_router
 from claims_backend.api.routes import router
 from claims_backend.config import Settings
@@ -48,6 +49,7 @@ def create_app(
         _install_observability_middleware(app, runtime.observability)
     app.include_router(router)
     app.include_router(review_router)
+    app.include_router(health_router)
     app.add_exception_handler(RequestValidationError, _request_validation_error)
     app.add_exception_handler(HTTPException, _http_error)
     return app

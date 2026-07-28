@@ -1,3 +1,5 @@
+import pytest
+
 from claims_backend.worker import command
 
 
@@ -9,3 +11,8 @@ def test_worker_command_returns_configuration_error(monkeypatch, capsys) -> None
 
     assert command.main(["run-once"]) == 2
     assert "configuration error: missing setting" in capsys.readouterr().out
+
+
+def test_worker_command_lists_continuous_loop() -> None:
+    with pytest.raises(SystemExit, match="0"):
+        command.main(["--help"])
