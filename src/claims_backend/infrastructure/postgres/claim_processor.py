@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import UUID, uuid4
@@ -22,6 +23,7 @@ from claims_backend.application.intelligence import (
 )
 from claims_backend.domain.adjudication import (
     AdjudicationProposal,
+    CasefileClaimHistory,
     ClaimCasefile,
     RuleResult,
 )
@@ -58,6 +60,7 @@ from claims_backend.domain.workflow import WorkflowRun
 from claims_backend.infrastructure.postgres.models import (
     AuditEventRow,
     CasefileRow,
+    ClaimHistoryRow,
     ClaimRow,
     ClaimVersionRow,
     ClaimWorkItemRow,
@@ -70,6 +73,7 @@ from claims_backend.infrastructure.postgres.models import (
     MemberVersionRow,
     PolicyVersionRow,
     ProcessingFixtureRow,
+    ReviewTaskRow,
     RuleResultRow,
     UtilizationSnapshotRow,
     WorkflowEffectRow,
@@ -196,6 +200,21 @@ class PostgresClaimProcessor:
                 )
                 .limit(1)
             )
+            same_day_history = (
+                await session.scalars(
+                    select(ClaimHistoryRow)
+                    .where(
+                        ClaimHistoryRow.member_id == member_version.member_id,
+                        ClaimHistoryRow.setup_import_id
+                        == member_version.setup_import_id,
+                        ClaimHistoryRow.treatment_date == claim.treatment_date,
+                    )
+                    .order_by(
+                        ClaimHistoryRow.history_claim_id,
+                        ClaimHistoryRow.id,
+                    )
+                )
+            ).all()
             billed = [
                 document for document in evidence.documents if document.billed_paise is not None
             ]
@@ -366,6 +385,7 @@ class PostgresClaimProcessor:
                         None if utilization is None else f"utilization:{utilization.id}"
                     ),
                     reconciliation=reconciliation,
+                    same_day_history=_casefile_history(same_day_history),
                 )
             )
             row = CasefileRow(
@@ -440,6 +460,21 @@ class PostgresClaimProcessor:
                 )
                 .limit(1)
             )
+            same_day_history = (
+                await session.scalars(
+                    select(ClaimHistoryRow)
+                    .where(
+                        ClaimHistoryRow.member_id == member_version.member_id,
+                        ClaimHistoryRow.setup_import_id
+                        == member_version.setup_import_id,
+                        ClaimHistoryRow.treatment_date == claim.treatment_date,
+                    )
+                    .order_by(
+                        ClaimHistoryRow.history_claim_id,
+                        ClaimHistoryRow.id,
+                    )
+                )
+            ).all()
         if not triage_rows:
             raise ProcessingInvariantError("Document triage provenance is incomplete.")
 
@@ -606,6 +641,7 @@ class PostgresClaimProcessor:
                     None if utilization is None else f"utilization:{utilization.id}"
                 ),
                 reconciliation=reconciliation,
+                same_day_history=_casefile_history(same_day_history),
             )
         )
         async with self._session_factory.begin() as session:
@@ -678,6 +714,12 @@ class PostgresClaimProcessor:
             if claim.policy_version_id != casefile.policy_version_id:
                 raise ProcessingInvariantError("Pinned policy changed.")
 
+            anomaly_signals = tuple(
+                result.reason_code
+                for result in proposal.rule_results
+                if result.reason_code == "SAME_DAY_CLAIM_VELOCITY"
+            )
+            lifecycle_status = "IN_REVIEW" if anomaly_signals else "DECIDED"
             decision = DecisionRecordRow(
                 id=uuid4(),
                 claim_id=claim.id,
@@ -685,10 +727,10 @@ class PostgresClaimProcessor:
                 casefile_id=casefile.id,
                 policy_version_id=casefile.policy_version_id,
                 recommendation=proposal.recommendation.value,
-                lifecycle_status="DECIDED",
+                lifecycle_status=lifecycle_status,
                 approved_paise=proposal.approved_paise,
                 currency=proposal.currency,
-                engine_version="deterministic-adjudicator-v2",
+                engine_version="deterministic-adjudicator-v3",
                 canonical_hash=proposal.canonical_hash,
                 created_at=now,
             )
@@ -714,33 +756,69 @@ class PostgresClaimProcessor:
                     for result in proposal.rule_results
                 ]
             )
-            claim.lifecycle_status = "DECIDED"
-            claim.adjudication_recommendation = proposal.recommendation.value
-            claim.approved_paise = proposal.approved_paise
+            review_task_id: UUID | None = None
+            if anomaly_signals:
+                review_task_id = uuid4()
+                review_task = ReviewTaskRow(
+                    id=review_task_id,
+                    claim_id=claim.id,
+                    claim_version=workflow_run.claim_version,
+                    decision_record_id=decision.id,
+                    status="OPEN",
+                    signal_codes=list(anomaly_signals),
+                    allowed_actions=[
+                        "ACCEPT",
+                        "AMEND",
+                        "REJECT",
+                        "REQUEST_DOCUMENT",
+                    ],
+                    machine_recommendation=proposal.recommendation.value,
+                    machine_approved_paise=proposal.approved_paise,
+                    currency=proposal.currency,
+                    created_at=now,
+                    resolved_at=None,
+                )
+                session.add(review_task)
+                await session.flush((review_task,))
+            claim.lifecycle_status = lifecycle_status
+            claim.adjudication_recommendation = (
+                None if anomaly_signals else proposal.recommendation.value
+            )
+            claim.approved_paise = None if anomaly_signals else proposal.approved_paise
             claim.current_action = None
             explanation = render_member_explanation(proposal)
-            claim.member_explanation = {
-                "summary": explanation.summary,
-                "deductions": [
-                    {
-                        "code": deduction.code,
-                        "label": deduction.label,
-                        "amount_paise": deduction.amount_paise,
-                    }
-                    for deduction in explanation.deductions
-                ],
-                "line_items": [
-                    {
-                        "concept": item.concept,
-                        "label": item.label,
-                        "claimed_paise": item.claimed_paise,
-                        "approved_paise": item.approved_paise,
-                        "status": item.status,
-                        "reason_code": item.reason_code,
-                    }
-                    for item in explanation.line_items
-                ],
-            }
+            claim.member_explanation = (
+                {
+                    "summary": "This claim is being manually reviewed.",
+                    "deductions": [],
+                    "line_items": [],
+                }
+                if anomaly_signals
+                else {
+                    "summary": explanation.summary,
+                    "deductions": [
+                        {
+                            "code": deduction.code,
+                            "label": deduction.label,
+                            "amount_paise": deduction.amount_paise,
+                        }
+                        for deduction in explanation.deductions
+                    ],
+                    "line_items": [
+                        {
+                            "concept": item.concept,
+                            "label": item.label,
+                            "claimed_paise": item.claimed_paise,
+                            "approved_paise": item.approved_paise,
+                            "status": item.status,
+                            "reason_code": item.reason_code,
+                        }
+                        for item in explanation.line_items
+                    ],
+                }
+            )
+            claim.handling_status = "MANUAL_REVIEW" if anomaly_signals else None
+            claim.review_task_id = review_task_id
             claim.updated_at = now
             audit_sequence = (
                 await session.scalar(
@@ -757,13 +835,23 @@ class PostgresClaimProcessor:
                     actor_username_snapshot=claim.owner_username_snapshot,
                     claim_id=claim.id,
                     sequence=audit_sequence,
-                    event_type="CLAIM_DECIDED",
+                    event_type=(
+                        "CLAIM_REVIEW_STARTED"
+                        if anomaly_signals
+                        else "CLAIM_DECIDED"
+                    ),
                     payload={
                         "decision_record_id": str(decision.id),
                         "casefile_id": str(casefile.id),
                         "recommendation": proposal.recommendation.value,
                         "approved_paise": proposal.approved_paise,
                         "canonical_hash": proposal.canonical_hash,
+                        "review_task_id": (
+                            None
+                            if review_task_id is None
+                            else str(review_task_id)
+                        ),
+                        "signal_codes": list(anomaly_signals),
                     },
                     created_at=now,
                 )
@@ -1470,4 +1558,19 @@ def _material_fact_paths(
         "document.pre_authorization.valid_to",
         "document.pre_authorization.reference",
         "document.pre_authorization.applicable_amount",
+    )
+
+
+def _casefile_history(
+    rows: Sequence[ClaimHistoryRow],
+) -> tuple[CasefileClaimHistory, ...]:
+    return tuple(
+        CasefileClaimHistory(
+            history_claim_id=row.history_claim_id,
+            treatment_date=row.treatment_date.isoformat(),
+            amount_paise=row.amount_paise,
+            provider=row.provider,
+            evidence_ref=f"claim-history:{row.id}",
+        )
+        for row in rows
     )

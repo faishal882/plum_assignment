@@ -426,6 +426,17 @@ class ClaimRow(Base):
         JSONB,
         nullable=True,
     )
+    handling_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    review_task_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey(
+            "review_tasks.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="claims_review_task_fk",
+        ),
+        nullable=True,
+    )
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -859,6 +870,88 @@ class RuleResultRow(Base):
     amount_before_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     adjustment_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
     amount_after_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ReviewTaskRow(Base):
+    __tablename__ = "review_tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "claim_id",
+            "claim_version",
+            name="review_tasks_claim_version_uq",
+        ),
+        CheckConstraint(
+            "status IN ('OPEN', 'RESOLVED')",
+            name="review_tasks_status_supported",
+        ),
+        CheckConstraint(
+            "machine_approved_paise >= 0",
+            name="review_tasks_machine_amount_nonnegative",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("claims.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    claim_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision_record_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("decision_records.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    signal_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    allowed_actions: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    machine_recommendation: Mapped[str] = mapped_column(String(32), nullable=False)
+    machine_approved_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class ReviewResolutionRow(Base):
+    __tablename__ = "review_resolutions"
+    __table_args__ = (
+        UniqueConstraint("task_id", name="review_resolutions_task_uq"),
+        UniqueConstraint(
+            "actor_user_id",
+            "task_id",
+            "idempotency_key",
+            name="review_resolutions_actor_task_key_uq",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("review_tasks.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason_note: Mapped[str] = mapped_column(Text, nullable=False)
+    before: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    after: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    actor_user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    actor_username_snapshot: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

@@ -16,6 +16,7 @@ class ClaimLifecycle(StrEnum):
     RECEIVED = "RECEIVED"
     QUEUED = "QUEUED"
     ACTION_REQUIRED = "ACTION_REQUIRED"
+    IN_REVIEW = "IN_REVIEW"
     DECIDED = "DECIDED"
 
 
@@ -106,6 +107,8 @@ class Claim:
     adjudication: MemberAdjudication | None
     explanation: MemberExplanation | None
     action: MemberAction | None
+    handling_status: str | None
+    review_task_id: UUID | None
     created_at: datetime
     updated_at: datetime
 
