@@ -10,6 +10,7 @@ from claims_backend.application.policy_admin import (
     PolicyAdministrationApplication,
 )
 from claims_backend.application.setup_import import SetupDataApplication
+from claims_backend.cli import main as cli_main
 from claims_backend.domain.identity import Principal, Role
 from claims_backend.domain.policy import (
     FindingCategory,
@@ -145,3 +146,71 @@ def _operator() -> Principal:
         roles=frozenset({Role.OPERATOR}),
         member_id=None,
     )
+
+
+def test_policy_lifecycle_is_available_only_through_auditable_local_cli(
+    migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CLAIMS_DATABASE_URL", migrated_database_url)
+    assert cli_main(["setup", "import", "--policy", str(POLICY_PATH)]) == 0
+    imported = json.loads(capsys.readouterr().out)
+
+    assert (
+        cli_main(
+            [
+                "policy",
+                "compile",
+                "--source-sha",
+                imported["policy_source_sha256"],
+                "--overlay",
+                str(OVERLAY_PATH),
+            ]
+        )
+        == 0
+    )
+    compiled = json.loads(capsys.readouterr().out)
+    assert compiled["status"] == "COMPILED"
+
+    assert (
+        cli_main(
+            [
+                "policy",
+                "activate",
+                "--policy-version-id",
+                compiled["policy_version_id"],
+                "--actor",
+                "operator.local",
+            ]
+        )
+        == 0
+    )
+    active = json.loads(capsys.readouterr().out)
+    assert active["status"] == "ACTIVE"
+    assert active["activated_by"] == "operator.local"
+
+    assert (
+        cli_main(
+            [
+                "policy",
+                "findings",
+                "--policy-version-id",
+                compiled["policy_version_id"],
+            ]
+        )
+        == 0
+    )
+    findings = json.loads(capsys.readouterr().out)
+    assert {finding["category"] for finding in findings} >= {
+        "SEMANTIC",
+        "REFERENTIAL",
+        "VOCABULARY",
+        "CONTRADICTION",
+    }
+
+    from claims_backend.api.app import create_app
+    from claims_backend.config import Settings
+
+    paths = create_app(Settings(database_url=migrated_database_url)).openapi()["paths"]
+    assert all("policy" not in path for path in paths)
