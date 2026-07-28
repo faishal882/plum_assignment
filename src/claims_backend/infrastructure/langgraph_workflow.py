@@ -44,6 +44,7 @@ class WorkflowState(TypedDict):
     identity_conflict: list[dict[str, str]]
     rendered_page_count: int
     ocr_observation_count: int
+    evidence_candidate_count: int
     terminal_committed: bool
     worker_id: str
     lease_token: str
@@ -72,13 +73,14 @@ class WorkflowUpdate(TypedDict, total=False):
     identity_conflict: list[dict[str, str]]
     rendered_page_count: int
     ocr_observation_count: int
+    evidence_candidate_count: int
     terminal_committed: bool
     effect_count: int
 
 
 class LangGraphClaimWorkflow(WorkflowRuntime):
     graph_name = "claim-processing"
-    graph_version = "claim-processing-v4"
+    graph_version = "claim-processing-v5"
 
     def __init__(
         self,
@@ -120,6 +122,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 builder.add_node("triage_documents", self._triage_documents)
                 builder.add_node("render_documents", self._render_documents)
                 builder.add_node("ocr_documents", self._ocr_documents)
+                builder.add_node("extract_evidence", self._extract_evidence)
                 builder.add_node("commit_member_action", self._commit_member_action)
                 builder.add_edge("load_claim", "media_inspect")
                 builder.add_conditional_edges(
@@ -150,7 +153,8 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         "ocr_documents": "ocr_documents",
                     },
                 )
-                builder.add_edge("ocr_documents", "finalize")
+                builder.add_edge("ocr_documents", "extract_evidence")
+                builder.add_edge("extract_evidence", "finalize")
                 builder.add_edge("commit_member_action", END)
             builder.add_edge(START, "load_claim")
             builder.add_edge("finalize", END)
@@ -187,6 +191,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "identity_conflict": [],
                     "rendered_page_count": 0,
                     "ocr_observation_count": 0,
+                    "evidence_candidate_count": 0,
                     "terminal_committed": False,
                     "worker_id": lease.worker_id,
                     "lease_token": str(lease.lease_token),
@@ -440,6 +445,28 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         await self._after_effect("ocr_documents")
         return {
             "ocr_observation_count": observation_count,
+            "effect_count": state["effect_count"] + int(created),
+        }
+
+    async def _extract_evidence(self, state: WorkflowState) -> WorkflowUpdate:
+        await self._before_node("extract_evidence")
+        candidate_count = await self._required_processor().extract_evidence(
+            _workflow_run(state, self.graph_name, self.graph_version)
+        )
+        if candidate_count is None:
+            return {}
+        created = await self._repository.record_effect(
+            _workflow_run_id(state),
+            f"structured-extraction-completed:v{state['claim_version']}",
+            "STRUCTURED_EXTRACTION_COMPLETED",
+            {
+                "ocr_observation_count": state["ocr_observation_count"],
+                "evidence_candidate_count": candidate_count,
+            },
+        )
+        await self._after_effect("extract_evidence")
+        return {
+            "evidence_candidate_count": candidate_count,
             "effect_count": state["effect_count"] + int(created),
         }
 

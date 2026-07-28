@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from claims_backend.application.intelligence import (
     OcrApplication,
+    OcrRepository,
     PageArtifactApplication,
     PageArtifactRepository,
     RenderedPageTooLargeError,
@@ -63,6 +64,7 @@ from claims_backend.infrastructure.postgres.models import (
     WorkflowEffectRow,
     WorkflowRunRow,
 )
+from claims_backend.model.application import StructuredModelApplication
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
 
 
@@ -78,12 +80,16 @@ class PostgresClaimProcessor:
         page_artifacts: PageArtifactApplication | None = None,
         page_repository: PageArtifactRepository | None = None,
         ocr: OcrApplication | None = None,
+        ocr_repository: OcrRepository | None = None,
+        structured_model: StructuredModelApplication | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._adjudicator = DeterministicPolicyAdjudicator()
         self._page_artifacts = page_artifacts
         self._page_repository = page_repository
         self._ocr = ocr
+        self._ocr_repository = ocr_repository
+        self._structured_model = structured_model
 
     async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
         async with self._session_factory() as session:
@@ -818,6 +824,32 @@ class PostgresClaimProcessor:
             )
             observation_count += len(observations)
         return observation_count
+
+    async def extract_evidence(self, workflow_run: WorkflowRun) -> int | None:
+        if self._structured_model is None:
+            return None
+        if self._ocr_repository is None:
+            raise ProcessingInvariantError("Structured extraction requires the OCR repository.")
+        async with self._session_factory() as session:
+            document_version_ids = (
+                await session.scalars(
+                    select(DocumentTriageResultRow.document_version_id)
+                    .where(
+                        DocumentTriageResultRow.claim_id == workflow_run.claim_id,
+                        DocumentTriageResultRow.claim_version == workflow_run.claim_version,
+                    )
+                    .order_by(DocumentTriageResultRow.client_document_id)
+                )
+            ).all()
+        candidate_count = 0
+        for document_version_id in document_version_ids:
+            observations = await self._ocr_repository.list_observations(document_version_id)
+            result = await self._structured_model.extract_complex(
+                document_version_id,
+                observations,
+            )
+            candidate_count += len(result.candidates)
+        return candidate_count
 
     async def _document_relative_path(self, document_version_id: UUID) -> str:
         async with self._session_factory() as session:

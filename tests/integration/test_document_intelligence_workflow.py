@@ -19,11 +19,15 @@ from claims_backend.application.work import WorkerService
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.config import Settings
 from claims_backend.domain.evidence import DocumentRole, NormalizedRegion
+from claims_backend.domain.extraction import ModelRoute
 from claims_backend.domain.ocr import (
     OcrObservation,
     OcrObservationKind,
     OcrPageResult,
     TextractProfile,
+)
+from claims_backend.infrastructure.fixtures.recorded_model import (
+    RecordedStructuredModelTransport,
 )
 from claims_backend.infrastructure.fixtures.structured_components import (
     StructuredComponentFixtureAdapter,
@@ -37,6 +41,7 @@ from claims_backend.infrastructure.page_renderer import LocalPageRenderer
 from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
 from claims_backend.infrastructure.postgres.models import (
     DocumentPageArtifactRow,
+    ModelExtractionRow,
     OcrObservationRow,
     OcrPageResultRow,
 )
@@ -44,10 +49,15 @@ from claims_backend.infrastructure.postgres.ocr import PostgresOcrRepository
 from claims_backend.infrastructure.postgres.page_artifacts import (
     PostgresPageArtifactRepository,
 )
+from claims_backend.infrastructure.postgres.structured_model import (
+    PostgresStructuredModelRepository,
+)
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
 )
+from claims_backend.model.application import StructuredModelApplication
+from claims_backend.model.routing import ModelRouter
 
 
 class WorkflowRecordedOcr:
@@ -123,6 +133,15 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         )
 
     page_repository = PostgresPageArtifactRepository(app.state.session_factory)
+    ocr_repository = PostgresOcrRepository(app.state.session_factory)
+    recorded_model = RecordedStructuredModelTransport(
+        {
+            ModelRoute.COMPLEX_EXTRACTION: {
+                "schema_version": "complex-extraction-v1",
+                "candidates": [],
+            }
+        }
+    )
     workflows = PostgresWorkflowRepository(app.state.session_factory)
     processor = PostgresClaimProcessor(
         app.state.session_factory,
@@ -135,7 +154,16 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         ocr=OcrApplication(
             LocalPageArtifactReader(tmp_path),
             WorkflowRecordedOcr(),
-            PostgresOcrRepository(app.state.session_factory),
+            ocr_repository,
+        ),
+        ocr_repository=ocr_repository,
+        structured_model=StructuredModelApplication(
+            ModelRouter.default(
+                region="us-east-1",
+                model_id="us.anthropic.claude-sonnet-4-6",
+            ),
+            recorded_model,
+            PostgresStructuredModelRepository(app.state.session_factory),
         ),
     )
     runtime = LangGraphClaimWorkflow(
@@ -153,9 +181,15 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         pages = await session.scalar(select(func.count()).select_from(DocumentPageArtifactRow))
         results = await session.scalar(select(func.count()).select_from(OcrPageResultRow))
         observations = await session.scalar(select(func.count()).select_from(OcrObservationRow))
+        extractions = await session.scalar(select(func.count()).select_from(ModelExtractionRow))
     assert pages == 3
     assert results == 3
     assert observations == 3
+    assert extractions == 2
+    assert recorded_model.calls == [
+        ModelRoute.COMPLEX_EXTRACTION,
+        ModelRoute.COMPLEX_EXTRACTION,
+    ]
 
     workflow_run = await workflows.get_by_work_item(await _work_item_id(app))
     assert workflow_run is not None
@@ -166,6 +200,7 @@ async def test_recorded_workflow_renders_and_ocr_processes_every_page(
         "DOCUMENT_TRIAGE_COMPLETED",
         "DOCUMENT_PAGES_RENDERED",
         "PAGE_OCR_COMPLETED",
+        "STRUCTURED_EXTRACTION_COMPLETED",
         "WORKFLOW_SKELETON_COMPLETED",
     ]
     await app.state.engine.dispose()
