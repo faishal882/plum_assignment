@@ -12,6 +12,9 @@ class Settings:
     max_claim_bytes: int = 50 * 1024 * 1024
     max_document_pages: int = 10
     upload_chunk_bytes: int = 1024 * 1024
+    max_textract_page_bytes: int = 5 * 1024 * 1024
+    page_render_dpi: int = 180
+    aws_region: str = "ap-south-1"
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -20,6 +23,8 @@ class Settings:
             ("max_claim_bytes", self.max_claim_bytes),
             ("max_document_pages", self.max_document_pages),
             ("upload_chunk_bytes", self.upload_chunk_bytes),
+            ("max_textract_page_bytes", self.max_textract_page_bytes),
+            ("page_render_dpi", self.page_render_dpi),
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
@@ -46,6 +51,12 @@ class Settings:
                 "CLAIMS_UPLOAD_CHUNK_BYTES",
                 1024 * 1024,
             ),
+            max_textract_page_bytes=_environment_integer(
+                "CLAIMS_MAX_TEXTRACT_PAGE_BYTES",
+                5 * 1024 * 1024,
+            ),
+            page_render_dpi=_environment_integer("CLAIMS_PAGE_RENDER_DPI", 180),
+            aws_region=environ.get("CLAIMS_AWS_REGION", "ap-south-1"),
         )
 
 

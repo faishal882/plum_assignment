@@ -45,6 +45,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "clean_setup_data: run with empty policy and member setup tables",
+    "live_aws: explicitly selected synthetic test that may call AWS and incur cost",
 ]
 
 [tool.ruff]
