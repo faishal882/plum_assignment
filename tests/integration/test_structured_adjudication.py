@@ -311,6 +311,132 @@ async def test_tc007_and_tc008_structured_tracers(
 
 
 @pytest.mark.asyncio
+async def test_tc010_persists_ordered_discount_and_copay_trace(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    engine = create_async_engine(migrated_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
+        POLICY_BYTES,
+        source_name="policy_terms.json",
+        member_data_bytes=json.dumps(
+            {
+                "policy_id": "PLUM_GHI_2024",
+                "as_of_date": "2024-11-03",
+                "claim_history": [],
+                "utilization": [
+                    {
+                        "member_id": "EMP010",
+                        "period_start": "2024-04-01",
+                        "period_end": "2025-03-31",
+                        "used_amount": "8000.00",
+                        "currency": "INR",
+                        "as_of_date": "2024-11-03",
+                    }
+                ],
+            }
+        ).encode(),
+        member_data_source_name="tc010-member-facts.json",
+    )
+    app = create_app(
+        Settings(database_url=migrated_database_url, data_root=tmp_path)
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp010",
+                "Idempotency-Key": "tc010-structured",
+            },
+            data={
+                "metadata": json.dumps(
+                    {
+                        "member_id": "EMP010",
+                        "policy_id": "PLUM_GHI_2024",
+                        "claim_category": "CONSULTATION",
+                        "treatment_date": "2024-11-03",
+                        "claimed_amount": "4500.00",
+                        "currency": "INR",
+                        "documents": [
+                            {"upload_index": 0, "client_document_id": "F019"},
+                            {"upload_index": 1, "client_document_id": "F020"},
+                        ],
+                    }
+                )
+            },
+            files=[
+                ("files", ("F019.pdf", _pdf_bytes(), "application/pdf")),
+                ("files", ("F020.pdf", _pdf_bytes(), "application/pdf")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        await StructuredComponentFixtureAdapter(factory).seed_tc010(claim_id, 1)
+        scheduler = PostgresWorkScheduler(app.state.session_factory)
+        workflows = PostgresWorkflowRepository(app.state.session_factory)
+        processor = PostgresClaimProcessor(app.state.session_factory)
+        runtime = LangGraphClaimWorkflow(
+            migrated_database_url,
+            workflows,
+            processor=processor,
+        )
+        await runtime.setup()
+        assert await WorkerService(scheduler).run_once(
+            "tc010-worker",
+            ClaimWorkflowProcessor(workflows, runtime).process,
+        )
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp010"},
+        )
+
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["adjudication"] == {
+        "recommendation": "APPROVED",
+        "approved_amount": "3240.00",
+        "currency": "INR",
+    }
+    assert body["explanation"] == {
+        "summary": (
+            "₹3,240.00 approved after a 20% network discount and "
+            "10% consultation co-pay."
+        ),
+        "deductions": [
+            {
+                "code": "NETWORK_DISCOUNT_APPLIED",
+                "label": "20% network discount",
+                "amount": "900.00",
+            },
+            {
+                "code": "CATEGORY_COPAY_APPLIED",
+                "label": "10% consultation co-pay",
+                "amount": "360.00",
+            },
+        ],
+    }
+    trace = await processor.inspect_trace(claim_id)
+    assert trace is not None
+    assert trace.casefile.content.provider_name is not None
+    assert trace.casefile.content.provider_name.value == "apollo hospitals"
+    assert [
+        result.reason_code for result in trace.rule_results[-3:]
+    ] == [
+        "NETWORK_DISCOUNT_APPLIED",
+        "CATEGORY_COPAY_APPLIED",
+        "FINAL_APPROVED",
+    ]
+    assert [
+        result.amount_after_paise for result in trace.rule_results[-3:]
+    ] == [360_000, 324_000, 324_000]
+
+    await app.state.engine.dispose()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_audit_failure_rolls_back_the_entire_terminal_commit(
     migrated_database_url: str,
     tmp_path,

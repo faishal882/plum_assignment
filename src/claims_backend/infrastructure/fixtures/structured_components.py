@@ -156,6 +156,48 @@ class StructuredComponentFixtureAdapter:
             ),
         )
 
+    async def seed_tc010(self, claim_id: UUID, claim_version: int) -> None:
+        await self._seed_structured(
+            claim_id,
+            claim_version,
+            StructuredEvidencePayload(
+                documents=(
+                    StructuredDocumentEvidence(
+                        evidence_id="F019",
+                        client_document_id="F019",
+                        role=DocumentRole.PRESCRIPTION,
+                        readability=Readability.READABLE,
+                        identity_observations=(
+                            IdentityObservation(
+                                kind="PATIENT_NAME",
+                                value="Deepak Shah",
+                            ),
+                        ),
+                        treatment_date="2024-11-03",
+                        clinical_condition="Acute Bronchitis",
+                    ),
+                    StructuredDocumentEvidence(
+                        evidence_id="F020",
+                        client_document_id="F020",
+                        role=DocumentRole.HOSPITAL_BILL,
+                        readability=Readability.READABLE,
+                        identity_observations=(
+                            IdentityObservation(
+                                kind="PATIENT_NAME",
+                                value="Deepak Shah",
+                            ),
+                        ),
+                        billed_paise=450_000,
+                        provider_name="Apollo Hospitals",
+                        line_items_paise={
+                            "consultation_fee": 150_000,
+                            "medicines": 300_000,
+                        },
+                    ),
+                )
+            ),
+        )
+
     async def _seed_structured(
         self,
         claim_id: UUID,
