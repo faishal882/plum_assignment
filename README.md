@@ -55,6 +55,27 @@ type, size, page count, and SHA-256 hash. It excludes untrusted filenames, decla
 generated storage identifiers, and local paths. PostgreSQL arbitrates concurrent retries through a
 unique member/key constraint; a rolled-back acceptance also rolls back its key reservation.
 
+## Versioned document replacement
+
+Members replace an existing claim document through
+`POST /v1/claims/{claim_id}/actions`. The multipart request contains:
+
+- `command`: JSON with `type: "REPLACE_DOCUMENT"`, the current `expected_version`, and the
+  existing `client_document_id`.
+- `file`: one validated PDF, JPEG, or PNG replacement.
+- `Idempotency-Key`: a key scoped to the immutable user and claim.
+
+The action takes a PostgreSQL row lock on the owned claim and checks the expected version before
+changing state. A successful replacement creates a new immutable document version, claim version,
+action record, audit event, and version-specific work item in one transaction. The old document
+and claim versions remain unchanged, while obsolete available work is marked `SUPERSEDED`.
+
+Identical retries return the action's original `200` receipt even after the claim advances again.
+Reusing the key for different action data returns `409 ACTION_IDEMPOTENCY_KEY_REUSED`; a different
+action based on an old version returns `409 STALE_CLAIM_VERSION` with the current version. Only the
+owning member can replace documents, and an `ACTION_REQUIRED` claim returns to `QUEUED` after a
+valid replacement. Failed transactions remove the new artifact and do not reserve the action key.
+
 ## Local identities
 
 Claim routes require the `X-Dev-Username` header. The migrated local database seeds:
