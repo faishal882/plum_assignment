@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -254,6 +255,34 @@ class AuditEventRow(Base):
 
 class ClaimWorkItemRow(Base):
     __tablename__ = "claim_work_items"
+    __table_args__ = (
+        CheckConstraint(
+            "attempt_count >= 0 AND attempt_count <= max_attempts",
+            name="claim_work_items_attempt_bounds",
+        ),
+        CheckConstraint(
+            "max_attempts > 0",
+            name="claim_work_items_max_attempts_positive",
+        ),
+        CheckConstraint(
+            "status IN ('AVAILABLE', 'LEASED', 'COMPLETED', 'SUPERSEDED', 'FAILED')",
+            name="claim_work_items_status_supported",
+        ),
+        CheckConstraint(
+            "(status = 'LEASED' AND lease_owner IS NOT NULL "
+            "AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR "
+            "(status <> 'LEASED' AND lease_owner IS NULL "
+            "AND lease_token IS NULL AND lease_until IS NULL)",
+            name="claim_work_items_lease_consistent",
+        ),
+        Index(
+            "ix_claim_work_items_due",
+            "status",
+            "available_at",
+            "created_at",
+        ),
+        Index("ix_claim_work_items_lease_until", "lease_until"),
+    )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
     claim_id: Mapped[UUID] = mapped_column(
@@ -264,7 +293,17 @@ class ClaimWorkItemRow(Base):
     operation_key: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        nullable=True,
+    )
+    lease_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
