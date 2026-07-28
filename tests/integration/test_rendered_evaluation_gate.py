@@ -766,8 +766,11 @@ def _structured_payload(raw_case: dict[str, Any]) -> StructuredEvidencePayload:
 def _render_documents(inputs: dict[str, Any]) -> tuple[bytes, ...]:
     rendered: list[bytes] = []
     for document in inputs["documents"]:
+        recorded_content = dict(document.get("content", {}))
+        if document.get("patient_name_on_doc") is not None:
+            recorded_content["patient_name"] = document["patient_name_on_doc"]
         body = json.dumps(
-            document.get("content", {}),
+            recorded_content,
             sort_keys=True,
             indent=2,
             ensure_ascii=True,

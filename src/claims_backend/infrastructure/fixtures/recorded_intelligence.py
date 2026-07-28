@@ -43,6 +43,21 @@ class RecordedDiscoveryOcrProvider:
 
     # Hashes of synthetic JPEGs used by the public operational tracers.
     _records = {
+        "d99debaeb71d6968eb2bdd388408bab82f52330204f73f0c7d5bbad68a6bbea1": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+        ),
+        "fdcfb7bd0208110d80139d20e30da0955b4c1672d087035464a1b4ca46268498": RecordedDocument(
+            DocumentRole.PHARMACY_BILL,
+            readability="UNREADABLE",
+        ),
+        "f780eddad5e6208677135190c716971752b8b50920d1a1056124901e8ab4d589": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Rajesh Kumar",
+        ),
+        "142b9dcc428e4d8ee14ed2cb58456f9a87a668d59cc7206380785f5d95372a50": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Arjun Mehta",
+        ),
         "ffa497df34d973fa2b30e1cf77d691291f9baa7c219c65fed798a0ccdd893676": RecordedDocument(
             DocumentRole.PRESCRIPTION,
             patient_name="Rajesh Kumar",
