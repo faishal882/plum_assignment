@@ -26,6 +26,35 @@ class StructuredComponentFixtureAdapter:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
+    async def seed_recorded_triage(
+        self,
+        claim_id: UUID,
+        claim_version: int,
+        output: TriageModelOutput,
+    ) -> None:
+        """Seed sanitized provider output for a rendered-recorded evaluation."""
+        canonical = json.dumps(
+            output.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        async with self._session_factory.begin() as session:
+            await session.execute(
+                insert(ProcessingFixtureRow)
+                .values(
+                    id=uuid4(),
+                    claim_id=claim_id,
+                    claim_version=claim_version,
+                    route="EARLY_TRIAGE",
+                    payload=output.model_dump(mode="json"),
+                    payload_sha256=sha256(canonical).hexdigest(),
+                    created_at=datetime.now(UTC),
+                )
+                .on_conflict_do_nothing(
+                    constraint="processing_fixtures_claim_version_uq"
+                )
+            )
+
     async def seed_tc004(self, claim_id: UUID, claim_version: int) -> None:
         payload = StructuredEvidencePayload(
             documents=(
