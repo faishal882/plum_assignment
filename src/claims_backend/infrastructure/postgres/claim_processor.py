@@ -21,7 +21,13 @@ from claims_backend.domain.processing import (
     DecisionTrace,
     EarlyGateResult,
     FrozenCasefileRef,
+    IdentityConflictDetail,
     ProcessingRoute,
+)
+from claims_backend.domain.reconciliation import (
+    IdentityCandidate,
+    IdentityState,
+    reconcile_patient_identity,
 )
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import WorkflowRun
@@ -35,6 +41,7 @@ from claims_backend.infrastructure.postgres.models import (
     DocumentRow,
     DocumentTriageResultRow,
     DocumentVersionRow,
+    IdentityReconciliationRow,
     MemberActionRow,
     MemberVersionRow,
     PolicyVersionRow,
@@ -364,8 +371,13 @@ class PostgresClaimProcessor:
             claim = (
                 await session.scalars(select(ClaimRow).where(ClaimRow.id == workflow_run.claim_id))
             ).one()
-            if claim.policy_version_id is None:
+            if claim.policy_version_id is None or claim.member_version_id is None:
                 raise ProcessingInvariantError
+            member_version = (
+                await session.scalars(
+                    select(MemberVersionRow).where(MemberVersionRow.id == claim.member_version_id)
+                )
+            ).one()
             policy_version = (
                 await session.scalars(
                     select(PolicyVersionRow).where(PolicyVersionRow.id == claim.policy_version_id)
@@ -403,8 +415,24 @@ class PostgresClaimProcessor:
             document_by_client_id = {
                 document.client_document_id: document for document in documents
             }
+            identity_candidates: list[IdentityCandidate] = []
             for item in output.documents:
                 snapshot = snapshot_by_client_id[item.client_document_id]
+                item_candidates = [
+                    IdentityCandidate(
+                        producer="fixture-fast-triage",
+                        producer_version="v1",
+                        client_document_id=item.client_document_id,
+                        document_version_id=UUID(str(snapshot["document_version_id"])),
+                        page=observation.page,
+                        region=observation.region,
+                        source_text_sha256=observation.source_text_sha256,
+                        confidence=observation.confidence,
+                        value=observation.value,
+                    )
+                    for observation in item.identity_observations
+                ]
+                identity_candidates.extend(item_candidates)
                 await session.execute(
                     insert(DocumentTriageResultRow)
                     .values(
@@ -422,8 +450,7 @@ class PostgresClaimProcessor:
                             "preview": item.readability.preview.model_dump(mode="json"),
                         },
                         identity_observations=[
-                            observation.model_dump(mode="json")
-                            for observation in item.identity_observations
+                            candidate.model_dump(mode="json") for candidate in item_candidates
                         ],
                         model_route="fixture-fast-triage-v1",
                         schema_version=output.schema_version,
@@ -434,17 +461,37 @@ class PostgresClaimProcessor:
                     )
                 )
 
+            identity = reconcile_patient_identity(
+                member_version.name,
+                tuple(identity_candidates),
+            )
+            await session.execute(
+                insert(IdentityReconciliationRow)
+                .values(
+                    id=uuid4(),
+                    claim_id=claim.id,
+                    claim_version=workflow_run.claim_version,
+                    member_version_id=member_version.id,
+                    state=identity.state.value,
+                    member_name=identity.member_name,
+                    candidates=[
+                        candidate.model_dump(mode="json") for candidate in identity.candidates
+                    ],
+                    created_at=now,
+                )
+                .on_conflict_do_nothing(constraint="identity_reconciliations_claim_version_uq")
+            )
+
             observed = tuple(item.role.value for item in output.documents)
             required = policy.document_requirements[claim.category].required
             missing = tuple(role for role in required if role not in set(observed))
             unreadable = tuple(
-                item
-                for item in output.documents
-                if item.readability.status.value == "UNREADABLE"
+                item for item in output.documents if item.readability.status.value == "UNREADABLE"
             )
             message = None
             code = None
             affected_documents: tuple[AffectedDocument, ...] = ()
+            identity_conflict: tuple[IdentityConflictDetail, ...] = ()
             if unreadable:
                 code = "UNREADABLE_DOCUMENT"
                 affected_documents = tuple(
@@ -474,13 +521,31 @@ class PostgresClaimProcessor:
                         f"Uploaded roles: {', '.join(observed)}. "
                         f"Please upload: {', '.join(missing)}."
                     )
+            elif identity.state is IdentityState.CONFLICT:
+                code = "PATIENT_IDENTITY_CONFLICT"
+                identity_conflict = tuple(
+                    IdentityConflictDetail(
+                        client_document_id=candidate.client_document_id,
+                        patient_name=candidate.value,
+                    )
+                    for candidate in identity.candidates
+                )
+                findings = "; ".join(
+                    f"{item.client_document_id} shows {item.patient_name}"
+                    for item in identity_conflict
+                )
+                message = (
+                    f"Patient names do not match: {findings}. "
+                    "Please replace the document that belongs to a different patient."
+                )
             return EarlyGateResult(
-                action_required=bool(missing),
+                action_required=bool(missing or identity_conflict),
                 code=code,
                 message=message,
                 observed_roles=observed,
                 required_roles=missing,
                 affected_documents=affected_documents,
+                identity_conflict=identity_conflict,
             )
 
     async def commit_member_action(
@@ -542,7 +607,14 @@ class PostgresClaimProcessor:
                             "requested_action": document.requested_action,
                         }
                         for document in result.affected_documents
-                    ]
+                    ],
+                    "identity_conflict": [
+                        {
+                            "client_document_id": item.client_document_id,
+                            "patient_name": item.patient_name,
+                        }
+                        for item in result.identity_conflict
+                    ],
                 },
                 created_at=now,
             )
@@ -563,6 +635,13 @@ class PostgresClaimProcessor:
                         "requested_action": document.requested_action,
                     }
                     for document in result.affected_documents
+                ],
+                "identity_conflict": [
+                    {
+                        "client_document_id": item.client_document_id,
+                        "patient_name": item.patient_name,
+                    }
+                    for item in result.identity_conflict
                 ],
             }
             claim.updated_at = now

@@ -9,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from claims_backend.domain.evidence import (
     DocumentRole,
     IdentityObservation,
+    NormalizedRegion,
     PreviewProvenance,
     Readability,
     ReadabilityObservation,
     StructuredDocumentEvidence,
     StructuredEvidencePayload,
     TriageDocumentResult,
+    TriageIdentityObservation,
     TriageModelOutput,
 )
 from claims_backend.infrastructure.postgres.models import ProcessingFixtureRow
@@ -155,6 +157,56 @@ class StructuredComponentFixtureAdapter:
                 .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
             )
 
+    async def seed_tc003_triage(
+        self,
+        claim_id: UUID,
+        claim_version: int,
+        *,
+        prescription_preview_sha256: str,
+        bill_preview_sha256: str,
+    ) -> None:
+        output = TriageModelOutput(
+            documents=(
+                TriageDocumentResult(
+                    client_document_id="F005",
+                    role=DocumentRole.PRESCRIPTION,
+                    readability=_readability_from_hash(
+                        prescription_preview_sha256,
+                        Readability.READABLE,
+                    ),
+                    identity_observations=(_identity("Rajesh Kumar", confidence=0.72),),
+                ),
+                TriageDocumentResult(
+                    client_document_id="F006",
+                    role=DocumentRole.HOSPITAL_BILL,
+                    readability=_readability_from_hash(
+                        bill_preview_sha256,
+                        Readability.READABLE,
+                    ),
+                    identity_observations=(_identity("Arjun Mehta", confidence=0.99),),
+                ),
+            )
+        )
+        canonical = json.dumps(
+            output.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        async with self._session_factory.begin() as session:
+            await session.execute(
+                insert(ProcessingFixtureRow)
+                .values(
+                    id=uuid4(),
+                    claim_id=claim_id,
+                    claim_version=claim_version,
+                    route="EARLY_TRIAGE",
+                    payload=output.model_dump(mode="json"),
+                    payload_sha256=sha256(canonical).hexdigest(),
+                    created_at=datetime.now(UTC),
+                )
+                .on_conflict_do_nothing(constraint="processing_fixtures_claim_version_uq")
+            )
+
 
 def _readability(seed: str, status: Readability) -> ReadabilityObservation:
     return _readability_from_hash(sha256(seed.encode()).hexdigest(), status)
@@ -171,4 +223,15 @@ def _readability_from_hash(
             sha256=preview_sha256,
             transform_version="fixture-preview-v1",
         ),
+    )
+
+
+def _identity(value: str, *, confidence: float) -> TriageIdentityObservation:
+    return TriageIdentityObservation(
+        kind="PATIENT_NAME",
+        value=value,
+        page=1,
+        region=NormalizedRegion(x=0.1, y=0.4, width=0.5, height=0.1),
+        source_text_sha256=sha256(value.encode()).hexdigest(),
+        confidence=confidence,
     )

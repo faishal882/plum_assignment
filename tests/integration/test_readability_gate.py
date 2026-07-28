@@ -97,9 +97,7 @@ async def test_tc002_requests_replacement_of_the_unreadable_pharmacy_bill(
     async with app.state.session_factory() as session:
         triage = (
             await session.scalars(
-                select(DocumentTriageResultRow).order_by(
-                    DocumentTriageResultRow.client_document_id
-                )
+                select(DocumentTriageResultRow).order_by(DocumentTriageResultRow.client_document_id)
             )
         ).all()
         bill_result = triage[1]
@@ -229,9 +227,7 @@ async def _reach_tc002_action_required(
     idempotency_key: str,
 ) -> tuple[UUID, bytes, PostgresWorkflowRepository]:
     prescription = _document_jpeg("PRESCRIPTION", "Sneha Reddy")
-    unreadable_bill = degrade_to_unreadable_jpeg(
-        _document_jpeg("PHARMACY BILL", "Sneha Reddy")
-    )
+    unreadable_bill = degrade_to_unreadable_jpeg(_document_jpeg("PHARMACY BILL", "Sneha Reddy"))
     submitted = await client.post(
         "/v1/claims",
         headers={

@@ -55,9 +55,7 @@ def reconcile_patient_identity(
     else:
         values = {_normalize(item.value) for item in ordered}
         state = (
-            IdentityState.KNOWN
-            if values == {_normalize(member_name)}
-            else IdentityState.CONFLICT
+            IdentityState.KNOWN if values == {_normalize(member_name)} else IdentityState.CONFLICT
         )
     return ReconciledIdentity(
         state=state,
