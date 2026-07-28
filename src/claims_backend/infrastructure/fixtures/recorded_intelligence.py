@@ -197,6 +197,27 @@ class RecordedDiscoveryOcrProvider:
                 "total": 4000,
             },
         ),
+        "f7a2d6ecf9ff78e56031399b1690ae71e1df553322142e4728bcd0aca64931ae": RecordedDocument(
+            DocumentRole.PRESCRIPTION,
+            patient_name="Anita Desai",
+            content={
+                "date": "2024-10-18",
+                "diagnosis": "Morbid Obesity BMI 37",
+                "treatment": "Bariatric Consultation and Customised Diet Plan",
+            },
+        ),
+        "10513dcf9a8a66f6c7c01d1a0bf9f012075e33671b720ac5359d7a86368b8218": RecordedDocument(
+            DocumentRole.HOSPITAL_BILL,
+            patient_name="Anita Desai",
+            content={
+                "date": "2024-10-18",
+                "line_items": [
+                    {"description": "Bariatric Consultation", "amount": 3000},
+                    {"description": "Personalised Diet and Nutrition Program", "amount": 5000},
+                ],
+                "total": 8000,
+            },
+        ),
     }
 
     def analyze(self, page: RenderedPage, role: DocumentRole) -> OcrPageResult:
