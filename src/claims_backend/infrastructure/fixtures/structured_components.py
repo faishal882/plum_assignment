@@ -55,6 +55,15 @@ class StructuredComponentFixtureAdapter:
                 )
             )
 
+    async def seed_recorded_structured(
+        self,
+        claim_id: UUID,
+        claim_version: int,
+        payload: StructuredEvidencePayload,
+    ) -> None:
+        """Seed normalized evidence for the OCR-bypassed component profile."""
+        await self._seed_structured(claim_id, claim_version, payload)
+
     async def seed_tc004(self, claim_id: UUID, claim_version: int) -> None:
         payload = StructuredEvidencePayload(
             documents=(
