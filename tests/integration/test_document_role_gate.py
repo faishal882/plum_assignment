@@ -15,6 +15,7 @@ from claims_backend.application.setup_import import SetupDataApplication
 from claims_backend.application.work import WorkerService
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.config import Settings
+from claims_backend.infrastructure.fixtures.document_quality import degrade_to_unreadable_jpeg
 from claims_backend.infrastructure.fixtures.structured_components import (
     StructuredComponentFixtureAdapter,
 )
@@ -236,6 +237,64 @@ async def test_assignment_tc001_documents_require_correction_without_fixture_see
 
 
 @pytest.mark.asyncio
+async def test_assignment_tc002_unreadable_bill_requires_replacement_without_fixture_seed(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    settings = Settings(database_url=migrated_database_url, data_root=tmp_path / "documents")
+    app = create_app(settings)
+    prescription = _assignment_document_image("PRESCRIPTION\n{}")
+    unreadable_bill = degrade_to_unreadable_jpeg(_assignment_document_image("PHARMACY_BILL\n{}"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        submitted = await client.post(
+            "/v1/claims",
+            headers={
+                "X-Dev-Username": "member.emp004",
+                "Idempotency-Key": "assignment-tc002-no-fixture",
+            },
+            data={"metadata": json.dumps(_assignment_tc002_metadata())},
+            files=[
+                ("files", ("prescription.jpg", prescription, "image/jpeg")),
+                ("files", ("blurry_bill.jpg", unreadable_bill, "image/jpeg")),
+            ],
+        )
+        assert submitted.status_code == 202
+        claim_id = UUID(submitted.json()["claim_id"])
+        worker = create_claim_worker(create_process_runtime(settings, process_name="worker"))
+        try:
+            await worker.setup()
+            assert await worker.run_once()
+        finally:
+            await worker.close()
+        projection = await client.get(
+            f"/v1/claims/{claim_id}",
+            headers={"X-Dev-Username": "member.emp004"},
+        )
+    assert projection.status_code == 200
+    body = projection.json()
+    assert body["lifecycle_status"] == "ACTION_REQUIRED"
+    assert body["action"] == {
+        "code": "UNREADABLE_DOCUMENT",
+        "message": (
+            "The pharmacy bill (F004) could not be read. "
+            "Please replace that document with a clearer image."
+        ),
+        "observed_document_roles": ["PRESCRIPTION", "PHARMACY_BILL"],
+        "required_document_roles": ["PHARMACY_BILL"],
+        "affected_documents": [
+            {
+                "client_document_id": "F004",
+                "observed_role": "PHARMACY_BILL",
+                "requested_action": "REPLACE",
+            }
+        ],
+    }
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_public_claim_decides_without_processing_fixture_seed(
     migrated_database_url: str,
     tmp_path,
@@ -412,6 +471,21 @@ def _assignment_tc004_metadata() -> dict[str, object]:
         "documents": [
             {"upload_index": 0, "client_document_id": "F007"},
             {"upload_index": 1, "client_document_id": "F008"},
+        ],
+    }
+
+
+def _assignment_tc002_metadata() -> dict[str, object]:
+    return {
+        "member_id": "EMP004",
+        "policy_id": "PLUM_GHI_2024",
+        "claim_category": "PHARMACY",
+        "treatment_date": "2024-10-25",
+        "claimed_amount": "800.00",
+        "currency": "INR",
+        "documents": [
+            {"upload_index": 0, "client_document_id": "F003"},
+            {"upload_index": 1, "client_document_id": "F004"},
         ],
     }
 
