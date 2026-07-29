@@ -54,6 +54,11 @@ class WorkCommitted:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkLeaseLost:
+    """The handler lost execution ownership; the current owner must finish work."""
+
+
+@dataclass(frozen=True, slots=True)
 class WorkRetry:
     failure_code: str
     available_at: datetime
@@ -64,7 +69,7 @@ class WorkFailed:
     failure_code: str
 
 
-type WorkOutcome = WorkCompleted | WorkCommitted | WorkRetry | WorkFailed
+type WorkOutcome = WorkCompleted | WorkCommitted | WorkLeaseLost | WorkRetry | WorkFailed
 type WorkHandler = Callable[[WorkLease], Awaitable[WorkOutcome]]
 
 
@@ -92,6 +97,10 @@ class WorkerService:
             await heartbeat
         if isinstance(outcome, WorkCompleted):
             await self._scheduler.complete(lease)
+        elif isinstance(outcome, WorkLeaseLost):
+            # A reclaimed lease belongs to another worker. Do not mutate its
+            # work item or terminal claim state from this stale execution.
+            pass
         elif isinstance(outcome, WorkRetry):
             await self._scheduler.retry(
                 lease,

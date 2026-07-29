@@ -42,10 +42,10 @@ Run an interrupted early-triage claim through a reclaim and resume into the memb
 
 ### Acceptance criteria
 
-- [ ] A retry/reclaim receives a new fencing token and resumed member-action commit uses that token.
-- [ ] The member action, claim `ACTION_REQUIRED` projection, workflow effect, workflow completion, and work completion are committed once together.
-- [ ] A stale worker cannot add a member action or terminal workflow effect after reclaim.
-- [ ] Lease loss is typed and produces no terminal claim mutation.
+- [x] A retry/reclaim receives a new fencing token and resumed member-action commit uses that token.
+- [x] The member action, claim `ACTION_REQUIRED` projection, workflow effect, workflow completion, and work completion are committed once together.
+- [x] A stale worker cannot add a member action or terminal workflow effect after reclaim.
+- [x] Lease loss is typed and produces no terminal claim mutation.
 
 ---
 

@@ -6,7 +6,14 @@ from claims_backend.application.failure_policy import (
     RetrySchedule,
     classify_processing_failure,
 )
-from claims_backend.application.work import WorkCommitted, WorkCompleted, WorkFailed, WorkRetry
+from claims_backend.application.work import (
+    LeaseLostError,
+    WorkCommitted,
+    WorkCompleted,
+    WorkFailed,
+    WorkLeaseLost,
+    WorkRetry,
+)
 from claims_backend.domain.work import WorkLease
 from claims_backend.domain.workflow import (
     ExecutionContract,
@@ -89,7 +96,7 @@ class ClaimWorkflowProcessor:
     async def process(
         self,
         lease: WorkLease,
-    ) -> WorkCompleted | WorkCommitted | WorkRetry | WorkFailed:
+    ) -> WorkCompleted | WorkCommitted | WorkLeaseLost | WorkRetry | WorkFailed:
         if self._runtime_resolver is None:
             runtime = self._runtime
         else:
@@ -108,6 +115,8 @@ class ClaimWorkflowProcessor:
         workflow_run = await self._repository.mark_running(workflow_run.id)
         try:
             work_committed = await runtime.run(workflow_run, lease, resume=resume)
+        except LeaseLostError:
+            return WorkLeaseLost()
         except Exception as error:
             failure = classify_processing_failure(error)
             if failure is None:

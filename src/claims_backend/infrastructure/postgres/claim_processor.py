@@ -25,6 +25,7 @@ from claims_backend.application.intelligence import (
     RenderedPageTooLargeError,
     SourceDocument,
 )
+from claims_backend.application.work import LeaseLostError
 from claims_backend.domain.adjudication import (
     AdjudicationProposal,
     CasefileClaimHistory,
@@ -1410,8 +1411,12 @@ class PostgresClaimProcessor:
                 )
                 .with_for_update()
             )
-            if work_item is None or run is None or claim is None:
-                raise ProcessingInvariantError
+            if work_item is None:
+                raise LeaseLostError("Work lease was lost before member-action commit.")
+            if run is None or claim is None:
+                raise ProcessingInvariantError(
+                    "Workflow run or claim disappeared before member-action commit."
+                )
             action = MemberActionRow(
                 id=uuid4(),
                 claim_id=claim.id,

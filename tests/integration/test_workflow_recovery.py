@@ -5,14 +5,26 @@ from io import BytesIO
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pypdf import PdfWriter
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from claims_backend.api.app import create_app
-from claims_backend.application.work import WorkerService
+from claims_backend.application.work import (
+    LeaseLostError,
+    WorkCommitted,
+    WorkerService,
+    WorkLeaseLost,
+)
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.config import Settings
+from claims_backend.domain.processing import EarlyGateResult, ProcessingRoute
 from claims_backend.domain.workflow import WorkflowRunStatus
 from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkflow
+from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
+from claims_backend.infrastructure.postgres.models import (
+    ClaimWorkItemRow,
+    MemberActionRow,
+    WorkflowEffectRow,
+)
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
     PostgresWorkflowRepository,
@@ -45,6 +57,48 @@ class CrashAfterLoadEffect:
     async def __call__(self, node_name: str) -> None:
         if node_name == "load_claim":
             raise ControlledCrash
+
+
+class CrashAfterTriageEffect:
+    async def __call__(self, node_name: str) -> None:
+        if node_name == "triage_documents":
+            raise ControlledCrash
+
+
+class MemberActionLeaseRecorder:
+    def __init__(self) -> None:
+        self.commit_lease_tokens: list[str] = []
+
+    async def inspect_media(self, _workflow_run) -> dict[str, object]:
+        return {"status": "SAFE"}
+
+    async def route(self, _workflow_run) -> ProcessingRoute:
+        return ProcessingRoute.EARLY_TRIAGE
+
+    async def triage_documents(self, _workflow_run) -> EarlyGateResult:
+        return EarlyGateResult(
+            action_required=True,
+            code="MISSING_REQUIRED_DOCUMENT",
+            message="Please upload the required hospital bill.",
+            observed_roles=("PRESCRIPTION",),
+            required_roles=("HOSPITAL_BILL",),
+        )
+
+    async def commit_member_action(self, _workflow_run, lease, _result) -> None:
+        self.commit_lease_tokens.append(str(lease.lease_token))
+
+
+class LeaseLostRuntime:
+    def __init__(self, template: LangGraphClaimWorkflow) -> None:
+        self.graph_name = template.graph_name
+        self.graph_version = template.graph_version
+        self.execution_contract = template.execution_contract
+
+    async def setup(self) -> None:
+        pass
+
+    async def run(self, _workflow_run, _lease, *, resume: bool) -> bool:
+        raise LeaseLostError
 
 
 @pytest.mark.asyncio
@@ -160,6 +214,104 @@ async def test_reexecuted_node_does_not_duplicate_its_committed_effect(
         "skeleton-completed:v1",
     ]
     assert recovery_hook.entries == ["load_claim", "finalize"]
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_resumed_member_action_uses_reclaimed_lease_token(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client)
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    first_lease = (await scheduler.lease("crashing-worker", 1, timedelta(minutes=5)))[0]
+    repository = PostgresWorkflowRepository(app.state.session_factory)
+    processor = MemberActionLeaseRecorder()
+    crashing_runtime = LangGraphClaimWorkflow(
+        migrated_database_url,
+        repository,
+        processor=processor,
+        after_effect=CrashAfterTriageEffect(),
+    )
+    await crashing_runtime.setup()
+
+    with pytest.raises(ControlledCrash):
+        await ClaimWorkflowProcessor(repository, crashing_runtime).process(first_lease)
+
+    clock.advance(timedelta(minutes=6))
+    recovery_lease = (await scheduler.lease("recovery-worker", 1, timedelta(minutes=5)))[0]
+    recovery_runtime = LangGraphClaimWorkflow(
+        migrated_database_url,
+        repository,
+        processor=processor,
+    )
+    outcome = await ClaimWorkflowProcessor(repository, recovery_runtime).process(recovery_lease)
+
+    assert isinstance(outcome, WorkCommitted)
+    assert processor.commit_lease_tokens == [str(recovery_lease.lease_token)]
+    assert processor.commit_lease_tokens != [str(first_lease.lease_token)]
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_stale_lease_cannot_commit_member_action(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client)
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    stale_lease = (await scheduler.lease("stale-worker", 1, timedelta(minutes=5)))[0]
+    workflows = PostgresWorkflowRepository(app.state.session_factory)
+    runtime = LangGraphClaimWorkflow(migrated_database_url, workflows)
+    workflow_run = await workflows.get_or_create(
+        stale_lease,
+        runtime.graph_name,
+        runtime.graph_version,
+        runtime.execution_contract,
+    )
+    workflow_run = await workflows.mark_running(workflow_run.id)
+
+    clock.advance(timedelta(minutes=6))
+    active_lease = (await scheduler.lease("active-worker", 1, timedelta(minutes=5)))[0]
+
+    with pytest.raises(LeaseLostError):
+        await PostgresClaimProcessor(app.state.session_factory).commit_member_action(
+            workflow_run,
+            stale_lease,
+            EarlyGateResult(
+                action_required=True,
+                code="MISSING_REQUIRED_DOCUMENT",
+                message="Please upload the required hospital bill.",
+                observed_roles=("PRESCRIPTION",),
+                required_roles=("HOSPITAL_BILL",),
+            ),
+        )
+
+    async with app.state.session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(MemberActionRow)) == 0
+        assert await session.scalar(select(func.count()).select_from(WorkflowEffectRow)) == 0
+        work_item = await session.scalar(
+            select(ClaimWorkItemRow).where(ClaimWorkItemRow.id == stale_lease.work_item_id)
+        )
+    assert work_item is not None
+    assert work_item.status == "LEASED"
+    assert work_item.lease_owner == active_lease.worker_id
+    assert work_item.lease_token == active_lease.lease_token
+    outcome = await ClaimWorkflowProcessor(
+        workflows,
+        LeaseLostRuntime(runtime),
+    ).process(stale_lease)
+    assert isinstance(outcome, WorkLeaseLost)
     await app.state.engine.dispose()
 
 
