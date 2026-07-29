@@ -76,10 +76,10 @@ Make every processor outcome durable and explicit: provider failures follow retr
 
 ### Acceptance criteria
 
-- [ ] Retryable provider failures schedule a bounded retry and preserve workflow business progress.
-- [ ] Known non-retryable failures project `PROCESSING_FAILED` with the correct stable code.
-- [ ] An unexpected processor exception fails the currently owned item as `UNHANDLED_PROCESSING_ERROR` and retains the original error trace.
-- [ ] No worker path leaves a non-expired work item in `LEASED` after its handler terminates unexpectedly.
+- [x] Retryable provider failures schedule a bounded retry and preserve workflow business progress.
+- [x] Known non-retryable failures project `PROCESSING_FAILED` with the correct stable code.
+- [x] An unexpected processor exception fails the currently owned item as `UNHANDLED_PROCESSING_ERROR` and retains the original error trace.
+- [x] No worker path leaves a non-expired work item in `LEASED` after its handler terminates unexpectedly.
 
 ---
 

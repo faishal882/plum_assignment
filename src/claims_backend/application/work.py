@@ -92,9 +92,22 @@ class WorkerService:
         heartbeat = asyncio.create_task(self._heartbeat(lease, heartbeat_stop))
         try:
             outcome = await handler(lease)
+        except Exception:
+            try:
+                await self._scheduler.fail(lease, "UNHANDLED_PROCESSING_ERROR")
+            except LeaseLostError:
+                # Another worker reclaimed the item while this handler was
+                # failing. Its terminal state is authoritative.
+                pass
+            raise
         finally:
             heartbeat_stop.set()
-            await heartbeat
+            try:
+                await heartbeat
+            except LeaseLostError:
+                # The scheduler fence is authoritative; do not mask the
+                # processor exception or mutate a replacement lease.
+                pass
         if isinstance(outcome, WorkCompleted):
             await self._scheduler.complete(lease)
         elif isinstance(outcome, WorkLeaseLost):

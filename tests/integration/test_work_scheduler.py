@@ -370,6 +370,39 @@ async def test_non_retryable_outcome_fails_work_without_consuming_retry_budget(
 
 
 @pytest.mark.asyncio
+async def test_unexpected_handler_exception_fails_current_work_and_preserves_error(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client, "unexpected-handler-failure")
+
+    async def handler(_lease):
+        raise RuntimeError("unexpected processor failure")
+
+    with pytest.raises(RuntimeError, match="unexpected processor failure"):
+        await WorkerService(PostgresWorkScheduler(app.state.session_factory)).run_once(
+            "failing-worker",
+            handler,
+        )
+
+    async with app.state.session_factory() as session:
+        work_item = await session.scalar(select(ClaimWorkItemRow))
+        claim = await session.scalar(select(ClaimRow))
+    assert work_item is not None
+    assert work_item.status == "FAILED"
+    assert work_item.lease_owner is None
+    assert work_item.lease_token is None
+    assert work_item.lease_until is None
+    assert work_item.last_failure_code == "UNHANDLED_PROCESSING_ERROR"
+    assert claim is not None
+    assert claim.lifecycle_status == "PROCESSING_FAILED"
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_submission_persists_configured_provider_attempt_budget(
     migrated_database_url: str,
     tmp_path,
