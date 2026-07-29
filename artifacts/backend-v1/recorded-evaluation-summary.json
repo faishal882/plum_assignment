@@ -1,0 +1,36 @@
+{
+  "artifact_schema": "backend-v1-recorded-evaluation-summary-v1",
+  "generated_by": "tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate",
+  "execution_profile": "RENDERED_RECORDED",
+  "passed": true,
+  "case_count": 12,
+  "case_outcomes": [
+    {"case_id": "TC001", "lifecycle": "ACTION_REQUIRED", "adjudication": null, "approved_paise": null, "primary_reason": "MISSING_REQUIRED_DOCUMENT"},
+    {"case_id": "TC002", "lifecycle": "ACTION_REQUIRED", "adjudication": null, "approved_paise": null, "primary_reason": "UNREADABLE_DOCUMENT"},
+    {"case_id": "TC003", "lifecycle": "ACTION_REQUIRED", "adjudication": null, "approved_paise": null, "primary_reason": "PATIENT_IDENTITY_CONFLICT"},
+    {"case_id": "TC004", "lifecycle": "DECIDED", "adjudication": "APPROVED", "approved_paise": 135000, "primary_reason": "FINAL_APPROVED"},
+    {"case_id": "TC005", "lifecycle": "DECIDED", "adjudication": "REJECTED", "approved_paise": 0, "primary_reason": "WAITING_PERIOD"},
+    {"case_id": "TC006", "lifecycle": "DECIDED", "adjudication": "PARTIAL", "approved_paise": 800000, "primary_reason": "DENTAL_LINE_ITEM_EXCLUDED"},
+    {"case_id": "TC007", "lifecycle": "DECIDED", "adjudication": "REJECTED", "approved_paise": 0, "primary_reason": "PRE_AUTH_MISSING"},
+    {"case_id": "TC008", "lifecycle": "DECIDED", "adjudication": "REJECTED", "approved_paise": 0, "primary_reason": "PER_CLAIM_EXCEEDED"},
+    {"case_id": "TC009", "lifecycle": "IN_REVIEW", "adjudication": "MANUAL_REVIEW", "approved_paise": null, "primary_reason": "SAME_DAY_CLAIM_VELOCITY"},
+    {"case_id": "TC010", "lifecycle": "DECIDED", "adjudication": "APPROVED", "approved_paise": 324000, "primary_reason": "NETWORK_DISCOUNT_APPLIED"},
+    {"case_id": "TC011", "lifecycle": "DECIDED", "adjudication": "APPROVED", "approved_paise": 400000, "primary_reason": "FINAL_APPROVED"},
+    {"case_id": "TC012", "lifecycle": "DECIDED", "adjudication": "REJECTED", "approved_paise": 0, "primary_reason": "EXCLUDED_CONDITION"}
+  ],
+  "assertions": {
+    "all_workflow_traces_complete": true,
+    "all_cases_used_composed_recorded_worker": true,
+    "all_cases_used_no_processing_fixture": true,
+    "telemetry_phi_canary_scan_passed": true
+  },
+  "excluded_content": [
+    "raw_documents",
+    "page_artifacts",
+    "ocr_text",
+    "model_prompts",
+    "model_responses",
+    "jsonl_logs",
+    "trace_identifiers"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "artifact_schema": "backend-v1-version-manifest-v1",
+  "dataset": {
+    "path": "problem_statement/test_cases.json",
+    "version": "2.0",
+    "sha256": "4b9b9a047ec6a6479a81f6b2767f00f931920ad7bedb3f547abb54b771034e63"
+  },
+  "policy": {
+    "version": "PLUM_GHI_2024:1",
+    "path": "problem_statement/policy_terms.json",
+    "sha256": "1b19689948d8273c32ec2b5f35c75c25ad48a5ae46b937092c464178de4484ce"
+  },
+  "overlay": {
+    "version": "assignment-overlay:2",
+    "path": "config/policy/assignment-overlay-v1.json",
+    "sha256": "e2e204abc0804de1d308edf6a5e2c9f05a32241218aa0ca4fc60578bad325c6c"
+  },
+  "runtime": {
+    "execution_profile": "RENDERED_RECORDED",
+    "ocr_provider": "RECORDED_DISCOVERY_OCR:recorded-discovery-v1",
+    "model_provider": "RECORDED_DOCUMENT_MODEL:recorded-document-v1",
+    "model_id": "qwen.qwen3-235b-a22b-2507-v1:0",
+    "prompt_versions": ["fast-triage-prompt-v1", "complex-extraction-prompt-v3"],
+    "schema_versions": ["triage-output-v2", "complex-extraction-v1"],
+    "graph_version": "claim-processing-v7",
+    "fact_path_alias_registry": "fact-path-aliases-v1"
+  },
+  "reconstruction_contract": "PostgreSQL workflow/events/evidence/casefile/decision/review records",
+  "verification_command": "uv run pytest tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate -q"
+}
