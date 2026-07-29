@@ -60,7 +60,7 @@ Durable decisions that apply across all phases:
 
 - [x] Phase 1: Versioned triage foundation
 - [x] Phase 2: Valid over-citation tracer
-- [ ] Phase 3: Duplicate-reference normalization
+- [x] Phase 3: Duplicate-reference normalization
 - [ ] Phase 4: Adversarial failure boundaries
 - [ ] Phase 5: Durable recovery and legacy compatibility
 - [ ] Phase 6: Acceptance and regression closure
@@ -272,58 +272,58 @@ PostgreSQL reconstruction and Phoenix traces.
 
 #### Stable deduplication
 
-- [ ] Repeated valid references no longer fail grounding under provider-output v4.
-- [ ] Every occurrence is grounded before duplicate removal.
-- [ ] The first occurrence of each reference determines unique-reference order.
-- [ ] Later occurrences are removed deterministically.
-- [ ] Duplicate occurrences do not consume canonical slots.
-- [ ] A unique reference following duplicates can still enter the first-five canonical set.
-- [ ] Repeated normalization of the same sequence produces byte-equivalent canonical output and
+- [x] Repeated valid references no longer fail grounding under provider-output v4.
+- [x] Every occurrence is grounded before duplicate removal.
+- [x] The first occurrence of each reference determines unique-reference order.
+- [x] Later occurrences are removed deterministically.
+- [x] Duplicate occurrences do not consume canonical slots.
+- [x] A unique reference following duplicates can still enter the first-five canonical set.
+- [x] Repeated normalization of the same sequence produces byte-equivalent canonical output and
   report data.
-- [ ] Role and readability duplicates are normalized independently.
+- [x] Role and readability duplicates are normalized independently.
 
 #### Reason classification
 
-- [ ] Pure duplicate input emits `TRIAGE_EVIDENCE_REFS_DEDUPLICATED`.
-- [ ] Pure duplicate input does not emit the truncation code when five or fewer unique references
+- [x] Pure duplicate input emits `TRIAGE_EVIDENCE_REFS_DEDUPLICATED`.
+- [x] Pure duplicate input does not emit the truncation code when five or fewer unique references
   remain.
-- [ ] More than five unique references plus duplicates emits both deduplication and truncation
+- [x] More than five unique references plus duplicates emits both deduplication and truncation
   codes.
-- [ ] Duplicate-dropped references and over-citation-dropped references are reported separately.
-- [ ] Received count equals retained count plus duplicate-drop count plus over-citation-drop count.
-- [ ] Unique count equals retained count plus over-citation-drop count.
+- [x] Duplicate-dropped references and over-citation-dropped references are reported separately.
+- [x] Received count equals retained count plus duplicate-drop count plus over-citation-drop count.
+- [x] Unique count equals retained count plus over-citation-drop count.
 
 #### No-retry and downstream behavior
 
-- [ ] Duplicate-only normalization does not trigger a second model call.
-- [ ] Mixed duplicate and over-citation normalization does not trigger a second model call.
-- [ ] Preview provenance follows the first retained readability reference after stable
+- [x] Duplicate-only normalization does not trigger a second model call.
+- [x] Mixed duplicate and over-citation normalization does not trigger a second model call.
+- [x] Preview provenance follows the first retained readability reference after stable
   deduplication.
-- [ ] Role, readability, identity, and downstream adjudication results match an equivalent concise
+- [x] Role, readability, identity, and downstream adjudication results match an equivalent concise
   response.
 
 #### Durable audit and tracing
 
-- [ ] PostgreSQL stores only stable-deduplicated canonical references.
-- [ ] The normalization report preserves the received sequence and partitions dropped occurrences
+- [x] PostgreSQL stores only stable-deduplicated canonical references.
+- [x] The normalization report preserves the received sequence and partitions dropped occurrences
   by reason.
-- [ ] The report records both reason codes when both behaviors occur.
-- [ ] Reconstruction produces the same canonical references and drop partitions.
-- [ ] The normalization span contains received, unique, retained, duplicate-dropped, and
+- [x] The report records both reason codes when both behaviors occur.
+- [x] Reconstruction produces the same canonical references and drop partitions.
+- [x] The normalization span contains received, unique, retained, duplicate-dropped, and
   over-citation-dropped sequences.
-- [ ] Trace counts and reason codes agree with PostgreSQL.
-- [ ] Deduplication metrics use bounded dimensions.
-- [ ] No observation identifier is emitted as a metric label.
+- [x] Trace counts and reason codes agree with PostgreSQL.
+- [x] Deduplication metrics use bounded dimensions.
+- [x] No observation identifier is emitted as a metric label.
 
 #### Phase verification
 
-- [ ] Unit tests cover adjacent duplicates, separated duplicates, all-identical references, and
+- [x] Unit tests cover adjacent duplicates, separated duplicates, all-identical references, and
   duplicates around the fifth canonical boundary.
-- [ ] Unit tests cover duplicate-only and duplicate-plus-over-citation reports.
-- [ ] An application test proves a duplicate provider response succeeds without retry.
-- [ ] A persistence/reconstruction test proves duplicate audit data is durable.
-- [ ] A Phoenix test proves duplicate and mixed reason visibility.
-- [ ] Phases 1–2 tests remain passing.
+- [x] Unit tests cover duplicate-only and duplicate-plus-over-citation reports.
+- [x] An application test proves a duplicate provider response succeeds without retry.
+- [x] A persistence/reconstruction test proves duplicate audit data is durable.
+- [x] A Phoenix test proves duplicate and mixed reason visibility.
+- [x] Phases 1–2 tests remain passing.
 
 ---
 

@@ -209,6 +209,125 @@ def test_v4_valid_overcitation_retains_five_and_records_the_complete_audit() -> 
     assert report.readability.over_citation_dropped_refs == references[5:]
 
 
+def test_v4_duplicate_references_are_stably_deduplicated_before_truncation() -> None:
+    document_version_id = UUID("10000000-0000-0000-0000-000000000004")
+    observations = tuple(
+        OcrObservation(
+            observation_id=f"{index + 40:064x}",
+            document_version_id=document_version_id,
+            page_number=1,
+            kind=OcrObservationKind.LINE,
+            text=f"Bill line {index}",
+            confidence=0.98,
+            region=NormalizedRegion(x=0.1, y=0.1, width=0.4, height=0.1),
+            source_id=f"duplicate-source-{index}",
+        )
+        for index in range(6)
+    )
+    unique = tuple(observation.observation_id for observation in observations)
+    references = (unique[0], unique[1], unique[0], unique[2], unique[1], *unique[3:])
+    output = TriageProviderOutputV4.model_validate(
+        {
+            "schema_version": 4,
+            "documents": [
+                {
+                    "client_document_id": "document-duplicates",
+                    "role": "HOSPITAL_BILL",
+                    "role_evidence_refs": references,
+                    "readability": "READABLE",
+                    "readability_evidence_refs": references,
+                    "identity_observations": [],
+                }
+            ],
+        }
+    )
+
+    report = (
+        resolve_triage_with_reports(
+            output,
+            (
+                TriageDocumentContext(
+                    client_document_id="document-duplicates",
+                    document_version_id=document_version_id,
+                    observations=observations,
+                    previews_by_page={
+                        1: PreviewProvenance(
+                            page=1,
+                            sha256="b" * 64,
+                            transform_version="pymupdf-v1",
+                        )
+                    },
+                ),
+            ),
+            policy=resolve_evidence_reference_policy("triage-evidence-policy-v1"),
+        )
+        .normalization_reports["document-duplicates"]
+        .role
+    )
+
+    assert report.unique_refs == unique
+    assert report.retained_refs == unique[:5]
+    assert report.duplicate_dropped_refs == (unique[0], unique[1])
+    assert report.over_citation_dropped_refs == (unique[5],)
+    assert report.codes == (
+        TriageEvidenceNormalizationCode.DEDUPLICATED,
+        TriageEvidenceNormalizationCode.TRUNCATED,
+    )
+
+
+def test_v4_pure_duplicates_are_recoverable_without_truncation() -> None:
+    context = _context("a" * 64)
+    second = OcrObservation(
+        observation_id="c" * 64,
+        document_version_id=context.document_version_id,
+        page_number=1,
+        kind=OcrObservationKind.LINE,
+        text="TOTAL",
+        confidence=0.98,
+        region=NormalizedRegion(x=0.2, y=0.2, width=0.4, height=0.1),
+        source_id="source-2",
+    )
+    references = ("a" * 64, "c" * 64, "a" * 64, "c" * 64)
+    output = TriageProviderOutputV4.model_validate(
+        {
+            "schema_version": 4,
+            "documents": [
+                {
+                    "client_document_id": context.client_document_id,
+                    "role": "HOSPITAL_BILL",
+                    "role_evidence_refs": references,
+                    "readability": "READABLE",
+                    "readability_evidence_refs": references,
+                    "identity_observations": [],
+                }
+            ],
+        }
+    )
+
+    report = (
+        resolve_triage_with_reports(
+            output,
+            (
+                TriageDocumentContext(
+                    client_document_id=context.client_document_id,
+                    document_version_id=context.document_version_id,
+                    observations=(*context.observations, second),
+                    previews_by_page=context.previews_by_page,
+                ),
+            ),
+            policy=resolve_evidence_reference_policy("triage-evidence-policy-v1"),
+        )
+        .normalization_reports[context.client_document_id]
+        .role
+    )
+
+    assert report.unique_refs == ("a" * 64, "c" * 64)
+    assert report.retained_refs == report.unique_refs
+    assert report.duplicate_dropped_refs == ("a" * 64, "c" * 64)
+    assert report.over_citation_dropped_refs == ()
+    assert report.codes == (TriageEvidenceNormalizationCode.DEDUPLICATED,)
+
+
 async def test_fast_triage_v4_uses_provider_schema_and_stable_raw_output_digest() -> None:
     payload = _provider_payload()
     transport = _Transport(payload)
