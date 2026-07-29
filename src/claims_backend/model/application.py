@@ -13,6 +13,7 @@ from claims_backend.domain.evidence import TriageModelOutput, TriageProviderOutp
 from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
     EvidenceCandidate,
+    ModelOutputLimitExceeded,
     ModelRoute,
     ModelSchemaValidationError,
 )
@@ -130,6 +131,10 @@ class StructuredModelApplication:
         try:
             output = schema.model_validate(invocation.raw_output)
         except ValidationError as error:
+            if _is_triage_reference_limit_error(error):
+                raise ModelOutputLimitExceeded(
+                    "Triage output exceeds the evidence-reference safety ceiling."
+                ) from error
             raise ModelSchemaValidationError("Model output failed the triage schema.") from error
         return FastTriageResult(
             config=config,
@@ -223,6 +228,15 @@ def fast_triage_system_prompt(config: ModelRouteConfig) -> str:
     if config.prompt_version == "fast-triage-prompt-v3":
         return FAST_TRIAGE_SYSTEM_PROMPT_V3
     raise ModelSchemaValidationError("Persisted fast triage prompt is unsupported.")
+
+
+def _is_triage_reference_limit_error(error: ValidationError) -> bool:
+    return any(
+        item["type"] == "too_long"
+        and len(item["loc"]) >= 3
+        and item["loc"][-1] in {"role_evidence_refs", "readability_evidence_refs"}
+        for item in error.errors()
+    )
 
 
 def _input_sha256(

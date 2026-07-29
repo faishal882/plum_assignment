@@ -7,7 +7,10 @@ from claims_backend.domain.evidence import (
     TriageEvidenceFieldNormalization,
     TriageEvidenceNormalizationCode,
 )
-from claims_backend.domain.extraction import ModelGroundingValidationError
+from claims_backend.domain.extraction import (
+    ModelGroundingValidationError,
+    ModelOutputLimitExceeded,
+)
 
 TRIAGE_EVIDENCE_POLICY_LEGACY = "triage-evidence-policy-legacy-v0"
 TRIAGE_EVIDENCE_POLICY_V1 = "triage-evidence-policy-v1"
@@ -52,7 +55,9 @@ def normalize_evidence_references(
     """Validate all references before stable canonical reduction."""
 
     if len(references) > policy.provider_reference_limit:
-        raise ValueError("Triage provider output exceeds the evidence-reference safety ceiling.")
+        raise ModelOutputLimitExceeded(
+            "Triage provider output exceeds the evidence-reference safety ceiling."
+        )
     unavailable = [
         reference for reference in references if reference not in available_observation_ids
     ]

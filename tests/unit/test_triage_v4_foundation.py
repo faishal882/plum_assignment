@@ -1,5 +1,6 @@
 from uuid import UUID
 
+import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from claims_backend.domain.evidence import (
@@ -9,6 +10,10 @@ from claims_backend.domain.evidence import (
     Readability,
     TriageEvidenceNormalizationCode,
     TriageProviderOutputV4,
+)
+from claims_backend.domain.extraction import (
+    ModelGroundingValidationError,
+    ModelOutputLimitExceeded,
 )
 from claims_backend.domain.ocr import OcrObservation, OcrObservationKind
 from claims_backend.domain.workflow import ExecutionContract
@@ -356,6 +361,79 @@ async def test_fast_triage_v4_uses_provider_schema_and_stable_raw_output_digest(
     replay_result = await replay.fast_triage([("system", "prompt"), ("human", "document")])
 
     assert replay_result.raw_output_sha256 == result.raw_output_sha256
+
+
+async def test_fast_triage_v4_reports_an_explicit_limit_error_at_101_references() -> None:
+    payload = _provider_payload()
+    document = payload["documents"][0]
+    assert isinstance(document, dict)
+    references = [f"{index:064x}" for index in range(101)]
+    document["role_evidence_refs"] = references
+    document["readability_evidence_refs"] = references
+    application = StructuredModelApplication(
+        ModelRouter.default(region="ap-south-1", model_id="recorded-model"),
+        _Transport(payload),
+        _Repository(),
+    )
+
+    with pytest.raises(ModelOutputLimitExceeded) as error:
+        await application.fast_triage([("system", "prompt"), ("human", "document")])
+
+    assert error.value.code == "MODEL_OUTPUT_LIMIT_EXCEEDED"
+
+
+def test_v4_rejects_an_unavailable_reference_after_the_canonical_prefix() -> None:
+    document_version_id = UUID("10000000-0000-0000-0000-000000000005")
+    observations = tuple(
+        OcrObservation(
+            observation_id=f"{index + 100:064x}",
+            document_version_id=document_version_id,
+            page_number=1,
+            kind=OcrObservationKind.LINE,
+            text=f"Bill line {index}",
+            confidence=0.98,
+            region=NormalizedRegion(x=0.1, y=0.1, width=0.4, height=0.1),
+            source_id=f"invalid-source-{index}",
+        )
+        for index in range(30)
+    )
+    valid_references = tuple(observation.observation_id for observation in observations)
+    references = (*valid_references[:29], "f" * 64)
+    output = TriageProviderOutputV4.model_validate(
+        {
+            "schema_version": 4,
+            "documents": [
+                {
+                    "client_document_id": "document-invalid-tail",
+                    "role": "HOSPITAL_BILL",
+                    "role_evidence_refs": references,
+                    "readability": "READABLE",
+                    "readability_evidence_refs": valid_references,
+                    "identity_observations": [],
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(ModelGroundingValidationError):
+        resolve_triage_with_reports(
+            output,
+            (
+                TriageDocumentContext(
+                    client_document_id="document-invalid-tail",
+                    document_version_id=document_version_id,
+                    observations=observations,
+                    previews_by_page={
+                        1: PreviewProvenance(
+                            page=1,
+                            sha256="b" * 64,
+                            transform_version="pymupdf-v1",
+                        )
+                    },
+                ),
+            ),
+            policy=resolve_evidence_reference_policy("triage-evidence-policy-v1"),
+        )
 
 
 class _Transport:

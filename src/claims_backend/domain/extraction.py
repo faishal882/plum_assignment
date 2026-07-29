@@ -68,6 +68,10 @@ class ModelSchemaValidationError(ModelValidationError):
     code = "MODEL_SCHEMA_VALIDATION_FAILED"
 
 
+class ModelOutputLimitExceeded(ModelValidationError):
+    code = "MODEL_OUTPUT_LIMIT_EXCEEDED"
+
+
 class ModelSemanticValidationError(ModelValidationError):
     code = "MODEL_SEMANTIC_VALIDATION_FAILED"
 

@@ -61,7 +61,7 @@ Durable decisions that apply across all phases:
 - [x] Phase 1: Versioned triage foundation
 - [x] Phase 2: Valid over-citation tracer
 - [x] Phase 3: Duplicate-reference normalization
-- [ ] Phase 4: Adversarial failure boundaries
+- [x] Phase 4: Adversarial failure boundaries
 - [ ] Phase 5: Durable recovery and legacy compatibility
 - [ ] Phase 6: Acceptance and regression closure
 
@@ -345,57 +345,57 @@ must not persist a misleading canonical triage result.
 
 #### Safety ceiling
 
-- [ ] Exactly 100 role references are accepted by provider-output v4.
-- [ ] Exactly 100 readability references are accepted by provider-output v4.
-- [ ] A 101st role reference produces `MODEL_OUTPUT_LIMIT_EXCEEDED`.
-- [ ] A 101st readability reference produces `MODEL_OUTPUT_LIMIT_EXCEEDED`.
-- [ ] Output-limit failure is distinguishable from generic schema validation in logs and traces.
-- [ ] An output-limit failure performs no canonical reduction.
-- [ ] An output-limit failure persists no successful triage result or normalization report.
+- [x] Exactly 100 role references are accepted by provider-output v4.
+- [x] Exactly 100 readability references are accepted by provider-output v4.
+- [x] A 101st role reference produces `MODEL_OUTPUT_LIMIT_EXCEEDED`.
+- [x] A 101st readability reference produces `MODEL_OUTPUT_LIMIT_EXCEEDED`.
+- [x] Output-limit failure is distinguishable from generic schema validation in logs and traces.
+- [x] An output-limit failure performs no canonical reduction.
+- [x] An output-limit failure persists no successful triage result or normalization report.
 
 #### Structural validation
 
-- [ ] Empty required role references remain rejected.
-- [ ] Empty required readability references remain rejected.
-- [ ] Malformed observation identifiers remain rejected by the provider schema.
-- [ ] Missing document predictions remain rejected.
-- [ ] Duplicate predictions for one client document remain rejected.
-- [ ] Predictions for unknown client documents remain rejected.
-- [ ] Excessive identity selections remain rejected.
-- [ ] Structural failures retain `MODEL_SCHEMA_VALIDATION_FAILED` unless they are specifically
+- [x] Empty required role references remain rejected.
+- [x] Empty required readability references remain rejected.
+- [x] Malformed observation identifiers remain rejected by the provider schema.
+- [x] Missing document predictions remain rejected.
+- [x] Duplicate predictions for one client document remain rejected.
+- [x] Predictions for unknown client documents remain rejected.
+- [x] Excessive identity selections remain rejected.
+- [x] Structural failures retain `MODEL_SCHEMA_VALIDATION_FAILED` unless they are specifically
   output-limit failures.
 
 #### Complete grounding
 
-- [ ] An unavailable reference in position one fails grounding.
-- [ ] An unavailable reference in position 30 fails grounding.
-- [ ] A reference belonging to another submitted document in position one fails grounding.
-- [ ] A cross-document reference in position 30 fails grounding.
-- [ ] A duplicate of an unavailable reference still fails grounding before deduplication.
-- [ ] A sequence whose first five references are valid still fails when a later reference is
+- [x] An unavailable reference in position one fails grounding.
+- [x] An unavailable reference in position 30 fails grounding.
+- [x] A reference belonging to another submitted document in position one fails grounding.
+- [x] A cross-document reference in position 30 fails grounding.
+- [x] A duplicate of an unavailable reference still fails grounding before deduplication.
+- [x] A sequence whose first five references are valid still fails when a later reference is
   invalid.
-- [ ] Neither deduplication nor truncation is allowed to conceal a grounding failure.
-- [ ] Identity values not present in referenced OCR text continue to fail grounding.
-- [ ] Missing backend preview provenance continues to fail safely.
+- [x] Neither deduplication nor truncation is allowed to conceal a grounding failure.
+- [x] Identity values not present in referenced OCR text continue to fail grounding.
+- [x] Missing backend preview provenance continues to fail safely.
 
 #### Failure persistence and observability
 
-- [ ] The normalization span records the failure category and failed evidence field.
-- [ ] The trace preserves the supplied reference sequence needed to diagnose the failure.
-- [ ] Output-limit, schema, and grounding failures have distinct bounded outcome values.
-- [ ] Failure metrics contain no reference identifiers as labels.
-- [ ] No canonical document triage result is committed after a failed normalization.
-- [ ] Existing durable retry and terminal-failure rules remain authoritative.
-- [ ] A failed attempt cannot leave a partial normalization report that appears successful.
+- [x] The normalization span records the failure category and failed evidence field.
+- [x] The trace preserves the supplied reference sequence needed to diagnose the failure.
+- [x] Output-limit, schema, and grounding failures have distinct bounded outcome values.
+- [x] Failure metrics contain no reference identifiers as labels.
+- [x] No canonical document triage result is committed after a failed normalization.
+- [x] Existing durable retry and terminal-failure rules remain authoritative.
+- [x] A failed attempt cannot leave a partial normalization report that appears successful.
 
 #### Phase verification
 
-- [ ] Boundary tests cover 100 and 101 references for both evidence fields.
-- [ ] Schema tests cover every retained structural constraint.
-- [ ] Grounding tests cover unavailable and cross-document references after the canonical prefix.
-- [ ] Transactional integration tests prove no misleading canonical result is persisted.
-- [ ] Observability tests prove failure taxonomy and diagnostic trace content.
-- [ ] Phases 1–3 tests remain passing.
+- [x] Boundary tests cover 100 and 101 references for both evidence fields.
+- [x] Schema tests cover every retained structural constraint.
+- [x] Grounding tests cover unavailable and cross-document references after the canonical prefix.
+- [x] Transactional integration tests prove no misleading canonical result is persisted.
+- [x] Observability tests prove failure taxonomy and diagnostic trace content.
+- [x] Phases 1–3 tests remain passing.
 
 ---
 
