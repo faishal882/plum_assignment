@@ -93,13 +93,19 @@ def create_process_runtime(
     )
 
 
-def create_claim_processor(runtime: ProcessRuntime) -> PostgresClaimProcessor:
+def create_claim_processor(
+    runtime: ProcessRuntime,
+    *,
+    execution_contract: ExecutionContract | None = None,
+) -> PostgresClaimProcessor:
     """Construct the complete profile-selected intelligence pipeline.
 
     The local profile has no AWS construction path; the live profile can only
     exist after the authorization check performed by ``Settings``.
     """
     settings = runtime.settings
+    contract = execution_contract or create_execution_contract(settings)
+    _validate_execution_contract(settings, contract)
     settings.data_root.mkdir(parents=True, exist_ok=True)
     pages = PostgresPageArtifactRepository(runtime.session_factory)
     ocr_repository = PostgresOcrRepository(runtime.session_factory)
@@ -139,10 +145,7 @@ def create_claim_processor(runtime: ProcessRuntime) -> PostgresClaimProcessor:
         ),
         ocr_repository=ocr_repository,
         structured_model=StructuredModelApplication(
-            ModelRouter.default(
-                region=settings.bedrock_region,
-                model_id=settings.bedrock_model_id,
-            ),
+            ModelRouter.from_execution_contract(contract),
             model_transport,
             evidence,
         ),
@@ -186,3 +189,19 @@ def create_execution_contract(settings: Settings) -> ExecutionContract:
         model_provider_version=model_version,
         model_routes=routes,
     )
+
+
+def _validate_execution_contract(settings: Settings, contract: ExecutionContract) -> None:
+    """Allow only a compatible durable contract to choose process-local adapters."""
+    expected = create_execution_contract(settings)
+    if contract.schema_version != expected.schema_version:
+        raise ValueError("Execution contract schema is unsupported.")
+    if contract.execution_profile != expected.execution_profile:
+        raise ValueError("Execution contract profile is incompatible with this worker.")
+    if (
+        contract.ocr_provider_name != expected.ocr_provider_name
+        or contract.ocr_provider_version != expected.ocr_provider_version
+        or contract.model_provider_name != expected.model_provider_name
+        or contract.model_provider_version != expected.model_provider_version
+    ):
+        raise ValueError("Execution contract provider adapters are unavailable in this worker.")
