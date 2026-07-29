@@ -93,10 +93,10 @@ Expose the execution ownership lifecycle in Phoenix and JSONL logs without expos
 
 ### Acceptance criteria
 
-- [ ] Workflow and terminal spans include current work attempt, hashed lease identity, lease-validation outcome, and terminal-commit outcome as flat attributes.
-- [ ] Retry/resume traces identify the active attempt rather than a checkpointed historical attempt.
-- [ ] Raw lease tokens are absent from span attributes, span payloads, JSONL logs, and public responses.
-- [ ] Phoenix filters can isolate rejected stale-lease terminal attempts.
+- [x] Workflow and terminal spans include current work attempt, hashed lease identity, lease-validation outcome, and terminal-commit outcome as flat attributes.
+- [x] Retry/resume traces identify the active attempt rather than a checkpointed historical attempt.
+- [x] Raw lease tokens are absent from span attributes, span payloads, JSONL logs, and public responses.
+- [x] Phoenix filters can isolate rejected stale-lease terminal attempts.
 
 ---
 

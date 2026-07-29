@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from time import monotonic
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
@@ -15,6 +16,7 @@ from openinference.semconv.trace import SpanAttributes
 from sqlalchemy.engine import make_url
 
 from claims_backend.application.processing import ClaimProcessor
+from claims_backend.application.work import LeaseLostError
 from claims_backend.application.workflow import WorkflowRepository, WorkflowRuntime
 from claims_backend.domain.processing import (
     AffectedDocument,
@@ -68,6 +70,7 @@ _NODE_COMPONENTS = {
     "reconcile_casefile": "reconciliation",
     "commit_member_action": "persistence",
 }
+_TERMINAL_COMMIT_NODES = frozenset({"commit_decision", "commit_member_action"})
 
 
 class WorkflowState(TypedDict):
@@ -320,6 +323,9 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "workflow.graph_version": self.graph_version,
                     "workflow.execution_profile": self._execution_profile,
                     "work.attempt": lease.attempt_number,
+                    "work.lease_id.sha256": _lease_id_sha256(lease),
+                    "lease.validation.outcome": "NOT_EVALUATED",
+                    "terminal.commit.outcome": "NOT_COMMITTED",
                     "workflow.queue_wait_ms": max(
                         0,
                         round((lease.leased_at - lease.available_at).total_seconds() * 1000),
@@ -349,6 +355,9 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                             attempt=lease.attempt_number,
                             duration_ms=0,
                             outcome="RUNNING",
+                            lease_id_sha256=_lease_id_sha256(lease),
+                            lease_validation_outcome="NOT_EVALUATED",
+                            terminal_commit_outcome="NOT_COMMITTED",
                         )
                     )
                     try:
@@ -356,6 +365,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                             initial_state, config=config, context=runtime_context
                         )
                     except Exception as error:
+                        self._observability.set_attributes(
+                            root_span,
+                            _terminal_outcome_attributes(
+                                node_name=None,
+                                error=error,
+                            ),
+                        )
                         self._observability.log(
                             EngineeringLogEvent(
                                 event_name="workflow_failed",
@@ -369,6 +385,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                                 ),
                                 outcome="ERROR",
                                 error_type=type(error).__name__,
+                                lease_id_sha256=_lease_id_sha256(lease),
+                                lease_validation_outcome=(
+                                    "REJECTED_STALE"
+                                    if isinstance(error, LeaseLostError)
+                                    else "NOT_EVALUATED"
+                                ),
+                                terminal_commit_outcome="NOT_COMMITTED",
                             )
                         )
                         raise
@@ -384,6 +407,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                                 round((monotonic() - started) * 1000),
                             ),
                             outcome="OK",
+                            lease_id_sha256=_lease_id_sha256(lease),
+                            lease_validation_outcome=(
+                                "ACCEPTED" if result["terminal_committed"] else "NOT_EVALUATED"
+                            ),
+                            terminal_commit_outcome=(
+                                "COMMITTED" if result["terminal_committed"] else "NOT_COMMITTED"
+                            ),
                         )
                     )
                     self._observability.set_attributes(
@@ -391,6 +421,12 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         {
                             "workflow.terminal_outcome": (
                                 "COMMITTED" if result["terminal_committed"] else "FINALIZED"
+                            ),
+                            "lease.validation.outcome": (
+                                "ACCEPTED" if result["terminal_committed"] else "NOT_EVALUATED"
+                            ),
+                            "terminal.commit.outcome": (
+                                "COMMITTED" if result["terminal_committed"] else "NOT_COMMITTED"
                             ),
                             SpanAttributes.OUTPUT_VALUE: _json(result),
                             SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
@@ -452,6 +488,8 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         "workflow.run_id": state["workflow_run_id"],
                         "node.name": node_name,
                         "work.attempt": runtime.context.lease.attempt_number,
+                        "work.lease_id.sha256": _lease_id_sha256(runtime.context.lease),
+                        **_terminal_outcome_attributes(node_name=node_name),
                         SpanAttributes.INPUT_VALUE: _json(state),
                         SpanAttributes.INPUT_MIME_TYPE: "application/json",
                     },
@@ -491,6 +529,11 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                             duration_ms,
                             "ERROR",
                             error_type=type(error).__name__,
+                            error=error,
+                        )
+                        self._observability.set_attributes(
+                            node_span,
+                            _terminal_outcome_attributes(node_name=node_name, error=error),
                         )
                         raise
                     duration_ms = max(0, round((monotonic() - started) * 1000))
@@ -501,6 +544,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     self._observability.set_attributes(
                         node_span,
                         {
+                            **_terminal_outcome_attributes(node_name=node_name, committed=True),
                             SpanAttributes.OUTPUT_VALUE: _json(result),
                             SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
                         },
@@ -545,6 +589,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         outcome: str,
         *,
         error_type: str | None = None,
+        error: Exception | None = None,
     ) -> None:
         if self._observability is None:
             return
@@ -558,6 +603,16 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 duration_ms=duration_ms,
                 outcome=outcome,
                 error_type=error_type,
+                lease_id_sha256=_lease_id_sha256(_active_lease()),
+                lease_validation_outcome=_terminal_outcome_attributes(
+                    node_name=node_name,
+                    error=error,
+                )["lease.validation.outcome"],
+                terminal_commit_outcome=_terminal_outcome_attributes(
+                    node_name=node_name,
+                    error=error,
+                    committed=(event_name == "node_finished"),
+                )["terminal.commit.outcome"],
             )
         )
 
@@ -950,6 +1005,32 @@ def _work_lease(_: WorkflowState) -> WorkLease:
 
 def _active_lease() -> WorkLease:
     return _ACTIVE_RUNTIME_CONTEXT.get().lease
+
+
+def _lease_id_sha256(lease: WorkLease) -> str:
+    return sha256(str(lease.lease_token).encode("ascii")).hexdigest()
+
+
+def _terminal_outcome_attributes(
+    *,
+    node_name: str | None,
+    error: Exception | None = None,
+    committed: bool = False,
+) -> dict[str, str]:
+    if isinstance(error, LeaseLostError):
+        return {
+            "lease.validation.outcome": "REJECTED_STALE",
+            "terminal.commit.outcome": "NOT_COMMITTED",
+        }
+    if node_name in _TERMINAL_COMMIT_NODES:
+        return {
+            "lease.validation.outcome": "ACCEPTED" if committed else "NOT_EVALUATED",
+            "terminal.commit.outcome": "COMMITTED" if committed else "NOT_COMMITTED",
+        }
+    return {
+        "lease.validation.outcome": "NOT_EVALUATED",
+        "terminal.commit.outcome": "NOT_COMMITTED",
+    }
 
 
 def _after_media_inspection(

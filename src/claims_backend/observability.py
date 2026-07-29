@@ -86,6 +86,9 @@ class EngineeringLogEvent:
     provider_name: str | None = None
     provider_request_id: str | None = None
     error_type: str | None = None
+    lease_id_sha256: str | None = None
+    lease_validation_outcome: str | None = None
+    terminal_commit_outcome: str | None = None
 
 
 class Observability:
@@ -173,6 +176,9 @@ class Observability:
             "provider_name": event.provider_name,
             "provider_request_id": event.provider_request_id,
             "error_type": event.error_type,
+            "lease_id_sha256": event.lease_id_sha256,
+            "lease_validation_outcome": event.lease_validation_outcome,
+            "terminal_commit_outcome": event.terminal_commit_outcome,
         }
         record = self._logger.makeRecord(
             self._logger.name,

@@ -79,6 +79,13 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     assert root.attributes["workflow.execution_profile"] == "UNSPECIFIED"
     assert root.attributes["workflow.queue_wait_ms"] >= 0
     assert root.attributes["workflow.terminal_outcome"] == "FINALIZED"
+    assert root.attributes["lease.validation.outcome"] == "NOT_EVALUATED"
+    assert root.attributes["terminal.commit.outcome"] == "NOT_COMMITTED"
+    lease_id_sha256 = root.attributes["work.lease_id.sha256"]
+    assert isinstance(lease_id_sha256, str)
+    assert len(lease_id_sha256) == 64
+    assert all(span.attributes["work.lease_id.sha256"] == lease_id_sha256 for span in nodes)
+    assert all("lease_token" not in json.dumps(dict(span.attributes)) for span in spans)
     assert root.attributes["input.mime_type"] == "application/json"
     assert root.attributes["output.mime_type"] == "application/json"
     root_input = json.loads(root.attributes["input.value"])
@@ -109,6 +116,10 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     ]
     assert {record["trace_id"] for record in records} == {f"{root.context.trace_id:032x}"}
     assert {record["process"] for record in records} == {"worker"}
+    workflow_records = [record for record in records if record["component"].startswith("workflow")]
+    assert workflow_records
+    assert all(record["lease_id_sha256"] == lease_id_sha256 for record in workflow_records)
+    assert all("lease_token" not in json.dumps(record) for record in records)
     scan_telemetry_for_phi(
         [dict(span.attributes) for span in spans],
         phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
