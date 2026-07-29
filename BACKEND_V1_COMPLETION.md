@@ -38,6 +38,28 @@ sanitized proof artifacts. It does not claim arbitrary real-document accuracy.
 - The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions
   and rejects synthetic patient/clinical canaries from span attributes.
 
+## Recorded acceptance outcomes
+
+The committed rendered evaluation artifact covers all cases through the normal composed worker:
+
+| Case | Lifecycle | Decision | Amount (paise) | Primary reason |
+|---|---|---|---:|---|
+| TC001 | ACTION_REQUIRED | — | — | MISSING_REQUIRED_DOCUMENT |
+| TC002 | ACTION_REQUIRED | — | — | UNREADABLE_DOCUMENT |
+| TC003 | ACTION_REQUIRED | — | — | PATIENT_IDENTITY_CONFLICT |
+| TC004 | DECIDED | APPROVED | 135000 | FINAL_APPROVED |
+| TC005 | DECIDED | REJECTED | 0 | WAITING_PERIOD |
+| TC006 | DECIDED | PARTIAL | 800000 | DENTAL_LINE_ITEM_EXCLUDED |
+| TC007 | DECIDED | REJECTED | 0 | PRE_AUTH_MISSING |
+| TC008 | DECIDED | REJECTED | 0 | PER_CLAIM_EXCEEDED |
+| TC009 | IN_REVIEW | MANUAL_REVIEW | — | SAME_DAY_CLAIM_VELOCITY |
+| TC010 | DECIDED | APPROVED | 324000 | NETWORK_DISCOUNT_APPLIED |
+| TC011 | DECIDED | APPROVED | 400000 | FINAL_APPROVED |
+| TC012 | DECIDED | REJECTED | 0 | EXCLUDED_CONDITION |
+
+The source artifact also verifies complete workflow traces, no `ProcessingFixtureRow` use, and a
+telemetry PHI-canary scan without committing raw runtime content.
+
 ## Local operation
 
 ```bash
