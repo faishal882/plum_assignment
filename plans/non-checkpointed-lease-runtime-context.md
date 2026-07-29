@@ -25,10 +25,10 @@ Establish one immutable runtime-context contract for each graph invocation. New 
 
 ### Acceptance criteria
 
-- [ ] A new checkpoint contains no worker ID, lease token, lease timestamps, availability time, attempt number, or attempt budget.
-- [ ] Every graph invocation, including resume, receives a fresh active lease through non-checkpointed runtime context.
-- [ ] A legacy checkpoint containing lease fields resumes successfully and ignores its stored lease token.
-- [ ] Runtime-context construction and migration compatibility are covered by focused tests.
+- [x] A new checkpoint contains no worker ID, lease token, lease timestamps, availability time, attempt number, or attempt budget.
+- [x] Every graph invocation, including resume, receives a fresh active lease through non-checkpointed runtime context.
+- [x] A legacy checkpoint containing lease fields resumes successfully and ignores its stored lease token.
+- [x] Runtime-context construction and migration compatibility are covered by focused tests.
 
 ---
 

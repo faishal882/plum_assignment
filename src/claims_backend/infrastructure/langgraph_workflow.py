@@ -1,6 +1,8 @@
 import json
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from contextvars import ContextVar
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
@@ -8,6 +10,7 @@ from uuid import UUID
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.runtime import Runtime
 from openinference.semconv.trace import SpanAttributes
 from sqlalchemy.engine import make_url
 
@@ -34,6 +37,21 @@ from claims_backend.observability import (
 
 type BeforeNodeHook = Callable[[str], Awaitable[None]]
 type WorkflowNode = Callable[..., Any]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRuntimeContext:
+    """Ephemeral execution authority; never persisted in a LangGraph checkpoint."""
+
+    lease: WorkLease
+    workflow_run_id: UUID
+    claim_id: UUID
+    claim_version: int
+
+
+_ACTIVE_RUNTIME_CONTEXT: ContextVar[WorkflowRuntimeContext] = ContextVar(
+    "claims_workflow_runtime_context"
+)
 
 _NODE_COMPONENTS = {
     "load_claim": "persistence",
@@ -78,13 +96,6 @@ class WorkflowState(TypedDict):
     evidence_candidate_count: int
     extraction_completed: bool
     terminal_committed: bool
-    worker_id: str
-    lease_token: str
-    leased_at: str
-    lease_until: str
-    available_at: str
-    attempt_number: int
-    max_attempts: int
     effect_count: int
 
 
@@ -149,7 +160,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
         resume: bool,
     ) -> bool:
         async with AsyncPostgresSaver.from_conn_string(self._checkpoint_url) as checkpointer:
-            builder = StateGraph(WorkflowState)
+            builder = StateGraph(WorkflowState, context_schema=WorkflowRuntimeContext)
             builder.add_node("load_claim", self._node("load_claim", self._load_claim))
             builder.add_node("finalize", self._node("finalize", self._finalize))
             if self._processor is None:
@@ -260,6 +271,12 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "thread_id": str(workflow_run.id),
                 }
             }
+            runtime_context = WorkflowRuntimeContext(
+                lease=lease,
+                workflow_run_id=workflow_run.id,
+                claim_id=workflow_run.claim_id,
+                claim_version=workflow_run.claim_version,
+            )
             initial_state: WorkflowState | None = None
             if not resume:
                 initial_state = {
@@ -288,17 +305,10 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "evidence_candidate_count": 0,
                     "extraction_completed": False,
                     "terminal_committed": False,
-                    "worker_id": lease.worker_id,
-                    "lease_token": str(lease.lease_token),
-                    "leased_at": lease.leased_at.isoformat(),
-                    "lease_until": lease.lease_until.isoformat(),
-                    "available_at": lease.available_at.isoformat(),
-                    "attempt_number": lease.attempt_number,
-                    "max_attempts": lease.max_attempts,
                     "effect_count": 0,
                 }
             if self._observability is None:
-                result = await graph.ainvoke(initial_state, config=config)
+                result = await graph.ainvoke(initial_state, config=config, context=runtime_context)
             else:
                 started = monotonic()
                 root_attributes: dict[str, str | int] = {
@@ -342,7 +352,9 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         )
                     )
                     try:
-                        result = await graph.ainvoke(initial_state, config=config)
+                        result = await graph.ainvoke(
+                            initial_state, config=config, context=runtime_context
+                        )
                     except Exception as error:
                         self._observability.log(
                             EngineeringLogEvent(
@@ -389,115 +401,113 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
             return bool(result["terminal_committed"])
 
     def _node(self, node_name: str, handler: WorkflowNode) -> WorkflowNode:
-        async def observed(state: WorkflowState) -> WorkflowUpdate:
+        async def observed(
+            state: WorkflowState, runtime: Runtime[WorkflowRuntimeContext]
+        ) -> WorkflowUpdate:
+            context_token = _ACTIVE_RUNTIME_CONTEXT.set(runtime.context)
             started = monotonic()
             run_id = _workflow_run_id(state)
-            if self._observability is None:
-                await self._repository.record_event(
-                    run_id,
-                    NewWorkflowEvent(
-                        node_name=node_name,
-                        event_type="ENTRY",
-                        attempt_number=state["attempt_number"],
-                        duration_ms=0,
-                        outcome="RUNNING",
-                        trace_id=None,
-                        span_id=None,
-                    ),
-                )
-                try:
-                    result = cast(WorkflowUpdate, await handler(state))
-                except Exception as error:
+            try:
+                if self._observability is None:
+                    await self._repository.record_event(
+                        run_id,
+                        NewWorkflowEvent(
+                            node_name=node_name,
+                            event_type="ENTRY",
+                            attempt_number=runtime.context.lease.attempt_number,
+                            duration_ms=0,
+                            outcome="RUNNING",
+                            trace_id=None,
+                            span_id=None,
+                        ),
+                    )
+                    try:
+                        result = cast(WorkflowUpdate, await handler(state))
+                    except Exception as error:
+                        await self._record_node_event(
+                            state,
+                            node_name=node_name,
+                            event_type="ERROR",
+                            started=started,
+                            outcome="ERROR",
+                            error_type=type(error).__name__,
+                        )
+                        raise
                     await self._record_node_event(
                         state,
                         node_name=node_name,
-                        event_type="ERROR",
+                        event_type="EXIT",
                         started=started,
-                        outcome="ERROR",
-                        error_type=type(error).__name__,
+                        outcome="OK",
                     )
-                    raise
-                await self._record_node_event(
-                    state,
-                    node_name=node_name,
-                    event_type="EXIT",
-                    started=started,
-                    outcome="OK",
-                )
-                return result
+                    return result
 
-            with self._observability.span(
-                f"claim.workflow.{node_name}",
-                component=_NODE_COMPONENTS[node_name],
-                attributes={
-                    "session.id": state["claim_id"],
-                    "claim.id": state["claim_id"],
-                    "claim.version": state["claim_version"],
-                    "workflow.run_id": state["workflow_run_id"],
-                    "node.name": node_name,
-                    "work.attempt": state["attempt_number"],
-                    SpanAttributes.INPUT_VALUE: _json(state),
-                    SpanAttributes.INPUT_MIME_TYPE: "application/json",
-                },
-            ) as node_span:
-                trace_id, span_id = trace_identifiers()
-                await self._repository.record_event(
-                    run_id,
-                    NewWorkflowEvent(
-                        node_name=node_name,
-                        event_type="ENTRY",
-                        attempt_number=state["attempt_number"],
-                        duration_ms=0,
-                        outcome="RUNNING",
-                        trace_id=trace_id,
-                        span_id=span_id,
-                    ),
-                )
-                self._log_node(state, node_name, "node_entered", 0, "RUNNING")
-                try:
-                    result = cast(WorkflowUpdate, await handler(state))
-                except Exception as error:
+                with self._observability.span(
+                    f"claim.workflow.{node_name}",
+                    component=_NODE_COMPONENTS[node_name],
+                    attributes={
+                        "session.id": state["claim_id"],
+                        "claim.id": state["claim_id"],
+                        "claim.version": state["claim_version"],
+                        "workflow.run_id": state["workflow_run_id"],
+                        "node.name": node_name,
+                        "work.attempt": runtime.context.lease.attempt_number,
+                        SpanAttributes.INPUT_VALUE: _json(state),
+                        SpanAttributes.INPUT_MIME_TYPE: "application/json",
+                    },
+                ) as node_span:
+                    trace_id, span_id = trace_identifiers()
+                    (
+                        await self._repository.record_event(
+                            run_id,
+                            NewWorkflowEvent(
+                                node_name=node_name,
+                                event_type="ENTRY",
+                                attempt_number=runtime.context.lease.attempt_number,
+                                duration_ms=0,
+                                outcome="RUNNING",
+                                trace_id=trace_id,
+                                span_id=span_id,
+                            ),
+                        ),
+                    )
+                    self._log_node(state, node_name, "node_entered", 0, "RUNNING")
+                    try:
+                        result = cast(WorkflowUpdate, await handler(state))
+                    except Exception as error:
+                        duration_ms = max(0, round((monotonic() - started) * 1000))
+                        await self._record_node_event(
+                            state,
+                            node_name=node_name,
+                            event_type="ERROR",
+                            started=started,
+                            outcome="ERROR",
+                            error_type=type(error).__name__,
+                        )
+                        self._log_node(
+                            state,
+                            node_name,
+                            "node_failed",
+                            duration_ms,
+                            "ERROR",
+                            error_type=type(error).__name__,
+                        )
+                        raise
                     duration_ms = max(0, round((monotonic() - started) * 1000))
                     await self._record_node_event(
-                        state,
-                        node_name=node_name,
-                        event_type="ERROR",
-                        started=started,
-                        outcome="ERROR",
-                        error_type=type(error).__name__,
+                        state, node_name=node_name, event_type="EXIT", started=started, outcome="OK"
                     )
-                    self._log_node(
-                        state,
-                        node_name,
-                        "node_failed",
-                        duration_ms,
-                        "ERROR",
-                        error_type=type(error).__name__,
+                    self._log_node(state, node_name, "node_finished", duration_ms, "OK")
+                    self._observability.set_attributes(
+                        node_span,
+                        {
+                            SpanAttributes.OUTPUT_VALUE: _json(result),
+                            SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
+                        },
                     )
-                    raise
-                duration_ms = max(0, round((monotonic() - started) * 1000))
-                await self._record_node_event(
-                    state,
-                    node_name=node_name,
-                    event_type="EXIT",
-                    started=started,
-                    outcome="OK",
-                )
-                self._log_node(
-                    state,
-                    node_name,
-                    "node_finished",
-                    duration_ms,
-                    "OK",
-                )
-                self._observability.set_attributes(
-                    node_span,
-                    {
-                        SpanAttributes.OUTPUT_VALUE: _json(result),
-                        SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
-                    },
-                )
-                return result
+                    return result
+            finally:
+                _ACTIVE_RUNTIME_CONTEXT.reset(context_token)
 
         return observed
 
@@ -517,7 +527,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
             NewWorkflowEvent(
                 node_name=node_name,
                 event_type=event_type,
-                attempt_number=state["attempt_number"],
+                attempt_number=_active_lease().attempt_number,
                 duration_ms=max(0, round((monotonic() - started) * 1000)),
                 outcome=outcome,
                 trace_id=trace_id,
@@ -544,7 +554,7 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                 component=f"workflow.{node_name}",
                 claim_id=state["claim_id"],
                 workflow_run_id=state["workflow_run_id"],
-                attempt=state["attempt_number"],
+                attempt=_active_lease().attempt_number,
                 duration_ms=duration_ms,
                 outcome=outcome,
                 error_type=error_type,
@@ -928,26 +938,18 @@ def _workflow_run(
         graph_version=graph_version,
         execution_contract=execution_contract,
         status=WorkflowRunStatus.RUNNING,
-        created_at=datetime.fromisoformat(state["leased_at"]),
-        updated_at=datetime.fromisoformat(state["leased_at"]),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
         completed_at=None,
     )
 
 
-def _work_lease(state: WorkflowState) -> WorkLease:
-    return WorkLease(
-        work_item_id=UUID(state["work_item_id"]),
-        claim_id=UUID(state["claim_id"]),
-        claim_version=state["claim_version"],
-        operation_key=state["operation_key"],
-        worker_id=state["worker_id"],
-        lease_token=UUID(state["lease_token"]),
-        leased_at=datetime.fromisoformat(state["leased_at"]),
-        lease_until=datetime.fromisoformat(state["lease_until"]),
-        available_at=datetime.fromisoformat(state["available_at"]),
-        attempt_number=state["attempt_number"],
-        max_attempts=state["max_attempts"],
-    )
+def _work_lease(_: WorkflowState) -> WorkLease:
+    return _active_lease()
+
+
+def _active_lease() -> WorkLease:
+    return _ACTIVE_RUNTIME_CONTEXT.get().lease
 
 
 def _after_media_inspection(
