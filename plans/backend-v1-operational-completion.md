@@ -136,7 +136,7 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   diagnosis path as normal output.
 - [x] Sanitized recorded-evaluation, version-manifest, and telemetry-privacy proof artifacts are
   committed without runtime logs, documents, OCR, prompts, responses, or trace identifiers.
-- [x] Final deterministic suite evidence is recorded: `232 passed, 4 skipped`; all skips require
+- [x] Final deterministic suite evidence is recorded: `235 passed, 4 skipped`; all skips require
   explicit paid-AWS authorization.
 - [x] Explicit paid-AWS synthetic TC004 provider-to-policy tracer passes with real Textract and
   Qwen; exact provider-labelled totals and `Diagnosis:` lines are persisted as versioned,

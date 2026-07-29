@@ -26,7 +26,7 @@ unverified historical test counts into an operational-completion claim.
   PostgreSQL workflow events and JSONL records retain local reconstruction data.
 - Test execution refuses the application database unless an explicit destructive override is set.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
-- The deterministic suite completed with **232 passed, 4 skipped** in 99.88 seconds. The four
+- The deterministic suite completed with **235 passed, 4 skipped** in 102.81 seconds. The four
   skipped checks are the explicitly opt-in synthetic Textract, Bedrock, direct-TC004, and
   public-worker-TC004 live tests.
 - The explicitly authorized synthetic live TC004 provider-to-policy tracer and public FastAPI →
