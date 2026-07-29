@@ -5,6 +5,8 @@
 This is a current-state report grounded in the current recorded gate, explicit live traces, and
 sanitized proof artifacts. It does not claim arbitrary real-document accuracy.
 
+Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
+
 ## Implemented and verified
 
 - FastAPI accepts multipart claims and exposes member-scoped claim projections.
