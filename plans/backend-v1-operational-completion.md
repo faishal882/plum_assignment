@@ -134,17 +134,17 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   provenance alongside its grounded canonical evidence.
 - [x] The extraction prompt explicitly requires `clinical.condition` and rejects the legacy
   diagnosis path as normal output.
-- [x] Sanitized recorded-evaluation, version-manifest, and telemetry-privacy proof artifacts are
+- [ ] Sanitized recorded-evaluation, version-manifest, and telemetry-privacy proof artifacts are
   committed without runtime logs, documents, OCR, prompts, responses, or trace identifiers.
-- [x] Final deterministic suite evidence is recorded: `235 passed, 4 skipped`; all skips require
-  explicit paid-AWS authorization.
-- [x] Explicit paid-AWS synthetic TC004 provider-to-policy tracer passes with real Textract and
+- [ ] Final deterministic suite evidence is recorded with current pass/skip counts; all skips
+  require explicit paid-AWS authorization.
+- [ ] Explicit paid-AWS synthetic TC004 provider-to-policy tracer passes with real Textract and
   Qwen; exact provider-labelled totals and `Diagnosis:` lines are persisted as versioned,
   grounded Textract-derived evidence when model output is blank.
-- [x] Explicit paid-AWS synthetic TC004 claim passes through public multipart FastAPI submission,
+- [ ] Explicit paid-AWS synthetic TC004 claim passes through public multipart FastAPI submission,
   PostgreSQL leasing, the standard standalone worker construction, real Textract and Qwen, and
   deterministic ₹1,350 adjudication (`tests/live/test_live_worker_tc004.py`).
-- [x] The complete live tracer verifies correlated API/worker Phoenix claim sessions and PHI-safe
+- [ ] The complete live tracer verifies correlated API/worker Phoenix claim sessions and PHI-safe
   span attributes in the same explicitly authorized run.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
@@ -159,7 +159,7 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   execution; an existing v3 workflow never silently adopts the current v4 runtime.
 - [x] Unified claim-session test proves correlated API/worker Phoenix sessions, durable workflow
   event trace IDs, separate JSONL streams, and content-free telemetry canary scans.
-- [x] Explicit live AWS complete tracer, versioned alias compatibility, and sanitized closure
+- [ ] Explicit live AWS complete tracer, versioned alias compatibility, and sanitized closure
   artifacts are verified.
 
 ---
@@ -180,26 +180,26 @@ provider and repository construction.
 
 ### Acceptance criteria
 
-- [ ] The API, worker command, and operational tests load the same typed environment
+- [x] The API, worker command, and operational tests load the same typed environment
   configuration.
-- [ ] Missing required configuration produces one safe startup error listing the missing keys.
-- [ ] `RECORDED_LOCAL` is the committed default execution profile.
-- [ ] Paid AWS execution is disabled in committed and normal local configuration.
-- [ ] Recorded mode constructs only recorded provider adapters.
+- [x] Missing required configuration produces one safe startup error listing the missing keys.
+- [x] `RECORDED_LOCAL` is the committed default execution profile.
+- [x] Paid AWS execution is disabled in committed and normal local configuration.
+- [x] Recorded mode constructs only recorded provider adapters.
 - [ ] Recorded mode rejects non-loopback external network access.
-- [ ] Live mode refuses to construct AWS adapters when paid-AWS authorization is absent.
-- [ ] Paid-AWS authorization without the live execution profile does not construct AWS adapters.
-- [ ] Live mode constructs the configured Textract and Bedrock adapters only when both safeguards
+- [x] Live mode refuses to construct AWS adapters when paid-AWS authorization is absent.
+- [x] Paid-AWS authorization without the live execution profile does not construct AWS adapters.
+- [x] Live mode constructs the configured Textract and Bedrock adapters only when both safeguards
   are present.
-- [ ] The construction boundary creates a complete worker dependency set without relying on
+- [x] The construction boundary creates a complete worker dependency set without relying on
   FastAPI request state.
-- [ ] Invalid partial processor configurations cannot reach work execution.
-- [ ] Workflow creation persists execution profile, OCR provider version, model ID, prompt
+- [x] Invalid partial processor configurations cannot reach work execution.
+- [x] Workflow creation persists execution profile, OCR provider version, model ID, prompt
   versions, schema versions, and graph version.
-- [ ] Workflow recovery uses the pinned execution contract rather than silently adopting changed
+- [x] Workflow recovery uses the pinned execution contract rather than silently adopting changed
   process configuration.
-- [ ] Readiness can validate local configuration without contacting Textract or Bedrock.
-- [ ] Unit tests cover the complete profile-selection and fail-closed matrix.
+- [x] Readiness can validate local configuration without contacting Textract or Bedrock.
+- [x] Unit tests cover the complete profile-selection and fail-closed matrix.
 
 ---
 
@@ -220,29 +220,29 @@ projection, PostgreSQL reconstruction, and worker telemetry operate together.
 
 ### Acceptance criteria
 
-- [ ] `claims-worker run-once` is registered as an executable command.
-- [ ] The command loads environment configuration and connects to the configured PostgreSQL
+- [x] `claims-worker run-once` is registered as an executable command.
+- [x] The command loads environment configuration and connects to the configured PostgreSQL
   database.
-- [ ] The worker initializes the LangGraph checkpoint schema before processing.
-- [ ] A public multipart submission returns `202 Accepted` and creates one available work item.
-- [ ] The worker leases the submitted claim through the PostgreSQL scheduler.
-- [ ] No processing fixture row exists for the submitted claim version.
-- [ ] Normal routing selects the recorded document-intelligence path from the execution profile,
+- [x] The worker initializes the LangGraph checkpoint schema before processing.
+- [x] A public multipart submission returns `202 Accepted` and creates one available work item.
+- [x] The worker leases the submitted claim through the PostgreSQL scheduler.
+- [x] No processing fixture row exists for the submitted claim version.
+- [x] Normal routing selects the recorded document-intelligence path from the execution profile,
   not fixture presence.
-- [ ] Submitted documents are rendered into bounded immutable page artifacts.
-- [ ] Recorded discovery OCR is selected by canonical page input identity.
-- [ ] Fast triage consumes bounded discovery observations and covers every submitted document
+- [x] Submitted documents are rendered into bounded immutable page artifacts.
+- [x] Recorded discovery OCR is selected by canonical page input identity.
+- [x] Fast triage consumes bounded discovery observations and covers every submitted document
   exactly once.
-- [ ] Triage output cites persisted discovery observations for material classifications.
-- [ ] The early gate identifies the observed roles and missing required role.
-- [ ] Complex extraction and policy adjudication do not execute after the failed early gate.
-- [ ] Claim, work, workflow, member action, audit, and projection states commit consistently.
-- [ ] The work item and workflow complete while the claim reaches `ACTION_REQUIRED`.
-- [ ] The claim cannot remain `QUEUED` after work completion.
-- [ ] `GET /v1/claims/{claim_id}` exposes the affected documents and requested correction.
-- [ ] PostgreSQL reconstruction contains the ordered workflow, evidence, action, and audit history.
-- [ ] The worker writes a correlated rotating JSONL record.
-- [ ] A public end-to-end test proves the complete no-fixture behavior.
+- [x] Triage output cites persisted discovery observations for material classifications.
+- [x] The early gate identifies the observed roles and missing required role.
+- [x] Complex extraction and policy adjudication do not execute after the failed early gate.
+- [x] Claim, work, workflow, member action, audit, and projection states commit consistently.
+- [x] The work item and workflow complete while the claim reaches `ACTION_REQUIRED`.
+- [x] The claim cannot remain `QUEUED` after work completion.
+- [x] `GET /v1/claims/{claim_id}` exposes the affected documents and requested correction.
+- [x] PostgreSQL reconstruction contains the ordered workflow, evidence, action, and audit history.
+- [x] The worker writes a correlated rotating JSONL record.
+- [x] A public end-to-end test proves the complete no-fixture behavior.
 
 ---
 
@@ -262,24 +262,24 @@ AWS calls.
 
 ### Acceptance criteria
 
-- [ ] `claims-worker run-loop` is registered as an executable command.
-- [ ] The loop starts successfully when no work is currently due.
-- [ ] Idle polling does not retain a database transaction or work lease.
-- [ ] A claim submitted after worker startup is discovered and processed.
-- [ ] The loop processes one claim at a time for Backend v1.
-- [ ] Polling interval and worker identity are controlled by validated configuration.
-- [ ] `GET /health/live` reports API-process liveness without dependency checks.
-- [ ] `GET /health/ready` verifies runtime configuration and PostgreSQL connectivity.
-- [ ] Readiness fails safely when PostgreSQL is unavailable.
-- [ ] Neither health endpoint constructs or calls AWS providers.
-- [ ] Claim status exposes stable machine-readable progress while work is queued and running.
-- [ ] A frontend can submit a claim and poll until it reaches `ACTION_REQUIRED`.
-- [ ] Existing submission, claim, action, and review contracts remain backward compatible except
+- [x] `claims-worker run-loop` is registered as an executable command.
+- [x] The loop starts successfully when no work is currently due.
+- [x] Idle polling does not retain a database transaction or work lease.
+- [x] A claim submitted after worker startup is discovered and processed.
+- [x] The loop processes one claim at a time for Backend v1.
+- [x] Polling interval and worker identity are controlled by validated configuration.
+- [x] `GET /health/live` reports API-process liveness without dependency checks.
+- [x] `GET /health/ready` verifies runtime configuration and PostgreSQL connectivity.
+- [x] Readiness fails safely when PostgreSQL is unavailable.
+- [x] Neither health endpoint constructs or calls AWS providers.
+- [x] Claim status exposes stable machine-readable progress while work is queued and running.
+- [x] A frontend can submit a claim and poll until it reaches `ACTION_REQUIRED`.
+- [x] Existing submission, claim, action, and review contracts remain backward compatible except
   for additive lifecycle and progress values.
-- [ ] API and worker processes write separate JSONL files.
-- [ ] The frontend integration documentation describes worker startup, health endpoints, polling,
+- [x] API and worker processes write separate JSONL files.
+- [x] The frontend integration documentation describes worker startup, health endpoints, polling,
   progress, and stopped states.
-- [ ] An integration test starts the loop, submits work afterward, observes progression, and
+- [x] An integration test starts the loop, submits work afterward, observes progression, and
   terminates the loop cleanly.
 
 ---
@@ -298,22 +298,22 @@ checkpoints.
 
 ### Acceptance criteria
 
-- [ ] Active work renews its lease before expiry.
-- [ ] Lease renewal uses the current owner and fencing token.
-- [ ] A stale owner or token cannot renew a reclaimed lease.
-- [ ] The worker stops leasing new work after SIGINT or SIGTERM.
-- [ ] Idle shutdown completes without waiting for the poll interval.
-- [ ] Active shutdown allows the current operation a configured bounded completion period.
-- [ ] Forced termination leaves work recoverable after lease expiry.
-- [ ] A replacement worker reclaims expired work with a new fencing token.
-- [ ] A replacement worker resumes from the last committed LangGraph checkpoint.
-- [ ] Completed workflow effects are not duplicated after recovery.
-- [ ] A worker that loses its lease cannot commit a terminal claim effect.
-- [ ] Long provider calls do not hold database transactions open.
-- [ ] The worker flushes JSONL records and Phoenix spans before normal exit.
-- [ ] The worker disposes of its PostgreSQL engine before normal exit.
-- [ ] Recovery tests prove one eventual terminal effect across interrupted workers.
-- [ ] Lease-heartbeat tests use short deterministic intervals without calling external providers.
+- [x] Active work renews its lease before expiry.
+- [x] Lease renewal uses the current owner and fencing token.
+- [x] A stale owner or token cannot renew a reclaimed lease.
+- [x] The worker stops leasing new work after SIGINT or SIGTERM.
+- [x] Idle shutdown completes without waiting for the poll interval.
+- [x] Active shutdown allows the current operation a configured bounded completion period.
+- [x] Forced termination leaves work recoverable after lease expiry.
+- [x] A replacement worker reclaims expired work with a new fencing token.
+- [x] A replacement worker resumes from the last committed LangGraph checkpoint.
+- [x] Completed workflow effects are not duplicated after recovery.
+- [x] A worker that loses its lease cannot commit a terminal claim effect.
+- [x] Long provider calls do not hold database transactions open.
+- [x] The worker flushes JSONL records and Phoenix spans before normal exit.
+- [x] The worker disposes of its PostgreSQL engine before normal exit.
+- [x] Recovery tests prove one eventual terminal effect across interrupted workers.
+- [x] Lease-heartbeat tests use short deterministic intervals without calling external providers.
 
 ---
 
@@ -330,26 +330,26 @@ history without conflating processing failure with adjudication rejection or mem
 
 ### Acceptance criteria
 
-- [ ] `PROCESSING_FAILED` is a supported domain and public API lifecycle.
-- [ ] Retryable failures return work to available state with a persisted future due time.
-- [ ] Retry scheduling follows configured bounded backoff and jitter.
-- [ ] A retry does not duplicate rendered pages, OCR observations, evidence, audit events, or
+- [x] `PROCESSING_FAILED` is a supported domain and public API lifecycle.
+- [x] Retryable failures return work to available state with a persisted future due time.
+- [x] Retry scheduling follows configured bounded backoff and jitter.
+- [x] A retry does not duplicate rendered pages, OCR observations, evidence, audit events, or
   terminal effects.
-- [ ] Exhausting the work attempt budget transitions the work item to failed.
-- [ ] Exhaustion transitions the workflow run and claim projection consistently.
-- [ ] The terminal failure appends an immutable audit event.
-- [ ] The terminal failure retains sanitized component, attempt, retryability, and failure-code
+- [x] Exhausting the work attempt budget transitions the work item to failed.
+- [x] Exhaustion transitions the workflow run and claim projection consistently.
+- [x] The terminal failure appends an immutable audit event.
+- [x] The terminal failure retains sanitized component, attempt, retryability, and failure-code
   details for operations.
-- [ ] Member projection exposes a stable safe error code and retry guidance.
-- [ ] Member projection excludes provider response bodies, OCR text, patient facts, credentials,
+- [x] Member projection exposes a stable safe error code and retry guidance.
+- [x] Member projection excludes provider response bodies, OCR text, patient facts, credentials,
   and internal exception messages.
-- [ ] `ACTION_REQUIRED` remains reserved for a member-correctable evidence problem.
-- [ ] No adjudication recommendation or approved amount is created for processing failure.
-- [ ] The claim cannot remain `QUEUED` after the failed work item becomes terminal.
-- [ ] PostgreSQL reconstruction explains every attempt and the final failure transition.
-- [ ] Frontend integration documentation defines the processing-failed state and expected UI
+- [x] `ACTION_REQUIRED` remains reserved for a member-correctable evidence problem.
+- [x] No adjudication recommendation or approved amount is created for processing failure.
+- [x] The claim cannot remain `QUEUED` after the failed work item becomes terminal.
+- [x] PostgreSQL reconstruction explains every attempt and the final failure transition.
+- [x] Frontend integration documentation defines the processing-failed state and expected UI
   handling.
-- [ ] Contract and integration tests cover retry, exhaustion, projection, audit, and
+- [x] Contract and integration tests cover retry, exhaustion, projection, audit, and
   reconstruction.
 
 ---
@@ -369,27 +369,27 @@ No fixture row or oracle field may control routing, evidence, or outcome.
 
 ### Acceptance criteria
 
-- [ ] A public multipart claim with prescription and bill documents is accepted and queued.
-- [ ] No processing fixture row exists for the claim version.
-- [ ] Discovery OCR and grounded fast triage identify both required document roles.
-- [ ] The successful early gate continues into role-aware document analysis.
-- [ ] Recorded role-aware OCR responses are selected by canonical input identity.
-- [ ] Recorded complex-extraction responses are selected by canonical bounded-observation input.
-- [ ] Recorded providers cannot access expected outcome fields or case identifiers.
-- [ ] Every material extracted candidate cites a persisted OCR observation.
-- [ ] Authority validation rejects any model attempt to provide a decision or payable amount.
-- [ ] Reconciliation preserves sources, conflicts, unknowns, and canonical fact states.
-- [ ] The frozen casefile records immutable evidence, member, policy, and claim snapshot hashes.
-- [ ] Deterministic adjudication produces the expected recommendation, exact amount, rule trace,
+- [x] A public multipart claim with prescription and bill documents is accepted and queued.
+- [x] No processing fixture row exists for the claim version.
+- [x] Discovery OCR and grounded fast triage identify both required document roles.
+- [x] The successful early gate continues into role-aware document analysis.
+- [x] Recorded role-aware OCR responses are selected by canonical input identity.
+- [x] Recorded complex-extraction responses are selected by canonical bounded-observation input.
+- [x] Recorded providers cannot access expected outcome fields or case identifiers.
+- [x] Every material extracted candidate cites a persisted OCR observation.
+- [x] Authority validation rejects any model attempt to provide a decision or payable amount.
+- [x] Reconciliation preserves sources, conflicts, unknowns, and canonical fact states.
+- [x] The frozen casefile records immutable evidence, member, policy, and claim snapshot hashes.
+- [x] Deterministic adjudication produces the expected recommendation, exact amount, rule trace,
   and amount trace.
-- [ ] Decision, projection, rules, calculations, audit, workflow, and work completion commit
+- [x] Decision, projection, rules, calculations, audit, workflow, and work completion commit
   atomically.
-- [ ] The claim reaches `DECIDED` and cannot remain queued.
-- [ ] The public projection explains the recommendation and deduction without exposing internal
+- [x] The claim reaches `DECIDED` and cannot remain queued.
+- [x] The public projection explains the recommendation and deduction without exposing internal
   provider content.
-- [ ] PostgreSQL reconstruction reproduces the complete evidence-to-decision path.
-- [ ] Replaying the same immutable inputs produces the same canonical decision hash.
-- [ ] A public no-fixture clean-decision integration test proves the complete path.
+- [x] PostgreSQL reconstruction reproduces the complete evidence-to-decision path.
+- [x] Replaying the same immutable inputs produces the same canonical decision hash.
+- [x] A public no-fixture clean-decision integration test proves the complete path.
 
 ---
 
@@ -405,22 +405,22 @@ claim-version creation, and successful reprocessing without fixture-selected rou
 
 ### Acceptance criteria
 
-- [ ] TC001 identifies both observed prescriptions and the missing hospital bill.
-- [ ] TC001 reaches `ACTION_REQUIRED` without complex extraction or adjudication.
-- [ ] TC002 identifies the unreadable pharmacy bill by stable client document ID.
-- [ ] TC002 requests replacement rather than rejecting or failing the claim.
-- [ ] TC003 preserves each conflicting patient identity observation and its document provenance.
-- [ ] TC003 reaches a corrective state without policy adjudication.
-- [ ] Unknown document roles remain unknown rather than being coerced to a known role.
-- [ ] Triage output covers every submitted document exactly once for all three cases.
-- [ ] Every material triage value is grounded to discovery OCR evidence.
-- [ ] Replacement uploads create immutable document and claim versions.
-- [ ] Replacement supersedes older pending work without mutating prior evidence.
-- [ ] Reprocessing uses the new claim version and a distinct workflow trace.
-- [ ] Prior workflow, action, evidence, and audit history remain reconstructable.
-- [ ] Normal processing for these cases creates no processing fixture rows.
-- [ ] Recorded early-gate tests cannot contact external networks.
-- [ ] Public projections expose only member-safe document correction details.
+- [x] TC001 identifies both observed prescriptions and the missing hospital bill.
+- [x] TC001 reaches `ACTION_REQUIRED` without complex extraction or adjudication.
+- [x] TC002 identifies the unreadable pharmacy bill by stable client document ID.
+- [x] TC002 requests replacement rather than rejecting or failing the claim.
+- [x] TC003 preserves each conflicting patient identity observation and its document provenance.
+- [x] TC003 reaches a corrective state without policy adjudication.
+- [x] Unknown document roles remain unknown rather than being coerced to a known role.
+- [x] Triage output covers every submitted document exactly once for all three cases.
+- [x] Every material triage value is grounded to discovery OCR evidence.
+- [x] Replacement uploads create immutable document and claim versions.
+- [x] Replacement supersedes older pending work without mutating prior evidence.
+- [x] Reprocessing uses the new claim version and a distinct workflow trace.
+- [x] Prior workflow, action, evidence, and audit history remain reconstructable.
+- [x] Normal processing for these cases creates no processing fixture rows.
+- [x] Recorded early-gate tests cannot contact external networks.
+- [x] Public projections expose only member-safe document correction details.
 
 ---
 
@@ -437,23 +437,23 @@ deterministic explainable decision.
 
 ### Acceptance criteria
 
-- [ ] TC005 reaches `DECIDED` with the expected waiting-period rejection.
-- [ ] TC005 records the member join date, treatment date, applicable waiting rule, and eligibility
+- [x] TC005 reaches `DECIDED` with the expected waiting-period rejection.
+- [x] TC005 records the member join date, treatment date, applicable waiting rule, and eligibility
   date with provenance.
-- [ ] TC007 reaches `DECIDED` with the expected missing-pre-authorization rejection.
-- [ ] TC007 distinguishes absent supported authorization evidence from unreadable or conflicting
+- [x] TC007 reaches `DECIDED` with the expected missing-pre-authorization rejection.
+- [x] TC007 distinguishes absent supported authorization evidence from unreadable or conflicting
   authorization evidence.
-- [ ] TC008 reaches `DECIDED` with the expected category-limit rejection and amount trace.
-- [ ] TC012 reaches `DECIDED` with the expected excluded-condition rejection.
-- [ ] Every material fact is supported, conflicting, or explicitly unknown.
-- [ ] Every outcome references the pinned immutable policy and overlay.
-- [ ] Every rule result identifies its policy path and evidence references.
-- [ ] No model output directly selects an adjudication recommendation.
-- [ ] No case-specific branch, fixture route, or oracle field influences runtime behavior.
-- [ ] Terminal writes remain atomic and replay-safe.
-- [ ] Public projections provide member-safe explanations.
-- [ ] PostgreSQL reconstruction reproduces each complete decision.
-- [ ] Recorded execution remains network-free.
+- [x] TC008 reaches `DECIDED` with the expected category-limit rejection and amount trace.
+- [x] TC012 reaches `DECIDED` with the expected excluded-condition rejection.
+- [x] Every material fact is supported, conflicting, or explicitly unknown.
+- [x] Every outcome references the pinned immutable policy and overlay.
+- [x] Every rule result identifies its policy path and evidence references.
+- [x] No model output directly selects an adjudication recommendation.
+- [x] No case-specific branch, fixture route, or oracle field influences runtime behavior.
+- [x] Terminal writes remain atomic and replay-safe.
+- [x] Public projections provide member-safe explanations.
+- [x] PostgreSQL reconstruction reproduces each complete decision.
+- [x] Recorded execution remains network-free.
 
 ---
 
@@ -469,22 +469,22 @@ evaluation, and explanation so that calculation order and exclusions remain audi
 
 ### Acceptance criteria
 
-- [ ] TC006 reaches `DECIDED` with the expected partial approval and exact approved amount.
-- [ ] Root-canal and whitening line items remain distinct through every processing stage.
-- [ ] The covered line item and excluded line item retain separate provenance.
-- [ ] Category-specific limit precedence is visible in the rule and amount trace.
-- [ ] TC010 reaches `DECIDED` with the expected exact approved amount.
-- [ ] Network discount is applied before co-pay.
-- [ ] Every amount step records the amount before, named adjustment, adjustment amount, and amount
+- [x] TC006 reaches `DECIDED` with the expected partial approval and exact approved amount.
+- [x] Root-canal and whitening line items remain distinct through every processing stage.
+- [x] The covered line item and excluded line item retain separate provenance.
+- [x] Category-specific limit precedence is visible in the rule and amount trace.
+- [x] TC010 reaches `DECIDED` with the expected exact approved amount.
+- [x] Network discount is applied before co-pay.
+- [x] Every amount step records the amount before, named adjustment, adjustment amount, and amount
   after.
-- [ ] All calculations use integer paise and explicit rounding.
-- [ ] Replaying the same casefile and policy produces the same calculation and decision hash.
-- [ ] No model supplies an approved amount, deduction, limit result, or rule outcome.
-- [ ] Public explanations identify covered items, excluded items, discounts, co-pay, and final
+- [x] All calculations use integer paise and explicit rounding.
+- [x] Replaying the same casefile and policy produces the same calculation and decision hash.
+- [x] No model supplies an approved amount, deduction, limit result, or rule outcome.
+- [x] Public explanations identify covered items, excluded items, discounts, co-pay, and final
   amount without exposing raw provider content.
-- [ ] Terminal writes remain atomic and replay-safe.
-- [ ] PostgreSQL reconstruction preserves the complete line-item and calculation path.
-- [ ] Both cases use normal no-fixture routing in recorded mode.
+- [x] Terminal writes remain atomic and replay-safe.
+- [x] PostgreSQL reconstruction preserves the complete line-item and calculation path.
+- [x] Both cases use normal no-fixture routing in recorded mode.
 
 ---
 
@@ -501,23 +501,23 @@ review workflow remains fully reconstructable.
 
 ### Acceptance criteria
 
-- [ ] TC009 reaches `IN_REVIEW` with the expected same-day velocity signals.
-- [ ] TC009 retains its machine recommendation and calculation separately from review status.
-- [ ] An authorized reviewer can list and inspect the generated review task.
-- [ ] Review detail exposes evidence, conflicts, rules, calculations, failures, and allowed
+- [x] TC009 reaches `IN_REVIEW` with the expected same-day velocity signals.
+- [x] TC009 retains its machine recommendation and calculation separately from review status.
+- [x] An authorized reviewer can list and inspect the generated review task.
+- [x] Review detail exposes evidence, conflicts, rules, calculations, failures, and allowed
   actions through member-safe and reviewer-appropriate projections.
-- [ ] TC011 reaches the expected adjudication recommendation while recording the named degraded
+- [x] TC011 reaches the expected adjudication recommendation while recording the named degraded
   component.
-- [ ] TC011 records reduced processing completeness and confidence.
-- [ ] TC011 records recommended manual handling without changing the deterministic policy result.
-- [ ] A noncritical engineering or enrichment failure cannot roll back a valid domain decision.
-- [ ] A critical audit or terminal-persistence failure prevents terminal completion.
-- [ ] Human resolution preserves the original machine proposal.
-- [ ] Review commands remain authorized, version-fenced, and idempotent.
-- [ ] Review spans continue from or correlate with the claim workflow context.
-- [ ] PostgreSQL reconstruction includes machine recommendation, degradation, review task, and
+- [x] TC011 records reduced processing completeness and confidence.
+- [x] TC011 records recommended manual handling without changing the deterministic policy result.
+- [x] A noncritical engineering or enrichment failure cannot roll back a valid domain decision.
+- [x] A critical audit or terminal-persistence failure prevents terminal completion.
+- [x] Human resolution preserves the original machine proposal.
+- [x] Review commands remain authorized, version-fenced, and idempotent.
+- [x] Review spans continue from or correlate with the claim workflow context.
+- [x] PostgreSQL reconstruction includes machine recommendation, degradation, review task, and
   human resolution.
-- [ ] Both cases use the normal no-fixture recorded runtime.
+- [x] Both cases use the normal no-fixture recorded runtime.
 
 ---
 
@@ -533,29 +533,29 @@ trace-level evaluations while preserving PostgreSQL as the complete business exp
 
 ### Acceptance criteria
 
-- [ ] Every claim-related span carries `session.id` equal to the claim ID once the claim is known.
-- [ ] Each immutable claim version has a distinct workflow trace within the claim session.
-- [ ] Workflow-run ID remains stable across checkpoint recovery.
-- [ ] API submission and worker execution are correlated across the asynchronous boundary.
-- [ ] Replacement processing appears in the same claim session and a new version trace.
-- [ ] Review inspection and resolution appear in the same claim session.
-- [ ] Workflow root spans include queue wait, total duration, graph version, execution profile,
+- [x] Every claim-related span carries `session.id` equal to the claim ID once the claim is known.
+- [x] Each immutable claim version has a distinct workflow trace within the claim session.
+- [x] Workflow-run ID remains stable across checkpoint recovery.
+- [x] API submission and worker execution are correlated across the asynchronous boundary.
+- [x] Replacement processing appears in the same claim session and a new version trace.
+- [x] Review inspection and resolution appear in the same claim session.
+- [x] Workflow root spans include queue wait, total duration, graph version, execution profile,
   attempt, and terminal outcome.
-- [ ] Node spans include node identity, component, duration, attempt, and outcome.
-- [ ] Textract spans include provider profile, request ID, latency, and retry count.
-- [ ] Bedrock spans include route, model, prompt/schema versions, token counts, latency, stop
+- [x] Node spans include node identity, component, duration, attempt, and outcome.
+- [x] Textract spans include provider profile, request ID, latency, and retry count.
+- [x] Bedrock spans include route, model, prompt/schema versions, token counts, latency, stop
   reason, request ID, and sanitized failure type.
-- [ ] Reconciliation spans include candidate count, conflict state, and sufficiency without
+- [x] Reconciliation spans include candidate count, conflict state, and sufficiency without
   medical values.
-- [ ] Trace evaluations record schema validity, evidence grounding, trace completeness,
+- [x] Trace evaluations record schema validity, evidence grounding, trace completeness,
   reconstruction completeness, policy determinism, and telemetry privacy.
-- [ ] API, worker, and evaluation JSONL records share claim, workflow, trace, span, attempt,
+- [x] API, worker, and evaluation JSONL records share claim, workflow, trace, span, attempt,
   duration, and outcome identifiers where applicable.
-- [ ] PHI canaries reject patient names, medical content, OCR text, document bytes, local paths,
+- [x] PHI canaries reject patient names, medical content, OCR text, document bytes, local paths,
   prompts, raw responses, credentials, and configured synthetic canaries.
-- [ ] Normal observability capture remains content-free.
-- [ ] Removing Phoenix and JSONL data does not alter or prevent PostgreSQL reconstruction.
-- [ ] A claim-session boundary test verifies hierarchy, correlation, evaluations, logs, and
+- [x] Normal observability capture remains content-free.
+- [x] Removing Phoenix and JSONL data does not alter or prevent PostgreSQL reconstruction.
+- [x] A claim-session boundary test verifies hierarchy, correlation, evaluations, logs, and
   privacy in one execution.
 
 ---
@@ -577,33 +577,33 @@ aliases. The live gate remains explicit and paid.
 
 ### Acceptance criteria
 
-- [ ] The live test is skipped unless both the live profile and paid-AWS authorization are
+- [x] The live test is skipped unless both the live profile and paid-AWS authorization are
   explicitly selected.
-- [ ] The live test uses generated synthetic documents containing no identifiable patient data.
-- [ ] The claim enters only through the public multipart API.
-- [ ] The claim is processed by the same standalone worker construction used for normal local
+- [x] The live test uses generated synthetic documents containing no identifiable patient data.
+- [x] The claim enters only through the public multipart API.
+- [x] The claim is processed by the same standalone worker construction used for normal local
   operation.
-- [ ] No processing fixture row or recorded provider adapter is used.
-- [ ] Real Textract discovery OCR precedes fast triage.
-- [ ] Fast triage covers every submitted document and grounds its output.
-- [ ] Role-aware Textract analysis runs where required.
-- [ ] Real Qwen structured extraction uses the pinned model, prompt, schema, and route versions.
-- [ ] Prompt guidance permits only canonical fact paths and explicitly requires role-specific
+- [x] No processing fixture row or recorded provider adapter is used.
+- [x] Real Textract discovery OCR precedes fast triage.
+- [x] Fast triage covers every submitted document and grounds its output.
+- [x] Role-aware Textract analysis runs where required.
+- [x] Real Qwen structured extraction uses the pinned model, prompt, schema, and route versions.
+- [x] Prompt guidance permits only canonical fact paths and explicitly requires role-specific
   material facts.
-- [ ] `clinical.diagnosis` may normalize to `clinical.condition` only through the versioned alias
+- [x] `clinical.diagnosis` may normalize to `clinical.condition` only through the versioned alias
   registry and grounded evidence.
-- [ ] Alias normalization records source path, target path, registry version, and evidence
+- [x] Alias normalization records source path, target path, registry version, and evidence
   references without medical values in telemetry.
-- [ ] Missing `billing.total` or another material fact is never invented.
-- [ ] Ungrounded, unauthorized, extra, or invalid model fields fail safely.
-- [ ] Reconciliation and policy code—not the model—produce the final recommendation and amount.
+- [x] Missing `billing.total` or another material fact is never invented.
+- [x] Ungrounded, unauthorized, extra, or invalid model fields fail safely.
+- [x] Reconciliation and policy code—not the model—produce the final recommendation and amount.
 - [ ] The selected claim reaches the expected terminal projection and exact deterministic result.
 - [ ] PostgreSQL reconstructs the complete live provider-to-decision path.
 - [ ] Phoenix contains the complete live claim session with provider metadata and no prohibited
   content.
 - [ ] Separate Textract and Bedrock live smoke tests continue to pass.
-- [ ] Default tests do not execute this paid gate.
-- [ ] Live limitations and provider variability are documented without claiming all twelve live
+- [x] Default tests do not execute this paid gate.
+- [x] Live limitations and provider variability are documented without claiming all twelve live
   cases pass.
 
 ---
@@ -621,15 +621,15 @@ honest completion report and frontend integration contract.
 
 ### Acceptance criteria
 
-- [ ] The configured test database differs from the normal application database.
-- [ ] Test startup refuses identical application and test database targets unless an explicit
+- [x] The configured test database differs from the normal application database.
+- [x] Test startup refuses identical application and test database targets unless an explicit
   destructive-test override is present.
-- [ ] Database-safety tests prove the refusal and explicit override behavior.
+- [x] Database-safety tests prove the refusal and explicit override behavior.
 - [ ] The complete deterministic suite passes with paid AWS disabled.
-- [ ] The public no-fixture action-required test passes.
-- [ ] The public no-fixture clean-decision test passes.
-- [ ] All twelve recorded rendered evaluation cases pass.
-- [ ] Every recorded case uses the operational worker construction and normal no-fixture routing.
+- [x] The public no-fixture action-required test passes.
+- [x] The public no-fixture clean-decision test passes.
+- [x] All twelve recorded rendered evaluation cases pass.
+- [x] Every recorded case uses the operational worker construction and normal no-fixture routing.
 - [ ] The recorded evaluation report is saved outside temporary test storage.
 - [ ] The report contains expected and actual lifecycle, adjudication, amount, reason codes,
   provenance, assumptions, failures, and trace completeness for TC001–TC012.
@@ -640,22 +640,22 @@ honest completion report and frontend integration contract.
 - [ ] The telemetry privacy report records the completed canary scan without including scanned
   medical content.
 - [ ] Sanitized proof artifacts are committed.
-- [ ] Raw documents, page artifacts, OCR bodies, prompts, model responses, JSONL runtime logs,
+- [x] Raw documents, page artifacts, OCR bodies, prompts, model responses, JSONL runtime logs,
   Phoenix storage, database files, and credentials remain excluded.
 - [ ] The explicitly selected Textract and Bedrock smoke results are documented.
 - [ ] The explicitly selected complete live claim result is documented.
-- [ ] Known live provider limitations and safe-failure behavior are documented honestly.
-- [ ] Formatting check passes after applying the configured formatter.
-- [ ] Lint passes.
-- [ ] Strict type checking passes.
-- [ ] Migration drift check passes.
-- [ ] Repository diff whitespace validation passes.
+- [x] Known live provider limitations and safe-failure behavior are documented honestly.
+- [x] Formatting check passes after applying the configured formatter.
+- [x] Lint passes.
+- [x] Strict type checking passes.
+- [x] Migration drift check passes.
+- [x] Repository diff whitespace validation passes.
 - [ ] Backend completion documentation includes architecture, implemented and excluded scope,
   current commands and results, all twelve recorded outcomes, live results, limitations, API
   startup, worker startup, log inspection, Phoenix inspection, PostgreSQL inspection, and
   frontend integration.
 - [ ] The completion checklist contains no unchecked Backend v1 requirement.
-- [ ] Identifiable patient-data processing remains explicitly unsupported.
+- [x] Identifiable patient-data processing remains explicitly unsupported.
 
 ---
 
@@ -663,20 +663,20 @@ honest completion report and frontend integration contract.
 
 The plan is complete only when all thirteen phase acceptance sections pass and:
 
-- [ ] A normally started FastAPI process accepts a valid claim.
-- [ ] A normally started standalone worker advances the claim.
-- [ ] Normal processing does not depend on `ProcessingFixtureRow`.
-- [ ] Recorded mode provides a complete cost-free frontend integration path.
+- [x] A normally started FastAPI process accepts a valid claim.
+- [x] A normally started standalone worker advances the claim.
+- [x] Normal processing does not depend on `ProcessingFixtureRow`.
+- [x] Recorded mode provides a complete cost-free frontend integration path.
 - [ ] Live mode provides a complete explicitly authorized Textract-and-Bedrock path.
-- [ ] A work item cannot terminally complete while its claim remains `QUEUED`.
-- [ ] Exhausted processing failures reach `PROCESSING_FAILED`.
-- [ ] All twelve recorded rendered cases pass through the operational runtime.
+- [x] A work item cannot terminally complete while its claim remains `QUEUED`.
+- [x] Exhausted processing failures reach `PROCESSING_FAILED`.
+- [x] All twelve recorded rendered cases pass through the operational runtime.
 - [ ] At least one synthetic live claim passes through the public durable workflow.
-- [ ] PostgreSQL reconstructs every material decision and handling step.
-- [ ] Phoenix groups the complete claim journey into a privacy-safe session.
-- [ ] API, worker, and evaluation JSONL logs are produced.
+- [x] PostgreSQL reconstructs every material decision and handling step.
+- [x] Phoenix groups the complete claim journey into a privacy-safe session.
+- [x] API, worker, and evaluation JSONL logs are produced.
 - [ ] Durable sanitized artifacts prove the test, evaluation, version, and privacy results.
-- [ ] Formatting, lint, typing, migrations, and repository validation pass.
-- [ ] Paid AWS remains disabled by default.
-- [ ] Documentation states current evidence and limitations without overstating real-world or live
+- [x] Formatting, lint, typing, migrations, and repository validation pass.
+- [x] Paid AWS remains disabled by default.
+- [x] Documentation states current evidence and limitations without overstating real-world or live
   coverage.
