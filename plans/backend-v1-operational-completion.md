@@ -149,6 +149,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
 - [x] Repository formatting, lint, strict typing, and Alembic drift checks (`9cffc2e`).
 - [x] Immutable workflow execution-contract persistence and changed-runtime recovery guard.
+- [x] Historical prompt v3 and route contracts can be rebuilt from persisted execution metadata;
+  composition rejects incompatible profile/provider contracts before adapter construction.
 - [ ] Operational no-fixture clean-decision tracer and all remaining recorded cases.
 - [ ] Recovery construction from persisted provider/model versions when a compatible historical
   adapter is not present in the current process.
