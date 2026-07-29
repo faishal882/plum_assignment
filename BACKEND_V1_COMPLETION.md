@@ -35,6 +35,8 @@ sanitized proof artifacts. It does not claim arbitrary real-document accuracy.
   `artifacts/backend-v1/live-intelligence-summary.json`.
 - The explicitly authorized synthetic Textract and Bedrock smoke suite also passed: **2 passed**
   in 3.94 seconds.
+- The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions
+  and rejects synthetic patient/clinical canaries from span attributes.
 
 ## Local operation
 

@@ -18,7 +18,8 @@
   "notes": [
     "Uses generated synthetic documents only.",
     "The direct provider-to-policy tracer passed in 19.74 seconds.",
-    "The public FastAPI to standard-worker tracer passed in 38.00 seconds: CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_live_worker_tc004.py -q.",
+    "The public FastAPI to standard-worker tracer passed in 46.25 seconds: CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_live_worker_tc004.py -q.",
+    "The public-worker tracer verifies API and worker Phoenix claim sessions and PHI-safe span attributes.",
     "Recorded rendered evaluation remains the twelve-case acceptance gate."
   ]
 }

@@ -2,10 +2,12 @@ import json
 from io import BytesIO
 from os import environ
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from PIL import Image, ImageDraw, ImageFont
 
 from claims_backend.api.app import create_app
@@ -13,6 +15,11 @@ from claims_backend.application.setup_import import SetupDataApplication
 from claims_backend.config import Settings
 from claims_backend.infrastructure.postgres.setup_import_repository import (
     PostgresSetupImportRepository,
+)
+from claims_backend.observability import (
+    ObservabilityConfig,
+    create_observability,
+    scan_telemetry_for_phi,
 )
 from claims_backend.runtime.composition import create_process_runtime
 from claims_backend.runtime.profiles import ExecutionProfile
@@ -45,8 +52,28 @@ async def test_live_tc004_runs_through_public_api_and_standard_worker(
         bedrock_model_id=_SETTINGS.bedrock_model_id,
         observability_enabled=False,
     )
-    app = create_app(settings)
-    runtime = create_process_runtime(settings, process_name="live-worker-test")
+    api_exporter = InMemorySpanExporter()
+    worker_exporter = InMemorySpanExporter()
+    api_observability = create_observability(
+        ObservabilityConfig(
+            log_root=settings.log_root, phi_canaries=("Rajesh Kumar", "Viral Fever")
+        ),
+        process_name="api",
+        span_exporter=api_exporter,
+    )
+    worker_observability = create_observability(
+        ObservabilityConfig(
+            log_root=settings.log_root, phi_canaries=("Rajesh Kumar", "Viral Fever")
+        ),
+        process_name="worker",
+        span_exporter=worker_exporter,
+    )
+    app = create_app(settings, observability=api_observability)
+    runtime = create_process_runtime(
+        settings,
+        process_name="worker",
+        observability=worker_observability,
+    )
     worker = create_claim_worker(runtime)
     try:
         await _import_member_facts(runtime.session_factory)
@@ -88,12 +115,30 @@ async def test_live_tc004_runs_through_public_api_and_standard_worker(
             "approved_amount": "1350.00",
             "currency": "INR",
         }
+        api_spans = api_exporter.get_finished_spans()
+        worker_spans = worker_exporter.get_finished_spans()
+        assert any(
+            span.name == "api.claim_submitted"
+            and (span.attributes or {}).get("session.id") == str(claim_id)
+            for span in api_spans
+        )
+        assert any(
+            span.name == "claim.workflow"
+            and (span.attributes or {}).get("session.id") == str(claim_id)
+            for span in worker_spans
+        )
+        scan_telemetry_for_phi(
+            [dict(span.attributes or {}) for span in (*api_spans, *worker_spans)],
+            phi_canaries=("Rajesh Kumar", "Viral Fever"),
+        )
     finally:
         await worker.close()
+        api_observability.shutdown()
+        worker_observability.shutdown()
         await app.state.engine.dispose()
 
 
-async def _import_member_facts(factory) -> None:
+async def _import_member_facts(factory: Any) -> None:
     await SetupDataApplication(PostgresSetupImportRepository(factory)).import_sources(
         _POLICY_BYTES,
         source_name="policy_terms.json",
