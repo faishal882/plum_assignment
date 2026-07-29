@@ -33,6 +33,8 @@ unverified historical test counts into an operational-completion claim.
   standalone-worker tracer passed on 2026-07-29: real Textract and Qwen evidence reached the
   deterministic ₹1,350 approval. Their sanitized result is recorded in
   `artifacts/backend-v1/live-intelligence-summary.json`.
+- The explicitly authorized synthetic Textract and Bedrock smoke suite also passed: **2 passed**
+  in 3.94 seconds.
 
 ## Local operation
 

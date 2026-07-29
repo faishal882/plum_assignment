@@ -7,6 +7,12 @@
   "duration_seconds": 19.74,
   "scope": "synthetic TC004 live intelligence proof",
   "providers": ["AMAZON_TEXTRACT", "AMAZON_BEDROCK"],
+  "smoke_tests": {
+    "command": "CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_textract_live.py tests/live/test_bedrock_live.py -q",
+    "result": "PASSED",
+    "passed": 2,
+    "duration_seconds": 3.94
+  },
   "model_id": "qwen.qwen3-235b-a22b-2507-v1:0",
   "prompt_version": "complex-extraction-prompt-v4",
   "notes": [
