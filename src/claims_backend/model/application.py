@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from claims_backend.domain.evidence import TriageModelOutput
+from claims_backend.domain.evidence import TriageModelOutput, TriageProviderOutputV4
 from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
     EvidenceCandidate,
@@ -24,7 +24,7 @@ from claims_backend.model.extraction import (
 from claims_backend.model.routing import ModelRouteConfig, ModelRouter
 from claims_backend.model.transport import ModelInvocation, StructuredModelTransport
 
-FAST_TRIAGE_SYSTEM_PROMPT = (
+FAST_TRIAGE_SYSTEM_PROMPT_V2 = (
     "Classify each submitted claim document from discovery OCR. Return semantic predictions only: "
     "document role, readability status, and patient-name values. Ground every prediction by "
     "copying the exact supplied observation_id values into the corresponding evidence-reference "
@@ -33,6 +33,18 @@ FAST_TRIAGE_SYSTEM_PROMPT = (
     "hashes, page numbers, regions, document version IDs, render metadata, OCR confidence, policy "
     "decisions, or payment recommendations."
 )
+FAST_TRIAGE_SYSTEM_PROMPT_V3 = (
+    "Classify each submitted claim document from discovery OCR. Return semantic predictions only: "
+    "document role, readability status, and patient-name values. Ground every prediction by "
+    "copying the exact supplied observation_id values into the corresponding evidence-reference "
+    "fields. For role_evidence_refs and readability_evidence_refs, return 1–5 direct "
+    "observation IDs only, ordered strongest to weakest. Prefer document titles, patient lines, "
+    "bill or receipt lines, prescription lines, and total amount lines. Do not cite every OCR "
+    "line. Treat observation IDs as opaque references: never create, alter, or infer an ID. "
+    "Never return hashes, page numbers, regions, document version IDs, render metadata, OCR "
+    "confidence, policy decisions, or payment recommendations."
+)
+FAST_TRIAGE_SYSTEM_PROMPT = FAST_TRIAGE_SYSTEM_PROMPT_V3
 COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3 = (
     "Extract grounded evidence candidates only. Never decide policy or payment. "
     "Every fact_path must begin with exactly one allowed namespace: billing., "
@@ -64,7 +76,8 @@ def complex_extraction_system_prompt(config: ModelRouteConfig) -> str:
 class FastTriageResult:
     config: ModelRouteConfig
     invocation: ModelInvocation
-    output: TriageModelOutput
+    output: TriageModelOutput | TriageProviderOutputV4
+    raw_output_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,18 +119,30 @@ class StructuredModelApplication:
         messages: list[tuple[str, str]],
     ) -> FastTriageResult:
         config = self._router.resolve(ModelRoute.FAST_TRIAGE)
+        schema = triage_output_schema(config)
         invocation = await asyncio.to_thread(
             self._transport.invoke,
             config,
-            TriageModelOutput,
+            schema,
             messages,
         )
         reject_authority_fields(invocation.raw_output)
         try:
-            output = TriageModelOutput.model_validate(invocation.raw_output)
+            output = schema.model_validate(invocation.raw_output)
         except ValidationError as error:
             raise ModelSchemaValidationError("Model output failed the triage schema.") from error
-        return FastTriageResult(config=config, invocation=invocation, output=output)
+        return FastTriageResult(
+            config=config,
+            invocation=invocation,
+            output=output,
+            raw_output_sha256=sha256(
+                json.dumps(
+                    invocation.raw_output,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest(),
+        )
 
     async def extract_complex(
         self,
@@ -174,6 +199,30 @@ class StructuredModelApplication:
                 candidates=candidates,
             )
         )
+
+
+def triage_output_schema(
+    config: ModelRouteConfig,
+) -> type[TriageModelOutput] | type[TriageProviderOutputV4]:
+    if (
+        config.prompt_version == "fast-triage-prompt-v2"
+        and config.schema_version == "triage-output-v3"
+    ):
+        return TriageModelOutput
+    if (
+        config.prompt_version == "fast-triage-prompt-v3"
+        and config.schema_version == "triage-provider-output-v4"
+    ):
+        return TriageProviderOutputV4
+    raise ModelSchemaValidationError("Persisted fast triage route is unsupported.")
+
+
+def fast_triage_system_prompt(config: ModelRouteConfig) -> str:
+    if config.prompt_version == "fast-triage-prompt-v2":
+        return FAST_TRIAGE_SYSTEM_PROMPT_V2
+    if config.prompt_version == "fast-triage-prompt-v3":
+        return FAST_TRIAGE_SYSTEM_PROMPT_V3
+    raise ModelSchemaValidationError("Persisted fast triage prompt is unsupported.")
 
 
 def _input_sha256(

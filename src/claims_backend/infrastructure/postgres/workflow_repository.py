@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, update
@@ -281,7 +282,25 @@ def _execution_contract(value: dict[str, object]) -> ExecutionContract:
     )
     if not all(isinstance(field, str) and field for field in fields):
         raise WorkflowRunConflictError("Stored execution contract is malformed.")
-    return ExecutionContract(*fields, tuple(normalized_routes))  # type: ignore[arg-type]
+    policy_version = value.get("triage_evidence_policy_version")
+    if policy_version is None:
+        policy_version = "triage-evidence-policy-legacy-v0"
+    if not isinstance(policy_version, str) or not policy_version:
+        raise WorkflowRunConflictError("Stored execution contract is malformed.")
+    schema_version, execution_profile, ocr_name, ocr_version, model_name, model_version = cast(
+        tuple[str, str, str, str, str, str],
+        fields,
+    )
+    return ExecutionContract(
+        schema_version=schema_version,
+        execution_profile=execution_profile,
+        ocr_provider_name=ocr_name,
+        ocr_provider_version=ocr_version,
+        model_provider_name=model_name,
+        model_provider_version=model_version,
+        model_routes=tuple(normalized_routes),
+        triage_evidence_policy_version=policy_version,
+    )
 
 
 def _to_effect(row: WorkflowEffectRow) -> WorkflowEffect:

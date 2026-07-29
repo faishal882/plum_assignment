@@ -94,6 +94,65 @@ class TriageModelOutput(BaseModel):
     documents: tuple[TriageDocumentPrediction, ...] = Field(min_length=1, max_length=10)
 
 
+class TriageProviderDocumentPredictionV4(BaseModel):
+    """Tolerant provider wire contract for semantic triage predictions."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_document_id: str = Field(min_length=1, max_length=128)
+    role: DocumentRole
+    role_evidence_refs: tuple[ObservationId, ...] = Field(min_length=1, max_length=100)
+    readability: Readability
+    readability_evidence_refs: tuple[ObservationId, ...] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    identity_observations: tuple[TriageIdentitySelection, ...] = Field(max_length=2)
+
+
+class TriageProviderOutputV4(BaseModel):
+    """Provider-facing v4 contract; this is not the canonical triage result."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[4] = 4
+    documents: tuple[TriageProviderDocumentPredictionV4, ...] = Field(min_length=1, max_length=10)
+
+
+class TriageEvidenceField(StrEnum):
+    ROLE = "ROLE"
+    READABILITY = "READABILITY"
+
+
+class TriageEvidenceNormalizationCode(StrEnum):
+    DEDUPLICATED = "TRIAGE_EVIDENCE_REFS_DEDUPLICATED"
+    TRUNCATED = "TRIAGE_EVIDENCE_REFS_TRUNCATED"
+
+
+class TriageEvidenceFieldNormalization(BaseModel):
+    """Bounded audit result for one provider-supplied evidence-reference field."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    field: TriageEvidenceField
+    received_refs: tuple[ObservationId, ...] = Field(min_length=1, max_length=100)
+    unique_refs: tuple[ObservationId, ...] = Field(min_length=1, max_length=100)
+    retained_refs: tuple[ObservationId, ...] = Field(min_length=1, max_length=5)
+    duplicate_dropped_refs: tuple[ObservationId, ...] = Field(max_length=99)
+    over_citation_dropped_refs: tuple[ObservationId, ...] = Field(max_length=95)
+    codes: tuple[TriageEvidenceNormalizationCode, ...] = Field(max_length=2)
+
+
+class TriageEvidenceNormalizationReport(BaseModel):
+    """Durable deterministic explanation of v4 evidence-reference normalization."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    policy_version: str = Field(min_length=1, max_length=64)
+    role: TriageEvidenceFieldNormalization
+    readability: TriageEvidenceFieldNormalization
+
+
 class TriageIdentityObservation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

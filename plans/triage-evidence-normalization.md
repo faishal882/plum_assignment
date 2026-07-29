@@ -58,7 +58,7 @@ Durable decisions that apply across all phases:
 
 ## Plan status
 
-- [ ] Phase 1: Versioned triage foundation
+- [x] Phase 1: Versioned triage foundation
 - [ ] Phase 2: Valid over-citation tracer
 - [ ] Phase 3: Duplicate-reference normalization
 - [ ] Phase 4: Adversarial failure boundaries
@@ -90,83 +90,83 @@ must not yet rely on duplicates or more than five references to prove success.
 
 #### Provider and prompt contract
 
-- [ ] `fast-triage-prompt-v3` is registered as a supported prompt.
-- [ ] The v3 prompt requires 1–5 role references and 1–5 readability references per document.
-- [ ] The v3 prompt requires strongest-to-weakest reference order.
-- [ ] The v3 prompt gives direct role/readability evidence examples.
-- [ ] The v3 prompt explicitly prohibits citing every OCR observation.
-- [ ] The existing instruction to copy supplied observation identifiers exactly remains present.
-- [ ] The prompt continues to forbid model-generated hashes, page data, regions, policy
+- [x] `fast-triage-prompt-v3` is registered as a supported prompt.
+- [x] The v3 prompt requires 1–5 role references and 1–5 readability references per document.
+- [x] The v3 prompt requires strongest-to-weakest reference order.
+- [x] The v3 prompt gives direct role/readability evidence examples.
+- [x] The v3 prompt explicitly prohibits citing every OCR observation.
+- [x] The existing instruction to copy supplied observation identifiers exactly remains present.
+- [x] The prompt continues to forbid model-generated hashes, page data, regions, policy
   conclusions, and payable amounts.
-- [ ] `triage-provider-output-v4` is represented by a provider-facing schema distinct from the
+- [x] `triage-provider-output-v4` is represented by a provider-facing schema distinct from the
   canonical resolved-triage schema.
-- [ ] Provider-output v4 accepts structurally valid evidence-reference sequences containing
+- [x] Provider-output v4 accepts structurally valid evidence-reference sequences containing
   between 1 and 100 items.
-- [ ] Provider-output v4 continues to reject unknown fields, invalid enums, invalid identifier
+- [x] Provider-output v4 continues to reject unknown fields, invalid enums, invalid identifier
   formats, missing documents, duplicate document predictions, and excessive identity selections.
-- [ ] The canonical resolved result remains schema version 3.
+- [x] The canonical resolved result remains schema version 3.
 
 #### Policy and workflow contract
 
-- [ ] `triage-evidence-policy-v1` resolves through an immutable code-owned policy registry.
-- [ ] Policy v1 exposes the 100-reference safety ceiling and five-reference canonical limit.
-- [ ] Policy v1 defines full-sequence grounding, stable deduplication, and first-five retention.
-- [ ] Workflow creation pins the evidence-policy version with its model route.
-- [ ] Newly created workflows select the v3 prompt, v4 provider schema, and policy-v1 combination.
-- [ ] The evidence-policy version is included in the durable execution-contract representation.
-- [ ] No environment setting can alter policy-v1 behavior.
-- [ ] Unknown prompt, provider-schema, or policy versions are rejected explicitly.
-- [ ] Unsupported version combinations are rejected before a model call.
+- [x] `triage-evidence-policy-v1` resolves through an immutable code-owned policy registry.
+- [x] Policy v1 exposes the 100-reference safety ceiling and five-reference canonical limit.
+- [x] Policy v1 defines full-sequence grounding, stable deduplication, and first-five retention.
+- [x] Workflow creation pins the evidence-policy version with its model route.
+- [x] Newly created workflows select the v3 prompt, v4 provider schema, and policy-v1 combination.
+- [x] The evidence-policy version is included in the durable execution-contract representation.
+- [x] No environment setting can alter policy-v1 behavior.
+- [x] Unknown prompt, provider-schema, or policy versions are rejected explicitly.
+- [x] Unsupported version combinations are rejected before a model call.
 
 #### No-op normalization tracer
 
-- [ ] A normal response containing one unique grounded reference per field parses through
+- [x] A normal response containing one unique grounded reference per field parses through
   provider-output v4.
-- [ ] Every reference is validated against OCR observations belonging to the predicted document.
-- [ ] The normalizer returns unchanged canonical role and readability reference tuples.
-- [ ] No deduplication or truncation reason code is emitted for an unchanged response.
-- [ ] Readability preview provenance comes from the first retained readability reference.
-- [ ] Identity values continue to be hydrated from backend-owned observations.
-- [ ] The workflow reaches the same downstream state it reached before the new boundary.
+- [x] Every reference is validated against OCR observations belonging to the predicted document.
+- [x] The normalizer returns unchanged canonical role and readability reference tuples.
+- [x] No deduplication or truncation reason code is emitted for an unchanged response.
+- [x] Readability preview provenance comes from the first retained readability reference.
+- [x] Identity values continue to be hydrated from backend-owned observations.
+- [x] The workflow reaches the same downstream state it reached before the new boundary.
 
 #### Persistence and reconstruction
 
-- [ ] The database migration adds nullable normalization-report and raw-output-digest storage
+- [x] The database migration adds nullable normalization-report and raw-output-digest storage
   without rewriting existing triage results.
-- [ ] A new triage result stores canonical evidence references in the existing business fields.
-- [ ] A new triage result stores an evidence normalization report for both evidence fields.
-- [ ] The unchanged report records received, unique, and retained counts consistently.
-- [ ] The unchanged report records zero duplicate and over-citation drops.
-- [ ] The report records policy-v1 and contains no invented normalization reason code.
-- [ ] The raw provider-output digest is computed from deterministic canonical JSON.
-- [ ] Repeated hashing of semantically identical output with different object-key ordering yields
+- [x] A new triage result stores canonical evidence references in the existing business fields.
+- [x] A new triage result stores an evidence normalization report for both evidence fields.
+- [x] The unchanged report records received, unique, and retained counts consistently.
+- [x] The unchanged report records zero duplicate and over-citation drops.
+- [x] The report records policy-v1 and contains no invented normalization reason code.
+- [x] The raw provider-output digest is computed from deterministic canonical JSON.
+- [x] Repeated hashing of semantically identical output with different object-key ordering yields
   the same digest.
-- [ ] Internal reconstruction returns canonical evidence, the normalization report, and raw-output
+- [x] Internal reconstruction returns canonical evidence, the normalization report, and raw-output
   digest.
-- [ ] The public claim projection does not expose new internal fields.
+- [x] The public claim projection does not expose new internal fields.
 
 #### Observability
 
-- [ ] Fast triage emits a child evidence-normalization span under the existing workflow/model
+- [x] Fast triage emits a child evidence-normalization span under the existing workflow/model
   trace.
-- [ ] The span belongs to the existing claim session and claim-version trace.
-- [ ] The span records supplied, unique, retained, and dropped references for both fields.
-- [ ] The span records received, unique, retained, duplicate-drop, and over-citation-drop counts.
-- [ ] The span records model route, model identifier, prompt version, provider-schema version,
+- [x] The span belongs to the existing claim session and claim-version trace.
+- [x] The span records supplied, unique, retained, and dropped references for both fields.
+- [x] The span records received, unique, retained, duplicate-drop, and over-citation-drop counts.
+- [x] The span records model route, model identifier, prompt version, provider-schema version,
   canonical-schema version, evidence-policy version, and raw-output digest.
-- [ ] The normal no-op case is distinguishable from a recovered normalization case.
-- [ ] Numeric metrics use bounded field, outcome, route, and version dimensions.
-- [ ] Observation identifiers do not appear as metric labels.
-- [ ] PostgreSQL and Phoenix contain the same canonical references and raw-output digest.
+- [x] The normal no-op case is distinguishable from a recovered normalization case.
+- [x] Numeric metrics use bounded field, outcome, route, and version dimensions.
+- [x] Observation identifiers do not appear as metric labels.
+- [x] PostgreSQL and Phoenix contain the same canonical references and raw-output digest.
 
 #### Phase verification
 
-- [ ] Focused provider-contract tests pass.
-- [ ] Focused policy-resolution tests pass.
-- [ ] The no-op normalization unit tests pass.
-- [ ] The normal-response persistence and reconstruction integration test passes.
-- [ ] The normal-response Phoenix span test passes.
-- [ ] Existing deterministic tests remain passing before Phase 2 begins.
+- [x] Focused provider-contract tests pass.
+- [x] Focused policy-resolution tests pass.
+- [x] The no-op normalization unit tests pass.
+- [x] The normal-response persistence and reconstruction integration test passes.
+- [x] The normal-response Phoenix span test passes.
+- [x] Existing deterministic tests remain passing before Phase 2 begins.
 
 ---
 

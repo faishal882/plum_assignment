@@ -339,7 +339,10 @@ class RecordedDocumentModelTransport:
                     "identity_observations": identity_observations,
                 }
             )
-        raw_output = {"schema_version": 3, "documents": output_documents}
+        raw_output = {
+            "schema_version": (4 if config.schema_version == "triage-provider-output-v4" else 3),
+            "documents": output_documents,
+        }
         return _invocation(raw_output)
 
 

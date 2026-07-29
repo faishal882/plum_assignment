@@ -36,6 +36,7 @@ from claims_backend.domain.evidence import (
     PreviewProvenance,
     ResolvedTriageOutput,
     StructuredEvidencePayload,
+    TriageEvidenceNormalizationReport,
 )
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
@@ -92,11 +93,10 @@ from claims_backend.infrastructure.processing_failures import (
     NoOpAnomalyEnricher,
     NoOpEngineeringEventSink,
 )
-from claims_backend.model.application import (
-    FAST_TRIAGE_SYSTEM_PROMPT,
-    StructuredModelApplication,
-)
-from claims_backend.model.triage import TriageDocumentContext, resolve_triage_output
+from claims_backend.model.application import FAST_TRIAGE_SYSTEM_PROMPT, StructuredModelApplication
+from claims_backend.model.evidence_normalization import resolve_evidence_reference_policy
+from claims_backend.model.triage import TriageDocumentContext, resolve_triage_with_reports
+from claims_backend.observability import Observability
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
 from claims_backend.policy.explanation import render_member_explanation
 
@@ -118,6 +118,7 @@ class PostgresClaimProcessor:
         evidence_repository: ProvenancedEvidenceRepository | None = None,
         anomaly_enricher: AnomalyEnricher | None = None,
         engineering_events: EngineeringEventSink | None = None,
+        observability: Observability | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._adjudicator = DeterministicPolicyAdjudicator()
@@ -129,6 +130,7 @@ class PostgresClaimProcessor:
         self._evidence_repository = evidence_repository
         self._anomaly_enricher = anomaly_enricher or NoOpAnomalyEnricher()
         self._engineering_events = engineering_events or NoOpEngineeringEventSink()
+        self._observability = observability
 
     async def route(self, workflow_run: WorkflowRun) -> ProcessingRoute:
         async with self._session_factory() as session:
@@ -981,6 +983,8 @@ class PostgresClaimProcessor:
                 model_route="fixture-fast-triage-v1",
                 producer="fixture-fast-triage",
                 producer_version="v1",
+                normalization_reports={},
+                raw_provider_output_sha256=None,
             )
         if self._structured_model is not None:
             return await self._triage_from_discovery(workflow_run)
@@ -1062,13 +1066,27 @@ class PostgresClaimProcessor:
             if documents
             else None
         )
-        output = resolve_triage_output(
+        resolution = resolve_triage_with_reports(
             None if result is None else result.output,
             tuple(contexts),
+            policy=(
+                None
+                if result is None or result.config.schema_version == "triage-output-v3"
+                else resolve_evidence_reference_policy(result.config.evidence_policy_version)
+            ),
         )
+        if result is not None:
+            self._trace_triage_normalization(
+                reports=resolution.normalization_reports,
+                raw_output_sha256=result.raw_output_sha256,
+                model_route=result.config.route.value,
+                model_id=result.config.model_id,
+                prompt_version=result.config.prompt_version,
+                provider_schema_version=result.config.schema_version,
+            )
         return await self._commit_triage(
             workflow_run,
-            output,
+            resolution.output,
             model_route=(
                 "deterministic-empty-ocr-v1"
                 if result is None
@@ -1081,7 +1099,72 @@ class PostgresClaimProcessor:
             producer_version=(
                 "deterministic-empty-ocr-v1" if result is None else result.config.prompt_version
             ),
+            normalization_reports=resolution.normalization_reports,
+            raw_provider_output_sha256=(None if result is None else result.raw_output_sha256),
         )
+
+    def _trace_triage_normalization(
+        self,
+        *,
+        reports: dict[str, TriageEvidenceNormalizationReport],
+        raw_output_sha256: str,
+        model_route: str,
+        model_id: str,
+        prompt_version: str,
+        provider_schema_version: str,
+    ) -> None:
+        if self._observability is None or not reports:
+            return
+        serialized_reports = {
+            client_document_id: report.model_dump(mode="json")
+            for client_document_id, report in reports.items()
+        }
+        received = sum(
+            len(field.received_refs)
+            for report in reports.values()
+            for field in (report.role, report.readability)
+        )
+        retained = sum(
+            len(field.retained_refs)
+            for report in reports.values()
+            for field in (report.role, report.readability)
+        )
+        duplicate_dropped = sum(
+            len(field.duplicate_dropped_refs)
+            for report in reports.values()
+            for field in (report.role, report.readability)
+        )
+        over_citation_dropped = sum(
+            len(field.over_citation_dropped_refs)
+            for report in reports.values()
+            for field in (report.role, report.readability)
+        )
+        with self._observability.span(
+            "triage.evidence_normalization",
+            component="triage",
+            attributes={
+                "triage.normalization.reports": json.dumps(
+                    serialized_reports,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "triage.normalization.received_count": received,
+                "triage.normalization.retained_count": retained,
+                "triage.normalization.duplicate_drop_count": duplicate_dropped,
+                "triage.normalization.over_citation_drop_count": over_citation_dropped,
+                "triage.normalization.outcome": (
+                    "NORMALIZED" if duplicate_dropped or over_citation_dropped else "UNCHANGED"
+                ),
+                "triage.raw_output_sha256": raw_output_sha256,
+                "model.route": model_route,
+                "model.id": model_id,
+                "model.prompt_version": prompt_version,
+                "model.provider_schema_version": provider_schema_version,
+                "model.canonical_schema_version": "triage-output-v3",
+                "triage.evidence_policy_version": next(iter(reports.values())).policy_version,
+            },
+        ):
+            return
 
     async def _commit_triage(
         self,
@@ -1091,6 +1174,8 @@ class PostgresClaimProcessor:
         model_route: str,
         producer: str,
         producer_version: str,
+        normalization_reports: dict[str, TriageEvidenceNormalizationReport],
+        raw_provider_output_sha256: str | None,
     ) -> EarlyGateResult:
         now = datetime.now(UTC)
         async with self._session_factory.begin() as session:
@@ -1181,6 +1266,14 @@ class PostgresClaimProcessor:
                         identity_observations=[
                             candidate.model_dump(mode="json") for candidate in item_candidates
                         ],
+                        normalization_report=(
+                            None
+                            if item.client_document_id not in normalization_reports
+                            else normalization_reports[item.client_document_id].model_dump(
+                                mode="json"
+                            )
+                        ),
+                        raw_provider_output_sha256=raw_provider_output_sha256,
                         model_route=model_route,
                         schema_version=output.schema_version,
                         created_at=now,

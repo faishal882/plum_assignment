@@ -152,6 +152,7 @@ def create_claim_processor(
             if settings.inject_anomaly_enrichment_failure
             else None
         ),
+        observability=runtime.observability,
     )
 
 
@@ -185,6 +186,7 @@ def create_execution_contract(settings: Settings) -> ExecutionContract:
         model_provider_name=model_name,
         model_provider_version=model_version,
         model_routes=routes,
+        triage_evidence_policy_version="triage-evidence-policy-v1",
     )
 
 

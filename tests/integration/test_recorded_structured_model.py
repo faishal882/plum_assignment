@@ -126,7 +126,7 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
     recorded = RecordedStructuredModelTransport(
         {
             ModelRoute.FAST_TRIAGE: {
-                "schema_version": 3,
+                "schema_version": 4,
                 "documents": [
                     {
                         "client_document_id": "F-MODEL",

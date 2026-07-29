@@ -11,11 +11,18 @@ from claims_backend.domain.evidence import (
     ReadabilityObservation,
     ResolvedTriageOutput,
     TriageDocumentResult,
+    TriageEvidenceField,
+    TriageEvidenceNormalizationReport,
     TriageIdentityObservation,
     TriageModelOutput,
+    TriageProviderOutputV4,
 )
 from claims_backend.domain.extraction import ModelGroundingValidationError
 from claims_backend.domain.ocr import OcrObservation
+from claims_backend.model.evidence_normalization import (
+    EvidenceReferencePolicy,
+    normalize_evidence_references,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,11 +35,28 @@ class TriageDocumentContext:
     previews_by_page: Mapping[int, PreviewProvenance]
 
 
+@dataclass(frozen=True, slots=True)
+class TriageResolution:
+    output: ResolvedTriageOutput
+    normalization_reports: dict[str, TriageEvidenceNormalizationReport]
+
+
 def resolve_triage_output(
-    output: TriageModelOutput | None,
+    output: TriageModelOutput | TriageProviderOutputV4 | None,
     contexts: tuple[TriageDocumentContext, ...],
 ) -> ResolvedTriageOutput:
     """Turn untrusted semantic predictions into fully provenanced triage results."""
+
+    return resolve_triage_with_reports(output, contexts, policy=None).output
+
+
+def resolve_triage_with_reports(
+    output: TriageModelOutput | TriageProviderOutputV4 | None,
+    contexts: tuple[TriageDocumentContext, ...],
+    *,
+    policy: EvidenceReferencePolicy | None,
+) -> TriageResolution:
+    """Resolve output and produce v4 normalization audit data when applicable."""
 
     contexts_by_id = _index_contexts(contexts)
     output_documents = () if output is None else output.documents
@@ -51,6 +75,7 @@ def resolve_triage_output(
         )
 
     documents: list[TriageDocumentResult] = []
+    reports: dict[str, TriageEvidenceNormalizationReport] = {}
     for client_document_id, context in contexts_by_id.items():
         if not context.observations:
             preview = _first_preview(context)
@@ -68,11 +93,35 @@ def resolve_triage_output(
             continue
         prediction = predictions_by_id[client_document_id]
         observations_by_id = _index_observations(context)
-        _resolve_references(prediction.role_evidence_refs, observations_by_id)
-        readability_observations = _resolve_references(
-            prediction.readability_evidence_refs,
-            observations_by_id,
-        )
+        if isinstance(output, TriageProviderOutputV4):
+            if policy is None:
+                raise ValueError("A v4 triage output requires an evidence reference policy.")
+            available_ids = frozenset(observations_by_id)
+            role_normalization = normalize_evidence_references(
+                prediction.role_evidence_refs,
+                field=TriageEvidenceField.ROLE,
+                available_observation_ids=available_ids,
+                policy=policy,
+            )
+            readability_normalization = normalize_evidence_references(
+                prediction.readability_evidence_refs,
+                field=TriageEvidenceField.READABILITY,
+                available_observation_ids=available_ids,
+                policy=policy,
+            )
+            role_refs = role_normalization.retained_refs
+            readability_refs = readability_normalization.retained_refs
+            reports[prediction.client_document_id] = TriageEvidenceNormalizationReport(
+                policy_version=policy.version,
+                role=role_normalization,
+                readability=readability_normalization,
+            )
+        else:
+            _resolve_references(prediction.role_evidence_refs, observations_by_id)
+            _resolve_references(prediction.readability_evidence_refs, observations_by_id)
+            role_refs = prediction.role_evidence_refs
+            readability_refs = prediction.readability_evidence_refs
+        readability_observations = _resolve_references(readability_refs, observations_by_id)
         preview_page = readability_observations[0].page_number
         resolved_preview = context.previews_by_page.get(preview_page)
         if resolved_preview is None:
@@ -106,16 +155,19 @@ def resolve_triage_output(
             TriageDocumentResult(
                 client_document_id=client_document_id,
                 role=prediction.role,
-                role_evidence_refs=prediction.role_evidence_refs,
+                role_evidence_refs=role_refs,
                 readability=ReadabilityObservation(
                     status=prediction.readability,
                     preview=resolved_preview,
                 ),
-                readability_evidence_refs=prediction.readability_evidence_refs,
+                readability_evidence_refs=readability_refs,
                 identity_observations=tuple(identities),
             )
         )
-    return ResolvedTriageOutput(documents=tuple(documents))
+    return TriageResolution(
+        output=ResolvedTriageOutput(documents=tuple(documents)),
+        normalization_reports=reports,
+    )
 
 
 def _index_contexts(

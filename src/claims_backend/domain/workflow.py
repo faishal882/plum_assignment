@@ -22,6 +22,7 @@ class ExecutionContract:
     model_provider_name: str
     model_provider_version: str
     model_routes: tuple[tuple[str, str, str, str, str], ...]
+    triage_evidence_policy_version: str = "triage-evidence-policy-legacy-v0"
 
     @classmethod
     def unspecified(cls) -> "ExecutionContract":
@@ -33,6 +34,7 @@ class ExecutionContract:
             model_provider_name="UNSPECIFIED",
             model_provider_version="UNSPECIFIED",
             model_routes=(),
+            triage_evidence_policy_version="triage-evidence-policy-legacy-v0",
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -57,6 +59,7 @@ class ExecutionContract:
                 }
                 for route, model_id, region, prompt_version, schema_version in self.model_routes
             ],
+            "triage_evidence_policy_version": self.triage_evidence_policy_version,
         }
 
 

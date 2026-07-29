@@ -356,6 +356,8 @@ def _triage_value(row: DocumentTriageResultRow) -> dict[str, object]:
         "readability_evidence_refs": row.readability_evidence_refs,
         "readability_observation": row.readability_observation,
         "identity_observations": row.identity_observations,
+        "normalization_report": row.normalization_report,
+        "raw_provider_output_sha256": row.raw_provider_output_sha256,
         "model_route": row.model_route,
         "schema_version": row.schema_version,
         "created_at": row.created_at.isoformat(),

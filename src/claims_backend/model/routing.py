@@ -3,6 +3,10 @@ from typing import Literal
 
 from claims_backend.domain.extraction import ModelRoute
 from claims_backend.domain.workflow import ExecutionContract
+from claims_backend.model.evidence_normalization import (
+    TRIAGE_EVIDENCE_POLICY_LEGACY,
+    TRIAGE_EVIDENCE_POLICY_V1,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +20,7 @@ class ModelRouteConfig:
     evaluation_approved: bool
     temperature: int = 0
     structured_output_method: Literal["function_calling", "json_schema"] = "function_calling"
+    evidence_policy_version: str = TRIAGE_EVIDENCE_POLICY_LEGACY
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -48,10 +53,11 @@ class ModelRouter:
                     route=ModelRoute.FAST_TRIAGE,
                     model_id=model_id,
                     region=region,
-                    prompt_version="fast-triage-prompt-v2",
-                    schema_version="triage-output-v3",
+                    prompt_version="fast-triage-prompt-v3",
+                    schema_version="triage-provider-output-v4",
                     enabled=True,
                     evaluation_approved=True,
+                    evidence_policy_version=TRIAGE_EVIDENCE_POLICY_V1,
                 ),
                 ModelRouteConfig(
                     route=ModelRoute.COMPLEX_EXTRACTION,
@@ -76,10 +82,21 @@ class ModelRouter:
                 raise ModelRouteUnavailableError(
                     f"Persisted model route {route!r} is unsupported."
                 ) from error
-            if model_route is ModelRoute.FAST_TRIAGE and (
-                prompt_version != "fast-triage-prompt-v2" or schema_version != "triage-output-v3"
-            ):
-                raise ModelRouteUnavailableError("Persisted fast triage contract is unsupported.")
+            if model_route is ModelRoute.FAST_TRIAGE:
+                legacy = (
+                    prompt_version == "fast-triage-prompt-v2"
+                    and schema_version == "triage-output-v3"
+                    and contract.triage_evidence_policy_version == TRIAGE_EVIDENCE_POLICY_LEGACY
+                )
+                current = (
+                    prompt_version == "fast-triage-prompt-v3"
+                    and schema_version == "triage-provider-output-v4"
+                    and contract.triage_evidence_policy_version == TRIAGE_EVIDENCE_POLICY_V1
+                )
+                if not legacy and not current:
+                    raise ModelRouteUnavailableError(
+                        "Persisted fast triage contract is unsupported."
+                    )
             if model_route is ModelRoute.COMPLEX_EXTRACTION and (
                 prompt_version
                 not in {
@@ -100,6 +117,11 @@ class ModelRouter:
                     schema_version=schema_version,
                     enabled=True,
                     evaluation_approved=True,
+                    evidence_policy_version=(
+                        contract.triage_evidence_policy_version
+                        if model_route is ModelRoute.FAST_TRIAGE
+                        else TRIAGE_EVIDENCE_POLICY_LEGACY
+                    ),
                 )
             )
         expected = {ModelRoute.FAST_TRIAGE, ModelRoute.COMPLEX_EXTRACTION}
@@ -116,6 +138,9 @@ class ModelRouter:
                 f"Model route {route.value} is not enabled and evaluation-approved."
             )
         return config
+
+    def resolve_fast_triage(self) -> ModelRouteConfig:
+        return self.resolve(ModelRoute.FAST_TRIAGE)
 
     def enabled_routes(self) -> tuple[ModelRouteConfig, ...]:
         """Return approved route definitions in stable order for workflow pinning."""

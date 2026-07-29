@@ -1093,6 +1093,14 @@ class DocumentTriageResultRow(Base):
         JSONB,
         nullable=False,
     )
+    normalization_report: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    raw_provider_output_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
     model_route: Mapped[str] = mapped_column(String(64), nullable=False)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
