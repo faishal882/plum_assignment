@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.*.example
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
@@ -9,3 +11,17 @@ __pycache__/
 *.py[cod]
 data/
 .gstack/
+
+# Frontend / Next.js / Node
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.turbo/
+.vercel/
+
+# Local synthetic documents used for manual debugging and live smoke runs.
+synthetic_uploads/
