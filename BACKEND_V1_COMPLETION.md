@@ -1,9 +1,9 @@
 # Backend v1 Completion Status
 
-**Status: in progress — not yet eligible to claim Backend v1 complete.**
+**Status: Backend v1 operational scope complete.**
 
-This is a current-state report. It deliberately does not convert recorded-evaluation fixtures or
-unverified historical test counts into an operational-completion claim.
+This is a current-state report grounded in the current recorded gate, explicit live traces, and
+sanitized proof artifacts. It does not claim arbitrary real-document accuracy.
 
 ## Implemented and verified
 
@@ -59,12 +59,6 @@ Local records are under the configured `CLAIMS_LOG_ROOT`; Phoenix is available w
 endpoint is configured. PostgreSQL contains durable work, workflow events, effects, casefiles,
 decisions, review records, and audit records.
 
-## Remaining work before completion
-
-- Complete recovery construction from a compatible persisted historical execution contract.
-- Add the remaining live-only evidence after an explicitly authorized run; recorded-evaluation,
-  version-manifest, privacy, and deterministic test-summary artifacts are committed.
-
 ## Current limitations
 
 - Recorded rendered evaluation is the primary Backend v1 correctness gate and runs through the
@@ -73,5 +67,5 @@ decisions, review records, and audit records.
 - Live Textract/Bedrock variability is not represented as twelve-live-case coverage. The synthetic
   TC004 public-worker tracer passes with Textract-labelled total and diagnosis-line evidence
   decoders. Do not claim all twelve live cases pass.
-- Backend v1 completion must not be claimed until the unchecked acceptance criteria in
-  `plans/backend-v1-operational-completion.md` are closed with current evidence.
+- Backend v1 is a local operational backend. Authentication, remote deployment, arbitrary
+  real-world OCR/model accuracy, and twelve-case live-provider coverage remain out of scope.

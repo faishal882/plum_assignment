@@ -151,12 +151,14 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Immutable workflow execution-contract persistence and changed-runtime recovery guard.
 - [x] Historical prompt v3 and route contracts can be rebuilt from persisted execution metadata;
   composition rejects incompatible profile/provider contracts before adapter construction.
-- [ ] Operational no-fixture clean-decision tracer and all remaining recorded cases.
+- [x] Operational no-fixture clean-decision tracer and all twelve recorded cases pass through the
+  public API and standard worker construction.
 - [x] Recovery construction resolves supported persisted provider/model/prompt contracts before
   execution; an existing v3 workflow never silently adopts the current v4 runtime.
 - [x] Unified claim-session test proves correlated API/worker Phoenix sessions, durable workflow
   event trace IDs, separate JSONL streams, and content-free telemetry canary scans.
-- [ ] Explicit live AWS complete tracer, versioned alias compatibility, and closure artifacts.
+- [x] Explicit live AWS complete tracer, versioned alias compatibility, and sanitized closure
+  artifacts are verified.
 
 ---
 
