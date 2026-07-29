@@ -1,6 +1,6 @@
-# Final Architecture — Explainable Health-Claim Processing
+# Backend Architecture — Explainable Health-Claim Processing
 
-**Status:** architecture baseline for local development  
+**Status:** current architecture baseline for local development
 **Scope:** the supplied Plum AI Engineer assignment and its twelve evaluation cases  
 **Runtime posture:** application processes run locally; managed capabilities are consumed from AWS  
 **Primary rule:** **models produce evidence; deterministic code applies policy; humans resolve ambiguity; no model authorizes payment**

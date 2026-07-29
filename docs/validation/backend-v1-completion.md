@@ -5,7 +5,7 @@
 This is a current-state report grounded in the current recorded gate, explicit live traces, and
 sanitized proof artifacts. It does not claim arbitrary real-document accuracy.
 
-Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
+Phase-by-phase evidence is indexed in [the Backend v1 acceptance audit](backend-v1-acceptance-audit.md).
 
 ## Implemented and verified
 
@@ -35,7 +35,7 @@ Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
 - The explicitly authorized synthetic live TC004 provider-to-policy tracer and public FastAPI →
   standalone-worker tracer passed on 2026-07-29: real Textract and Qwen evidence reached the
   deterministic ₹1,350 approval. Their sanitized result is recorded in
-  `artifacts/backend-v1/live-intelligence-summary.json`.
+  [`artifacts/backend-v1/live-intelligence-summary.json`](../../artifacts/backend-v1/live-intelligence-summary.json).
 - The explicitly authorized synthetic Textract and Bedrock smoke suite also passed: **2 passed**
   in 3.94 seconds.
 - The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions
@@ -45,7 +45,7 @@ Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
   export, JSONL emission, and PostgreSQL reconstruction. A separately rendered synthetic invoice
   reached the worker and safely ended as `PROCESSING_FAILED` with
   `MODEL_SCHEMA_VALIDATION_FAILED`; it did not remain queued. The sanitized evidence is in
-  `artifacts/backend-v1/live-local-e2e-summary.json`.
+  [`artifacts/backend-v1/live-local-e2e-summary.json`](../../artifacts/backend-v1/live-local-e2e-summary.json).
 
 ## Recorded acceptance outcomes
 
