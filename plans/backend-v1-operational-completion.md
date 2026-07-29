@@ -141,6 +141,9 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Explicit paid-AWS synthetic TC004 provider-to-policy tracer passes with real Textract and
   Qwen; exact provider-labelled totals and `Diagnosis:` lines are persisted as versioned,
   grounded Textract-derived evidence when model output is blank.
+- [x] Explicit paid-AWS synthetic TC004 claim passes through public multipart FastAPI submission,
+  PostgreSQL leasing, the standard standalone worker construction, real Textract and Qwen, and
+  deterministic ₹1,350 adjudication (`tests/live/test_live_worker_tc004.py`).
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

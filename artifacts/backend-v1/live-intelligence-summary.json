@@ -5,13 +5,14 @@
   "passed": 1,
   "failed": 0,
   "duration_seconds": 19.74,
-  "scope": "synthetic provider-to-policy TC004 tracer",
+  "scope": "synthetic TC004 live intelligence proof",
   "providers": ["AMAZON_TEXTRACT", "AMAZON_BEDROCK"],
   "model_id": "qwen.qwen3-235b-a22b-2507-v1:0",
   "prompt_version": "complex-extraction-prompt-v4",
   "notes": [
     "Uses generated synthetic documents only.",
-    "This direct tracer does not prove the public API and standalone-worker boundary.",
+    "The direct provider-to-policy tracer passed in 19.74 seconds.",
+    "The public FastAPI to standard-worker tracer passed in 38.00 seconds: CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_live_worker_tc004.py -q.",
     "Recorded rendered evaluation remains the twelve-case acceptance gate."
   ]
 }
