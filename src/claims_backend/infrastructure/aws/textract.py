@@ -296,6 +296,7 @@ def _expense_observations(
         document = _mapping(raw_document)
         for field_index, raw_field in enumerate(_list(document.get("SummaryFields"))):
             field = _mapping(raw_field)
+            field_type = _expense_field_type(field)
             value = _mapping(field.get("ValueDetection"))
             source_id = f"expense:{expense_index}:summary:{field_index}"
             observations.append(
@@ -307,6 +308,7 @@ def _expense_observations(
                     confidence=_confidence(value.get("Confidence")),
                     region=_region(value.get("Geometry")),
                     source_id=source_id,
+                    field_type=field_type,
                 )
             )
         for group_index, raw_group in enumerate(_list(document.get("LineItemGroups"))):
@@ -328,6 +330,7 @@ def _expense_observations(
                             confidence=_confidence(value.get("Confidence")),
                             region=_region(value.get("Geometry")),
                             source_id=source_id,
+                            field_type=_expense_field_type(field),
                         )
                     )
     return observations
@@ -342,6 +345,7 @@ def _observation(
     confidence: float,
     region: NormalizedRegion,
     source_id: str,
+    field_type: str | None = None,
 ) -> OcrObservation:
     canonical = json.dumps(
         {
@@ -353,6 +357,7 @@ def _observation(
             "confidence": confidence,
             "region": region.model_dump(mode="json"),
             "source_id": source_id,
+            "field_type": field_type,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -366,7 +371,19 @@ def _observation(
         confidence=confidence,
         region=region,
         source_id=source_id,
+        field_type=field_type,
     )
+
+
+def _expense_field_type(field: Mapping[str, object]) -> str | None:
+    """Return Textract's immutable semantic label when the provider supplied one."""
+    raw_type = field.get("Type")
+    if raw_type is None:
+        return None
+    field_type = _mapping(raw_type).get("Text")
+    if not isinstance(field_type, str) or not field_type.strip():
+        return None
+    return field_type.strip().upper()
 
 
 def _region(value: object) -> NormalizedRegion:

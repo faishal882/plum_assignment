@@ -1256,6 +1256,7 @@ class OcrObservationRow(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     region: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     source_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    field_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -1331,4 +1332,6 @@ class EvidenceCandidateRow(Base):
     evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     producer: Mapped[str] = mapped_column(String(32), nullable=False)
+    producer_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    candidate_schema_version: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -150,6 +150,22 @@ def test_null_snapshot_candidate_remains_explicitly_unknown() -> None:
     assert result.sufficiency.corrective_actions[0].fact_path == "member.join_date"
 
 
+def test_blank_model_evidence_is_unknown_not_a_usable_fact() -> None:
+    candidate = _candidate(
+        candidate_id="e" * 64,
+        fact_path="clinical.condition",
+        value="",
+        normalized_value="",
+        observation_id="4" * 64,
+        page=1,
+    )
+
+    result = reconcile_evidence((candidate,), material_fact_paths=("clinical.condition",))
+
+    assert result.facts[0].state is ReconciledFactState.UNKNOWN
+    assert result.sufficiency.unresolved_material_facts == ("clinical.condition",)
+
+
 def test_conflicting_treatment_dates_require_correction() -> None:
     claim_date = _candidate(
         candidate_id="7" * 64,

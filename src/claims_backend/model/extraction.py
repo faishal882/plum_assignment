@@ -102,6 +102,8 @@ def validate_complex_output(
                 route=config.route,
                 prompt_version=config.prompt_version,
                 schema_version=config.schema_version,
+                producer_version=f"{config.model_id}:{config.prompt_version}",
+                candidate_schema_version=config.schema_version,
             )
         )
     return tuple(candidates)

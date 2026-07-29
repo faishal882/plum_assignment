@@ -1,0 +1,17 @@
+{
+  "artifact_schema": "backend-v1-live-intelligence-summary-v1",
+  "command": "CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_tc004_live_intelligence.py -q",
+  "result": "PASSED",
+  "passed": 1,
+  "failed": 0,
+  "duration_seconds": 19.74,
+  "scope": "synthetic provider-to-policy TC004 tracer",
+  "providers": ["AMAZON_TEXTRACT", "AMAZON_BEDROCK"],
+  "model_id": "qwen.qwen3-235b-a22b-2507-v1:0",
+  "prompt_version": "complex-extraction-prompt-v4",
+  "notes": [
+    "Uses generated synthetic documents only.",
+    "This direct tracer does not prove the public API and standalone-worker boundary.",
+    "Recorded rendered evaluation remains the twelve-case acceptance gate."
+  ]
+}

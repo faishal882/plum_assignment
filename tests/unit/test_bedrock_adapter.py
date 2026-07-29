@@ -100,7 +100,7 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output(
     assert span.name == "bedrock.converse"
     assert span.attributes["model.route"] == "COMPLEX_EXTRACTION"
     assert span.attributes["model.id"] == "qwen.qwen3-235b-a22b-2507-v1:0"
-    assert span.attributes["model.prompt_version"] == "complex-extraction-prompt-v3"
+    assert span.attributes["model.prompt_version"] == "complex-extraction-prompt-v4"
     assert span.attributes["model.schema_version"] == "complex-extraction-v1"
     assert span.attributes["llm.token_count.prompt"] == 12
     assert span.attributes["llm.token_count.completion"] == 8

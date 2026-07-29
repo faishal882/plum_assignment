@@ -56,7 +56,7 @@ class ModelRouter:
                     route=ModelRoute.COMPLEX_EXTRACTION,
                     model_id=model_id,
                     region=region,
-                    prompt_version="complex-extraction-prompt-v3",
+                    prompt_version="complex-extraction-prompt-v4",
                     schema_version="complex-extraction-v1",
                     enabled=True,
                     evaluation_approved=True,

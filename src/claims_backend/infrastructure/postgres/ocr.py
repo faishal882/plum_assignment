@@ -91,6 +91,7 @@ class PostgresOcrRepository:
                         confidence=observation.confidence,
                         region=observation.region.model_dump(mode="json"),
                         source_id=observation.source_id,
+                        field_type=observation.field_type,
                         created_at=now,
                     )
                     .on_conflict_do_nothing(constraint="ocr_observations_observation_id_uq")
@@ -135,4 +136,5 @@ def _to_domain(row: OcrObservationRow) -> OcrObservation:
         confidence=row.confidence,
         region=NormalizedRegion.model_validate(row.region),
         source_id=row.source_id,
+        field_type=row.field_type,
     )

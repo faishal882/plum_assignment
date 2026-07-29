@@ -1,6 +1,8 @@
 import asyncio
 import json
+import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from typing import Protocol
 from uuid import UUID
@@ -28,6 +30,8 @@ COMPLEX_EXTRACTION_SYSTEM_PROMPT = (
     "clinical., document., patient., provider., or treatment. Use billing.total for "
     "a bill's total amount, clinical.condition for a diagnosis or condition, and "
     "provider.name for the treating hospital or provider. Do not use clinical.diagnosis. "
+    "For an EXPENSE_FIELD whose field_type is TOTAL, emit exactly one billing.total "
+    "candidate grounded to that observation unless its value is unreadable. "
     "Every candidate must cite one or more supplied observation_id values."
 )
 
@@ -136,6 +140,7 @@ class StructuredModelApplication:
             config,
             available_observation_ids={observation.observation_id for observation in bounded},
         )
+        candidates = _merge_textract_derived_candidates(candidates, bounded, config)
         return await self._repository.save(
             ComplexExtractionResult(
                 document_version_id=document_version_id,
@@ -164,3 +169,113 @@ def _input_sha256(
         separators=(",", ":"),
     ).encode()
     return sha256(canonical).hexdigest()
+
+
+def _merge_textract_derived_candidates(
+    model_candidates: tuple[EvidenceCandidate, ...],
+    observations: tuple[OcrObservation, ...],
+    config: ModelRouteConfig,
+) -> tuple[EvidenceCandidate, ...]:
+    """Add only exact, provider-labelled facts omitted or left blank by the model."""
+    derived: list[EvidenceCandidate] = []
+    for observation in observations:
+        if observation.kind.value == "EXPENSE_FIELD" and observation.field_type == "TOTAL":
+            amount = _canonical_currency_amount(observation.text)
+            if amount is not None:
+                derived.append(
+                    _textract_candidate(
+                        fact_path="billing.total",
+                        value=amount,
+                        observation=observation,
+                        config=config,
+                        decoder_version="expense-total-v1",
+                        semantic_label=observation.field_type,
+                    )
+                )
+        condition = _diagnosis_line_value(observation.text)
+        if observation.kind.value == "LINE" and condition is not None:
+            derived.append(
+                _textract_candidate(
+                    fact_path="clinical.condition",
+                    value=condition,
+                    observation=observation,
+                    config=config,
+                    decoder_version="diagnosis-line-v1",
+                    semantic_label="DIAGNOSIS",
+                )
+            )
+    return (*model_candidates, *derived)
+
+
+def _textract_candidate(
+    *,
+    fact_path: str,
+    value: str,
+    observation: OcrObservation,
+    config: ModelRouteConfig,
+    decoder_version: str,
+    semantic_label: str,
+) -> EvidenceCandidate:
+    candidate_schema_version = f"textract-{decoder_version}"
+    producer_version = f"boto3-textract-v1:{decoder_version}"
+    canonical = json.dumps(
+        {
+            "fact_path": fact_path,
+            "source_fact_path": fact_path,
+            "value": value,
+            "normalized_value": value,
+            "evidence_refs": [observation.observation_id],
+            "producer": "TEXTRACT_DERIVED",
+            "producer_version": producer_version,
+            "candidate_schema_version": candidate_schema_version,
+            "source_semantic_label": semantic_label,
+            "model_route": config.route.value,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return EvidenceCandidate(
+        candidate_id=sha256(canonical).hexdigest(),
+        fact_path=fact_path,
+        source_fact_path=fact_path,
+        value=value,
+        normalized_value=value,
+        evidence_refs=(observation.observation_id,),
+        confidence=observation.confidence,
+        producer="TEXTRACT_DERIVED",
+        producer_version=producer_version,
+        candidate_schema_version=candidate_schema_version,
+        model_id=config.model_id,
+        route=config.route,
+        prompt_version=config.prompt_version,
+        schema_version=config.schema_version,
+    )
+
+
+def _canonical_currency_amount(value: str) -> str | None:
+    """Parse a standalone Indian-currency amount without inferring values from prose."""
+    cleaned = value.strip().replace(",", "")
+    for prefix in ("₹", "INR", "Rs.", "Rs", "rs.", "rs"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned.removeprefix(prefix).strip()
+            break
+    if not cleaned or any(character not in "0123456789." for character in cleaned):
+        return None
+    try:
+        amount = Decimal(cleaned)
+    except InvalidOperation:
+        return None
+    if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")):
+        return None
+    return f"{amount:.2f}"
+
+
+_DIAGNOSIS_LINE = re.compile(r"^diagnos(?:is|es)\s*[:\-]\s*(?P<value>.+)$", re.IGNORECASE)
+
+
+def _diagnosis_line_value(value: str) -> str | None:
+    match = _DIAGNOSIS_LINE.match(value.strip())
+    if match is None:
+        return None
+    condition = match.group("value").strip()
+    return condition or None

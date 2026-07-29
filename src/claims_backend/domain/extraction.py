@@ -47,7 +47,9 @@ class EvidenceCandidate(BaseModel):
     normalized_value: JsonScalar
     evidence_refs: tuple[str, ...]
     confidence: float
-    producer: Literal["BEDROCK"] = "BEDROCK"
+    producer: Literal["BEDROCK", "TEXTRACT_DERIVED"] = "BEDROCK"
+    producer_version: str
+    candidate_schema_version: str
     model_id: str
     route: ModelRoute
     prompt_version: str

@@ -28,6 +28,9 @@ unverified historical test counts into an operational-completion claim.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
 - The deterministic suite completed with **227 passed, 3 skipped** in 91.02 seconds. The three
   skipped checks are the explicitly opt-in synthetic Textract, Bedrock, and full-live-TC004 tests.
+- The explicitly authorized synthetic live TC004 provider-to-policy tracer passed on 2026-07-29:
+  real Textract and Qwen evidence reached the deterministic ₹1,350 approval. Its sanitized result
+  is recorded in `artifacts/backend-v1/live-intelligence-summary.json`.
 
 ## Local operation
 
@@ -55,7 +58,8 @@ decisions, review records, and audit records.
 ## Remaining work before completion
 
 - Complete recovery construction from a compatible persisted historical execution contract.
-- Add an explicitly authorized synthetic full live AWS tracer and document its actual result.
+- Add an explicitly authorized synthetic full live AWS tracer through the public API and standalone
+  worker boundary.
 - Add the remaining live-only evidence after an explicitly authorized run; recorded-evaluation,
   version-manifest, privacy, and deterministic test-summary artifacts are committed.
 
@@ -64,8 +68,9 @@ decisions, review records, and audit records.
 - Recorded rendered evaluation is the primary Backend v1 correctness gate and runs through the
   operational recorded worker. It is synthetic/de-identified and does not establish real-world
   OCR/model accuracy for arbitrary customer documents.
-- Live Textract/Bedrock variability is not represented as twelve-live-case coverage. Earlier
-  live Textract and Bedrock smoke checks passed; full live TC004 currently fails safely when Qwen
-  omits material facts or emits unsupported field aliases. Do not claim all twelve live cases pass.
+- Live Textract/Bedrock variability is not represented as twelve-live-case coverage. The synthetic
+  direct TC004 provider-to-policy tracer passes with Textract-labelled total and diagnosis-line
+  evidence decoders; it does not yet prove the public API and standalone-worker live boundary.
+  Do not claim all twelve live cases pass.
 - Backend v1 completion must not be claimed until the unchecked acceptance criteria in
   `plans/backend-v1-operational-completion.md` are closed with current evidence.

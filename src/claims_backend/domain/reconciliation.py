@@ -197,6 +197,8 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
         if isinstance(value, int):
             return value
         cleaned = str(value).replace("INR", "").replace("₹", "").replace(",", "").strip()
+        if not cleaned:
+            return None
         try:
             return int(Decimal(cleaned) * 100)
         except InvalidOperation:
@@ -209,14 +211,18 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
         if isinstance(value, bool) or value is None:
             return value
         cleaned = str(value).replace("INR", "").replace("₹", "").replace(",", "").strip()
+        if not cleaned:
+            return None
         try:
             return int(Decimal(cleaned) * 100)
         except InvalidOperation:
             return cleaned.casefold()
     if fact_path == "patient.name":
-        return None if value is None else _normalize(str(value))
+        normalized = "" if value is None else _normalize(str(value))
+        return normalized or None
     if fact_path == "treatment.date":
-        return None if value is None else str(value).strip()
+        normalized = "" if value is None else str(value).strip()
+        return normalized or None
     if fact_path.startswith("clinical."):
         normalized = "" if value is None else _normalize(str(value))
         if normalized in {"t2dm", "type 2 diabetes", "type 2 diabetes mellitus"}:
@@ -225,19 +231,21 @@ def _canonical_fact_value(fact_path: str, value: EvidenceScalar) -> EvidenceScal
             return "obesity"
         if fact_path == "clinical.treatment" and "bariatric" in normalized.split():
             return "bariatric_treatment"
-        return normalized
+        return normalized or None
     if fact_path in {
         "document.pre_authorization.patient_name",
         "document.pre_authorization.treatment",
         "provider.name",
     }:
-        return None if value is None else _normalize(str(value))
+        normalized = "" if value is None else _normalize(str(value))
+        return normalized or None
     if fact_path in {
         "document.pre_authorization.valid_from",
         "document.pre_authorization.valid_to",
         "document.pre_authorization.reference",
     }:
-        return None if value is None else str(value).strip()
+        normalized = "" if value is None else str(value).strip()
+        return normalized or None
     return value
 
 

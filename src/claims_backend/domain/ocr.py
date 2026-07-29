@@ -29,6 +29,7 @@ class OcrObservation(BaseModel):
     confidence: float = Field(ge=0, le=1)
     region: NormalizedRegion
     source_id: str = Field(min_length=1, max_length=128)
+    field_type: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class OcrPageResult(BaseModel):

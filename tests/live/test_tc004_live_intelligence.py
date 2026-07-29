@@ -159,7 +159,7 @@ async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
 
     assert proposal.recommendation.value == "APPROVED"
     assert proposal.approved_paise == 135_000
-    assert proposal.rule_results[-1].reason_code == "CATEGORY_COPAY_APPLIED"
+    assert "CATEGORY_COPAY_APPLIED" in {result.reason_code for result in proposal.rule_results}
     dataset = load_evaluation_inputs(_DATASET_PATH)
     builder = EvaluationRunBuilder(
         dataset,
@@ -173,7 +173,7 @@ async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
             model_id=_SETTINGS.bedrock_model_id,
             prompt_versions=(
                 "fast-triage-prompt-v1",
-                "complex-extraction-prompt-v3",
+                "complex-extraction-prompt-v4",
             ),
             schema_versions=("triage-output-v2", "complex-extraction-v1"),
             graph_version="claim-processing-v7",

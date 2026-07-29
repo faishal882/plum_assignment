@@ -67,6 +67,7 @@ def test_textract_profiles_send_page_bytes_and_map_project_observations(
     assert text.profile is TextractProfile.TEXT
     assert expense.provider_request_id == "expense-1"
     assert expense.observations[0].text == "800.00"
+    assert expense.observations[0].field_type == "TOTAL"
     assert expense.observations[0].page_number == 1
     assert expense.observations[0].document_version_id == page.document_version_id
     assert expense.observations[0].region.model_dump() == {

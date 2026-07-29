@@ -110,6 +110,8 @@ class PostgresStructuredModelRepository:
                         evidence_refs=list(candidate.evidence_refs),
                         confidence=candidate.confidence,
                         producer=candidate.producer,
+                        producer_version=candidate.producer_version,
+                        candidate_schema_version=candidate.candidate_schema_version,
                         created_at=now,
                     )
                     .on_conflict_do_nothing(constraint="evidence_candidates_candidate_id_uq")
@@ -157,7 +159,7 @@ class PostgresStructuredModelRepository:
             observation.observation_id: observation for observation in observations
         }
         candidates: list[ProvenancedEvidenceCandidate] = []
-        for candidate, extraction in rows:
+        for candidate, _extraction in rows:
             sources: list[EvidenceCandidateSource] = []
             for observation_id in candidate.evidence_refs:
                 observation = observations_by_id.get(observation_id)
@@ -184,8 +186,8 @@ class PostgresStructuredModelRepository:
                         "value": candidate.value,
                         "normalized_value": candidate.normalized_value,
                         "producer": candidate.producer,
-                        "producer_version": (f"{extraction.model_id}:{extraction.prompt_version}"),
-                        "schema_version": extraction.schema_version,
+                        "producer_version": candidate.producer_version,
+                        "schema_version": candidate.candidate_schema_version,
                         "confidence": candidate.confidence,
                         "sources": [source.model_dump(mode="json") for source in sources],
                     }
@@ -231,6 +233,8 @@ def _to_result(
                     "evidence_refs": candidate.evidence_refs,
                     "confidence": candidate.confidence,
                     "producer": candidate.producer,
+                    "producer_version": candidate.producer_version,
+                    "candidate_schema_version": candidate.candidate_schema_version,
                     "model_id": config.model_id,
                     "route": config.route,
                     "prompt_version": config.prompt_version,
