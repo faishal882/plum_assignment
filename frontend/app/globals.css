@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --ink: #3d4852;
+  --copy: #606b75;
+  --soft: #e0e5ec;
+  --violet: #6c63ff;
+  --violet-accent: #8b84ff;
+  --violet-pale: #eeedff;
+  --teal: #38b2ac;
+  --danger: #dc4c64;
+  --hairline: rgba(163, 177, 198, 0.42);
+  --white: #ffffff;
+  --dark-contrast: #303842;
+
+  --neu-light: rgba(255, 255, 255, 0.58);
+  --neu-dark: rgba(163, 177, 198, 0.68);
+  --neu-raised: 9px 9px 16px var(--neu-dark), -9px -9px 16px var(--neu-light);
+  --neu-raised-small: 5px 5px 10px rgba(163, 177, 198, 0.62), -5px -5px 10px rgba(255, 255, 255, 0.56);
+  --neu-inset: inset 6px 6px 10px rgba(163, 177, 198, 0.62), inset -6px -6px 10px rgba(255, 255, 255, 0.56);
+  --neu-inset-small: inset 3px 3px 6px rgba(163, 177, 198, 0.58), inset -3px -3px 6px rgba(255, 255, 255, 0.52);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--soft);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display), system-ui, -apple-system, sans-serif;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+p {
+  text-wrap: pretty;
+}
+
+:focus-visible {
+  outline: 3px solid var(--violet);
+  outline-offset: 3px;
+}
+
+/* Custom Neumorphic utilities */
+.neu-raised {
+  box-shadow: var(--neu-raised);
+}
+
+.neu-raised-sm {
+  box-shadow: var(--neu-raised-small);
+}
+
+.neu-inset {
+  box-shadow: var(--neu-inset);
+}
+
+.neu-inset-sm {
+  box-shadow: var(--neu-inset-small);
+}
+
+/* Animations */
+@keyframes stagePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(108, 99, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(108, 99, 255, 0);
+  }
+}
+
+.animate-pulse-violet {
+  animation: stagePulse 2s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
