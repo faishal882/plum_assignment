@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,11 +58,48 @@ class ReadabilityObservation(BaseModel):
     preview: PreviewProvenance
 
 
+ObservationId = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+
+class TriageIdentitySelection(BaseModel):
+    """A semantic identity value grounded to one backend-generated OCR observation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["PATIENT_NAME"] = "PATIENT_NAME"
+    value: str = Field(min_length=1, max_length=128)
+    observation_id: ObservationId
+
+
+class TriageDocumentPrediction(BaseModel):
+    """Untrusted semantic triage output; provenance is represented only by opaque references."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_document_id: str = Field(min_length=1, max_length=128)
+    role: DocumentRole
+    role_evidence_refs: tuple[ObservationId, ...] = Field(min_length=1, max_length=20)
+    readability: Readability
+    readability_evidence_refs: tuple[ObservationId, ...] = Field(
+        min_length=1,
+        max_length=20,
+    )
+    identity_observations: tuple[TriageIdentitySelection, ...] = Field(max_length=2)
+
+
+class TriageModelOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[3] = 3
+    documents: tuple[TriageDocumentPrediction, ...] = Field(min_length=1, max_length=10)
+
+
 class TriageIdentityObservation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: Literal["PATIENT_NAME"]
     value: str = Field(min_length=1, max_length=128)
+    observation_id: ObservationId | None = None
     page: int = Field(ge=1)
     region: NormalizedRegion
     source_text_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -97,12 +134,14 @@ class TriageDocumentResult(BaseModel):
 
     client_document_id: str = Field(min_length=1, max_length=128)
     role: DocumentRole
+    role_evidence_refs: tuple[ObservationId, ...] = ()
     readability: ReadabilityObservation
+    readability_evidence_refs: tuple[ObservationId, ...] = ()
     identity_observations: tuple[TriageIdentityObservation, ...] = Field(max_length=2)
 
 
-class TriageModelOutput(BaseModel):
+class ResolvedTriageOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     documents: tuple[TriageDocumentResult, ...] = Field(min_length=1, max_length=10)

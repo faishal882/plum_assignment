@@ -22,6 +22,7 @@ class IdentityCandidate(BaseModel):
     producer_version: str = Field(min_length=1, max_length=64)
     client_document_id: str = Field(min_length=1, max_length=128)
     document_version_id: UUID
+    observation_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     page: int = Field(ge=1)
     region: NormalizedRegion
     source_text_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

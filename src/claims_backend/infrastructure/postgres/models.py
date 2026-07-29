@@ -1074,7 +1074,17 @@ class DocumentTriageResultRow(Base):
     )
     client_document_id: Mapped[str] = mapped_column(String(128), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
+    role_evidence_refs: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
     readability: Mapped[str] = mapped_column(String(32), nullable=False)
+    readability_evidence_refs: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
     readability_observation: Mapped[dict[str, object]] = mapped_column(
         JSONB,
         nullable=False,

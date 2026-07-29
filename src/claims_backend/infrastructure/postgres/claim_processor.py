@@ -33,8 +33,9 @@ from claims_backend.domain.adjudication import (
 )
 from claims_backend.domain.evidence import (
     DocumentRole,
+    PreviewProvenance,
+    ResolvedTriageOutput,
     StructuredEvidencePayload,
-    TriageModelOutput,
 )
 from claims_backend.domain.policy import PolicyIR
 from claims_backend.domain.processing import (
@@ -91,7 +92,11 @@ from claims_backend.infrastructure.processing_failures import (
     NoOpAnomalyEnricher,
     NoOpEngineeringEventSink,
 )
-from claims_backend.model.application import StructuredModelApplication
+from claims_backend.model.application import (
+    FAST_TRIAGE_SYSTEM_PROMPT,
+    StructuredModelApplication,
+)
+from claims_backend.model.triage import TriageDocumentContext, resolve_triage_output
 from claims_backend.policy.adjudicator import DeterministicPolicyAdjudicator
 from claims_backend.policy.explanation import render_member_explanation
 
@@ -972,9 +977,10 @@ class PostgresClaimProcessor:
         if fixture is not None:
             return await self._commit_triage(
                 workflow_run,
-                TriageModelOutput.model_validate(fixture.payload),
+                ResolvedTriageOutput.model_validate(fixture.payload),
                 model_route="fixture-fast-triage-v1",
                 producer="fixture-fast-triage",
+                producer_version="v1",
             )
         if self._structured_model is not None:
             return await self._triage_from_discovery(workflow_run)
@@ -984,7 +990,11 @@ class PostgresClaimProcessor:
         self,
         workflow_run: WorkflowRun,
     ) -> EarlyGateResult:
-        if self._structured_model is None or self._ocr_repository is None:
+        if (
+            self._structured_model is None
+            or self._ocr_repository is None
+            or self._page_repository is None
+        ):
             raise ProcessingInvariantError("Discovery triage is not configured.")
         async with self._session_factory() as session:
             claim_version = (
@@ -999,6 +1009,7 @@ class PostgresClaimProcessor:
         if not isinstance(snapshots, list):
             raise ProcessingInvariantError("Claim document snapshot is invalid.")
         documents: list[dict[str, object]] = []
+        contexts: list[TriageDocumentContext] = []
         for snapshot in sorted(
             (item for item in snapshots if isinstance(item, dict)),
             key=lambda item: int(str(item["upload_index"])),
@@ -1008,45 +1019,78 @@ class PostgresClaimProcessor:
                 document_version_id,
                 DocumentRole.UNKNOWN,
             )
-            if not observations:
-                raise ProcessingInvariantError("Discovery OCR observations are missing.")
-            documents.append(
-                {
-                    "client_document_id": str(snapshot["client_document_id"]),
-                    "document_version_id": str(document_version_id),
-                    "observations": [item.model_dump(mode="json") for item in observations],
-                }
+            artifacts = await self._page_repository.list_for_document_version(document_version_id)
+            if not artifacts:
+                raise ProcessingInvariantError("Rendered page artifacts are missing.")
+            client_document_id = str(snapshot["client_document_id"])
+            contexts.append(
+                TriageDocumentContext(
+                    client_document_id=client_document_id,
+                    document_version_id=document_version_id,
+                    observations=observations,
+                    previews_by_page={
+                        artifact.page_number: PreviewProvenance(
+                            page=artifact.page_number,
+                            sha256=artifact.rendered_sha256,
+                            transform_version=artifact.render_version,
+                        )
+                        for artifact in artifacts
+                    },
+                )
             )
-        result = await self._structured_model.fast_triage(
-            [
-                ("system", "Classify each submitted claim document from discovery OCR."),
-                (
-                    "human",
-                    json.dumps(
-                        {"documents": documents},
-                        sort_keys=True,
-                        separators=(",", ":"),
+            if observations:
+                documents.append(
+                    {
+                        "client_document_id": client_document_id,
+                        "observations": [item.model_dump(mode="json") for item in observations],
+                    }
+                )
+        result = (
+            await self._structured_model.fast_triage(
+                [
+                    ("system", FAST_TRIAGE_SYSTEM_PROMPT),
+                    (
+                        "human",
+                        json.dumps(
+                            {"documents": documents},
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
                     ),
-                ),
-            ]
+                ]
+            )
+            if documents
+            else None
+        )
+        output = resolve_triage_output(
+            None if result is None else result.output,
+            tuple(contexts),
         )
         return await self._commit_triage(
             workflow_run,
-            result.output,
+            output,
             model_route=(
-                f"{result.config.route.value}:{result.config.model_id}:"
-                f"{result.config.prompt_version}"
+                "deterministic-empty-ocr-v1"
+                if result is None
+                else (
+                    f"{result.config.route.value}:{result.config.model_id}:"
+                    f"{result.config.prompt_version}"
+                )
             ),
-            producer="recorded-fast-triage",
+            producer="structured-fast-triage",
+            producer_version=(
+                "deterministic-empty-ocr-v1" if result is None else result.config.prompt_version
+            ),
         )
 
     async def _commit_triage(
         self,
         workflow_run: WorkflowRun,
-        output: TriageModelOutput,
+        output: ResolvedTriageOutput,
         *,
         model_route: str,
         producer: str,
+        producer_version: str,
     ) -> EarlyGateResult:
         now = datetime.now(UTC)
         async with self._session_factory.begin() as session:
@@ -1103,9 +1147,10 @@ class PostgresClaimProcessor:
                 item_candidates = [
                     IdentityCandidate(
                         producer=producer,
-                        producer_version="v1",
+                        producer_version=producer_version,
                         client_document_id=item.client_document_id,
                         document_version_id=UUID(str(snapshot["document_version_id"])),
+                        observation_id=observation.observation_id,
                         page=observation.page,
                         region=observation.region,
                         source_text_sha256=observation.source_text_sha256,
@@ -1125,7 +1170,9 @@ class PostgresClaimProcessor:
                         document_version_id=UUID(str(snapshot["document_version_id"])),
                         client_document_id=item.client_document_id,
                         role=item.role.value,
+                        role_evidence_refs=list(item.role_evidence_refs),
                         readability=item.readability.status.value,
+                        readability_evidence_refs=list(item.readability_evidence_refs),
                         readability_observation={
                             "status": item.readability.status.value,
                             "document_version_id": str(snapshot["document_version_id"]),

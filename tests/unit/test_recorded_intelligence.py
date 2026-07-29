@@ -24,7 +24,12 @@ def test_recorded_transport_classifies_hash_selected_document_observations() -> 
                         "documents": [
                             {
                                 "client_document_id": "bill",
-                                "observations": [{"text": "HOSPITAL_BILL"}],
+                                "observations": [
+                                    {
+                                        "observation_id": "a" * 64,
+                                        "text": "HOSPITAL_BILL",
+                                    }
+                                ],
                             }
                         ]
                     }
@@ -36,10 +41,9 @@ def test_recorded_transport_classifies_hash_selected_document_observations() -> 
         {
             "client_document_id": "bill",
             "role": "HOSPITAL_BILL",
-            "readability": {
-                "status": "READABLE",
-                "preview": response.raw_output["documents"][0]["readability"]["preview"],
-            },
+            "role_evidence_refs": ["a" * 64],
+            "readability": "READABLE",
+            "readability_evidence_refs": ["a" * 64],
             "identity_observations": [],
         }
     ]

@@ -28,11 +28,11 @@ from claims_backend.domain.evidence import (
     PreviewProvenance,
     Readability,
     ReadabilityObservation,
+    ResolvedTriageOutput,
     StructuredDocumentEvidence,
     StructuredEvidencePayload,
     TriageDocumentResult,
     TriageIdentityObservation,
-    TriageModelOutput,
 )
 from claims_backend.domain.extraction import ModelRoute
 from claims_backend.domain.ocr import (
@@ -670,7 +670,7 @@ def _candidates(
 def _triage_output(
     raw_case: dict[str, Any],
     rendered: tuple[bytes, ...],
-) -> TriageModelOutput:
+) -> ResolvedTriageOutput:
     inputs = raw_case["input"]
     member_name = _MEMBER_NAMES[str(inputs["member_id"])]
     documents: list[TriageDocumentResult] = []
@@ -710,7 +710,7 @@ def _triage_output(
                 ),
             )
         )
-    return TriageModelOutput(documents=tuple(documents))
+    return ResolvedTriageOutput(documents=tuple(documents))
 
 
 def _structured_payload(raw_case: dict[str, Any]) -> StructuredEvidencePayload:
@@ -937,10 +937,10 @@ def _source_versions(
         overlay_sha256=sha256(_OVERLAY_BYTES).hexdigest(),
         model_id=_MODEL_ID,
         prompt_versions=(
-            "fast-triage-prompt-v1",
+            "fast-triage-prompt-v2",
             "complex-extraction-prompt-v4",
         ),
-        schema_versions=("triage-output-v2", "complex-extraction-v1"),
+        schema_versions=("triage-output-v3", "complex-extraction-v1"),
         graph_version=LangGraphClaimWorkflow.graph_version,
         execution_profile=profile,
         ocr_mode="ENABLED" if profile.uses_ocr else "BYPASSED",

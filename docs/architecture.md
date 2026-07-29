@@ -613,6 +613,38 @@ Bedrock calls use Converse structured output with a versioned JSON schema. Provi
 
 The schema does not contain decision, approved amount, policy result, or payment fields. If a provider returns them, `extra="forbid"` rejects the response.
 
+Fast triage additionally excludes every backend-owned provenance field. Its current
+`triage-output-v3` contract contains only:
+
+```json
+{
+  "schema_version": 3,
+  "documents": [
+    {
+      "client_document_id": "doc-123",
+      "role": "HOSPITAL_BILL",
+      "role_evidence_refs": ["opaque-backend-observation-id"],
+      "readability": "READABLE",
+      "readability_evidence_refs": ["opaque-backend-observation-id"],
+      "identity_observations": [
+        {
+          "kind": "PATIENT_NAME",
+          "value": "Rajesh Kumar",
+          "observation_id": "opaque-backend-observation-id"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The model copies observation IDs that were supplied in its input; it never generates hashes.
+After schema validation, a deterministic resolver verifies that every reference exists and belongs
+to the predicted document version. The resolver copies page, region, and OCR confidence from that
+observation, computes the source-text SHA-256 from persisted OCR text, and copies preview provenance
+from the persisted rendered-page artifact. Cross-document references and identity values not
+contained in their referenced OCR text fail grounding validation.
+
 ### 8.4 Provenance
 
 ```python

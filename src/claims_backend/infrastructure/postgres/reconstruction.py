@@ -15,6 +15,7 @@ from claims_backend.infrastructure.postgres.models import (
     ComponentFailureRow,
     DecisionRecordRow,
     DocumentRow,
+    DocumentTriageResultRow,
     DocumentVersionRow,
     MemberActionRow,
     ModelExtractionRow,
@@ -151,6 +152,16 @@ class PostgresClaimReconstructor:
                     .order_by(MemberActionRow.claim_version, MemberActionRow.created_at)
                 )
             ).all()
+            triage_results = (
+                await session.scalars(
+                    select(DocumentTriageResultRow)
+                    .where(
+                        DocumentTriageResultRow.claim_id == claim.id,
+                        DocumentTriageResultRow.claim_version == claim.current_version,
+                    )
+                    .order_by(DocumentTriageResultRow.client_document_id)
+                )
+            ).all()
             review_task = await session.scalar(
                 select(ReviewTaskRow).where(
                     ReviewTaskRow.claim_id == claim.id,
@@ -201,6 +212,13 @@ class PostgresClaimReconstructor:
             _collect_evidence_references(casefile_value, evidence_references)
         for rule in rules:
             evidence_references.update(rule.evidence_refs)
+        for triage in triage_results:
+            evidence_references.update(triage.role_evidence_refs)
+            evidence_references.update(triage.readability_evidence_refs)
+            for identity in triage.identity_observations:
+                observation_id = identity.get("observation_id")
+                if isinstance(observation_id, str):
+                    evidence_references.add(observation_id)
         return ClaimReconstruction(
             claim_id=claim.id,
             claim_version=claim.current_version,
@@ -214,6 +232,7 @@ class PostgresClaimReconstructor:
             workflow_events=tuple(_workflow_event_value(row) for row in workflow_events),
             workflow_effects=tuple(_workflow_effect_value(row) for row in workflow_effects),
             audit_events=tuple(_audit_value(row) for row in audits),
+            document_triage=tuple(_triage_value(row) for row in triage_results),
             casefile=casefile_value,
             evidence_references=tuple(sorted(evidence_references)),
             model_extractions=tuple(_model_value(row) for row in model_extractions),
@@ -322,6 +341,23 @@ def _audit_value(row: AuditEventRow) -> dict[str, object]:
         "actor_user_id": str(row.actor_user_id),
         "actor_username": row.actor_username_snapshot,
         "payload": row.payload,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+def _triage_value(row: DocumentTriageResultRow) -> dict[str, object]:
+    return {
+        "id": str(row.id),
+        "client_document_id": row.client_document_id,
+        "document_version_id": str(row.document_version_id),
+        "role": row.role,
+        "role_evidence_refs": row.role_evidence_refs,
+        "readability": row.readability,
+        "readability_evidence_refs": row.readability_evidence_refs,
+        "readability_observation": row.readability_observation,
+        "identity_observations": row.identity_observations,
+        "model_route": row.model_route,
+        "schema_version": row.schema_version,
         "created_at": row.created_at.isoformat(),
     }
 

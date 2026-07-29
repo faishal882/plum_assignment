@@ -24,6 +24,15 @@ from claims_backend.model.extraction import (
 from claims_backend.model.routing import ModelRouteConfig, ModelRouter
 from claims_backend.model.transport import ModelInvocation, StructuredModelTransport
 
+FAST_TRIAGE_SYSTEM_PROMPT = (
+    "Classify each submitted claim document from discovery OCR. Return semantic predictions only: "
+    "document role, readability status, and patient-name values. Ground every prediction by "
+    "copying the exact supplied observation_id values into the corresponding evidence-reference "
+    "fields. "
+    "Treat observation IDs as opaque references: never create, alter, or infer an ID. Never return "
+    "hashes, page numbers, regions, document version IDs, render metadata, OCR confidence, policy "
+    "decisions, or payment recommendations."
+)
 COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3 = (
     "Extract grounded evidence candidates only. Never decide policy or payment. "
     "Every fact_path must begin with exactly one allowed namespace: billing., "

@@ -13,11 +13,11 @@ from claims_backend.domain.evidence import (
     PreviewProvenance,
     Readability,
     ReadabilityObservation,
+    ResolvedTriageOutput,
     StructuredDocumentEvidence,
     StructuredEvidencePayload,
     TriageDocumentResult,
     TriageIdentityObservation,
-    TriageModelOutput,
 )
 from claims_backend.infrastructure.postgres.models import ProcessingFixtureRow
 
@@ -30,7 +30,7 @@ class StructuredComponentFixtureAdapter:
         self,
         claim_id: UUID,
         claim_version: int,
-        output: TriageModelOutput,
+        output: ResolvedTriageOutput,
     ) -> None:
         """Seed sanitized provider output for a rendered-recorded evaluation."""
         canonical = json.dumps(
@@ -341,7 +341,7 @@ class StructuredComponentFixtureAdapter:
             )
 
     async def seed_tc001_triage(self, claim_id: UUID, claim_version: int) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F001",
@@ -385,7 +385,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F003",
@@ -435,7 +435,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F005",
@@ -485,7 +485,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F101",
@@ -535,7 +535,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F007",
@@ -585,7 +585,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F009",
@@ -634,7 +634,7 @@ class StructuredComponentFixtureAdapter:
         *,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F011",
@@ -675,7 +675,7 @@ class StructuredComponentFixtureAdapter:
         prescription_preview_sha256: str,
         bill_preview_sha256: str,
     ) -> None:
-        output = TriageModelOutput(
+        output = ResolvedTriageOutput(
             documents=(
                 TriageDocumentResult(
                     client_document_id="F023",

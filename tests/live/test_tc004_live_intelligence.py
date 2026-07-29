@@ -172,10 +172,10 @@ async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
             overlay_sha256=sha256(_OVERLAY_BYTES).hexdigest(),
             model_id=_SETTINGS.bedrock_model_id,
             prompt_versions=(
-                "fast-triage-prompt-v1",
+                "fast-triage-prompt-v2",
                 "complex-extraction-prompt-v4",
             ),
-            schema_versions=("triage-output-v2", "complex-extraction-v1"),
+            schema_versions=("triage-output-v3", "complex-extraction-v1"),
             graph_version="claim-processing-v7",
             execution_profile=ExecutionProfile.LIVE_INTELLIGENCE,
             ocr_mode="ENABLED",

@@ -126,19 +126,14 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
     recorded = RecordedStructuredModelTransport(
         {
             ModelRoute.FAST_TRIAGE: {
-                "schema_version": 2,
+                "schema_version": 3,
                 "documents": [
                     {
                         "client_document_id": "F-MODEL",
                         "role": "HOSPITAL_BILL",
-                        "readability": {
-                            "status": "READABLE",
-                            "preview": {
-                                "page": 1,
-                                "sha256": "a" * 64,
-                                "transform_version": "recorded-preview-v1",
-                            },
-                        },
+                        "role_evidence_refs": [observation.observation_id],
+                        "readability": "READABLE",
+                        "readability_evidence_refs": [observation.observation_id],
                         "identity_observations": [],
                     }
                 ],

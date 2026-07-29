@@ -36,7 +36,7 @@ flowchart LR
     Render --> OCR{Execution profile}
     OCR -->|RECORDED_LOCAL| Recorded[Recorded OCR and model adapters]
     OCR -->|LIVE_INTELLIGENCE| Textract[Amazon Textract]
-    Textract --> Bedrock[Amazon Bedrock / Qwen]
+    Textract --> Bedrock[Amazon Bedrock / configured model]
     Recorded --> Evidence[Evidence and casefile]
     Bedrock --> Evidence
     Evidence --> Policy[Compiled policy adjudicator]
@@ -80,8 +80,31 @@ stateDiagram-v2
 
 PostgreSQL is the reconstruction authority. Phoenix and JSONL are diagnostic views, not the source
 of truth. A reconstruction joins the claim/version, policy, work item, workflow run/events/effects,
-casefile, evidence references, extraction envelope, decision, rule results, failures, member
-actions, review task, and review resolutions.
+document triage and its OCR references, casefile, evidence references, extraction envelope,
+decision, rule results, failures, member actions, review task, and review resolutions.
+
+### Model and provenance ownership
+
+Bedrock performs semantic work but never creates provenance. Fast triage uses
+`fast-triage-prompt-v2` with `triage-output-v3`; the model returns document roles, readability
+labels, patient-name values, and exact references to supplied OCR observation IDs. It cannot return
+hashes, page numbers, regions, render metadata, document-version identifiers, or OCR confidence.
+
+```mermaid
+flowchart LR
+    OCR[Persisted OCR observations] -->|text + opaque observation_id| Model[Bedrock semantic triage]
+    Model -->|role, readability, value, references| Resolver[Deterministic triage resolver]
+    OCR --> Resolver
+    Pages[Persisted page artifacts] --> Resolver
+    Resolver -->|backend hashes + page + region + confidence| Triage[(Grounded triage records)]
+    Triage --> Reconcile[Identity and evidence reconciliation]
+```
+
+The resolver rejects missing, duplicated, or cross-document references. It computes source-text
+SHA-256 values from persisted OCR text, copies page/region/confidence from the referenced
+observation, and copies preview hashes and render versions from page artifacts. A document with no
+OCR observations becomes a deterministic `UNKNOWN`/`UNREADABLE` triage result instead of causing an
+unhandled workflow invariant failure.
 
 ## Documentation
 
@@ -221,7 +244,7 @@ alphanumeric character and otherwise limited to letters, numbers, `.`, `_`, `:`,
 | Profile | OCR/model adapters | Network | Use |
 |---|---|---|---|
 | `RECORDED_LOCAL` | Versioned recorded adapters | No | Default development and deterministic tests |
-| `LIVE_INTELLIGENCE` | Amazon Textract + Bedrock Qwen | Yes | Explicit synthetic AWS checks only |
+| `LIVE_INTELLIGENCE` | Amazon Textract + configured Bedrock model | Yes | Explicit synthetic AWS checks only |
 | `RENDERED_RECORDED` | Recorded rendered-document adapters | No | Twelve-case rendered acceptance gate |
 
 To run a live synthetic gate, opt in per command:

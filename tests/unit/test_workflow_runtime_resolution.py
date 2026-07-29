@@ -99,7 +99,7 @@ def _contract(prompt_version: str) -> ExecutionContract:
         model_provider_name="RECORDED_DOCUMENT_MODEL",
         model_provider_version="recorded-document-v1",
         model_routes=(
-            ("FAST_TRIAGE", "model", "region", "fast-triage-prompt-v1", "triage-output-v2"),
+            ("FAST_TRIAGE", "model", "region", "fast-triage-prompt-v2", "triage-output-v3"),
             ("COMPLEX_EXTRACTION", "model", "region", prompt_version, "complex-extraction-v1"),
         ),
     )

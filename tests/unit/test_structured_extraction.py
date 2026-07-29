@@ -61,8 +61,8 @@ def test_router_rebuilds_a_supported_historical_contract_and_prompt() -> None:
                 "FAST_TRIAGE",
                 "qwen.qwen3-235b-a22b-2507-v1:0",
                 "us-west-2",
-                "fast-triage-prompt-v1",
-                "triage-output-v2",
+                "fast-triage-prompt-v2",
+                "triage-output-v3",
             ),
             (
                 "COMPLEX_EXTRACTION",

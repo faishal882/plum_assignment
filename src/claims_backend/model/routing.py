@@ -48,8 +48,8 @@ class ModelRouter:
                     route=ModelRoute.FAST_TRIAGE,
                     model_id=model_id,
                     region=region,
-                    prompt_version="fast-triage-prompt-v1",
-                    schema_version="triage-output-v2",
+                    prompt_version="fast-triage-prompt-v2",
+                    schema_version="triage-output-v3",
                     enabled=True,
                     evaluation_approved=True,
                 ),
@@ -77,7 +77,7 @@ class ModelRouter:
                     f"Persisted model route {route!r} is unsupported."
                 ) from error
             if model_route is ModelRoute.FAST_TRIAGE and (
-                prompt_version != "fast-triage-prompt-v1" or schema_version != "triage-output-v2"
+                prompt_version != "fast-triage-prompt-v2" or schema_version != "triage-output-v3"
             ):
                 raise ModelRouteUnavailableError("Persisted fast triage contract is unsupported.")
             if model_route is ModelRoute.COMPLEX_EXTRACTION and (

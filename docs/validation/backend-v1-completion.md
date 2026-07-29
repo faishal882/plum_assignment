@@ -26,6 +26,12 @@ Phase-by-phase evidence is indexed in [the Backend v1 acceptance audit](backend-
   `session.id`. Recorded evaluation spans capture schema validity, grounding coverage, trace
   completeness, reconstruction, provenance/failure counts, and aggregate pass-rate metrics.
   PostgreSQL workflow events and JSONL records retain local reconstruction data.
+- Fast triage now uses `triage-output-v3`: Bedrock returns semantic values plus exact OCR
+  observation references, while the backend computes hashes and reconstructs page, region,
+  confidence, preview, and document-version provenance. These references are persisted and included
+  in PostgreSQL claim reconstruction.
+- The post-hardening deterministic suite passes with **245 passed, 4 live-AWS checks skipped**; the
+  twelve-case rendered acceptance gate passes independently.
 - Test execution refuses the application database unless an explicit destructive override is set.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
 - With the user's explicit `CLAIMS_RUN_LIVE_AWS=1` setting, the full suite completed with
@@ -104,5 +110,9 @@ decisions, review records, and audit records.
   model-schema safe failure. It is correctly observable and recoverable, but it is not proof that
   arbitrary real documents will be approved. The passing generated TC004 tracer is the bounded
   live acceptance claim.
+- The AWS account currently rejects structured Bedrock invocation for the locally configured
+  Anthropic inference profiles with `INVALID_PAYMENT_INSTRUMENT`. This is an account billing/access
+  blocker rather than a triage-schema failure; recorded acceptance remains the executable gate
+  until AWS access is restored.
 - Backend v1 is a local operational backend. Authentication, remote deployment, arbitrary
   real-world OCR/model accuracy, and twelve-case live-provider coverage remain out of scope.

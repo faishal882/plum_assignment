@@ -29,6 +29,7 @@ from claims_backend.infrastructure.postgres.models import (
     ProcessingFixtureRow,
     RuleResultRow,
 )
+from claims_backend.infrastructure.postgres.reconstruction import PostgresClaimReconstructor
 from claims_backend.infrastructure.postgres.setup_import_repository import (
     PostgresSetupImportRepository,
 )
@@ -192,7 +193,15 @@ async def test_public_claim_processes_without_processing_fixture_seed(
 
     async with app.state.session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
-        assert await session.scalar(select(func.count()).select_from(DocumentTriageResultRow)) == 2
+        triage = (
+            await session.scalars(
+                select(DocumentTriageResultRow).order_by(DocumentTriageResultRow.client_document_id)
+            )
+        ).all()
+        assert len(triage) == 2
+        assert all(item.schema_version == 3 for item in triage)
+        assert all(item.role_evidence_refs for item in triage)
+        assert all(item.readability_evidence_refs for item in triage)
     await app.state.engine.dispose()
 
 
@@ -955,6 +964,31 @@ async def test_public_claim_decides_without_processing_fixture_seed(
     assert projection.json()["adjudication"]["approved_amount"] == "1350.00"
     async with app.state.session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
+        triage = (
+            await session.scalars(
+                select(DocumentTriageResultRow).order_by(DocumentTriageResultRow.client_document_id)
+            )
+        ).all()
+        identities = [
+            identity for document in triage for identity in document.identity_observations
+        ]
+        assert identities
+        assert all(identity["observation_id"] for identity in identities)
+        assert all(len(identity["source_text_sha256"]) == 64 for identity in identities)
+        assert all(identity["page"] == 1 for identity in identities)
+    reconstruction = await PostgresClaimReconstructor(app.state.session_factory).reconstruct(
+        claim_id
+    )
+    assert reconstruction is not None
+    assert len(reconstruction.document_triage) == 2
+    triage_refs = {
+        reference
+        for document in reconstruction.document_triage
+        for key in ("role_evidence_refs", "readability_evidence_refs")
+        for reference in document[key]
+    }
+    assert triage_refs
+    assert triage_refs.issubset(set(reconstruction.evidence_references))
     await app.state.engine.dispose()
 
 

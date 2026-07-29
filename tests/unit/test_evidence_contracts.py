@@ -4,50 +4,38 @@ from pydantic import ValidationError
 from claims_backend.domain.evidence import DocumentRole, Readability, TriageModelOutput
 
 
-def test_triage_observations_require_preview_and_source_provenance() -> None:
-    output = TriageModelOutput.model_validate(
-        {
-            "schema_version": 2,
-            "documents": [
-                {
-                    "client_document_id": "F005",
-                    "role": "PRESCRIPTION",
-                    "readability": {
-                        "status": "READABLE",
-                        "preview": {
-                            "page": 1,
-                            "sha256": "a" * 64,
-                            "transform_version": "preview-v1",
-                        },
-                    },
-                    "identity_observations": [
-                        {
-                            "kind": "PATIENT_NAME",
-                            "value": "Rajesh Kumar",
-                            "page": 1,
-                            "region": {
-                                "x": 0.1,
-                                "y": 0.2,
-                                "width": 0.3,
-                                "height": 0.1,
-                            },
-                            "source_text_sha256": "b" * 64,
-                            "confidence": 0.98,
-                        }
-                    ],
-                }
-            ],
-        }
-    )
+def test_triage_model_contract_contains_only_semantics_and_opaque_references() -> None:
+    output = TriageModelOutput.model_validate(_payload())
 
-    assert output.documents[0].readability.status is Readability.READABLE
-    assert output.documents[0].readability.preview.page == 1
-    assert output.documents[0].identity_observations[0].confidence == 0.98
+    document = output.documents[0]
+    assert output.schema_version == 3
+    assert document.role is DocumentRole.PRESCRIPTION
+    assert document.readability is Readability.READABLE
+    assert document.identity_observations[0].observation_id == "b" * 64
 
-    incomplete = output.model_dump(mode="json")
-    del incomplete["documents"][0]["identity_observations"][0]["source_text_sha256"]
+
+@pytest.mark.parametrize(
+    ("target", "field", "value"),
+    [
+        ("document", "preview_sha256", "c" * 64),
+        ("document", "page", 1),
+        ("document", "region", {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.1}),
+        ("identity", "source_text_sha256", "d" * 64),
+        ("identity", "confidence", 0.98),
+    ],
+)
+def test_triage_model_contract_rejects_backend_owned_provenance(
+    target: str,
+    field: str,
+    value: object,
+) -> None:
+    payload = _payload()
+    document = payload["documents"][0]
+    destination = document if target == "document" else document["identity_observations"][0]
+    destination[field] = value
+
     with pytest.raises(ValidationError):
-        TriageModelOutput.model_validate(incomplete)
+        TriageModelOutput.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -61,77 +49,55 @@ def test_triage_observations_require_preview_and_source_provenance() -> None:
 def test_model_boundary_forbids_financial_authority_fields(
     forbidden: dict[str, object],
 ) -> None:
-    payload = {
-        "schema_version": 2,
-        "documents": [
-            {
-                "client_document_id": "F007",
-                "role": "PRESCRIPTION",
-                "readability": _readability("READABLE"),
-                "identity_observations": [],
-            }
-        ],
-        **forbidden,
-    }
+    payload = {**_payload(), **forbidden}
 
     with pytest.raises(ValidationError):
         TriageModelOutput.model_validate(payload)
 
 
 def test_unknown_document_role_remains_explicitly_unknown() -> None:
-    output = TriageModelOutput.model_validate(
-        {
-            "schema_version": 2,
-            "documents": [
-                {
-                    "client_document_id": "F099",
-                    "role": "UNKNOWN",
-                    "readability": _readability("UNKNOWN"),
-                    "identity_observations": [],
-                }
-            ],
-        }
-    )
+    payload = _payload()
+    payload["documents"][0]["role"] = "UNKNOWN"
+    payload["documents"][0]["readability"] = "UNKNOWN"
+
+    output = TriageModelOutput.model_validate(payload)
 
     assert output.documents[0].role is DocumentRole.UNKNOWN
 
 
 def test_triage_identity_observations_are_bounded() -> None:
-    observations = [_identity(name) for name in ("First", "Second", "Third")]
+    payload = _payload()
+    payload["documents"][0]["identity_observations"] = [
+        _identity("First", "b" * 64),
+        _identity("Second", "c" * 64),
+        _identity("Third", "d" * 64),
+        _identity("Fourth", "e" * 64),
+        _identity("Fifth", "f" * 64),
+    ]
 
     with pytest.raises(ValidationError):
-        TriageModelOutput.model_validate(
-            {
-                "schema_version": 2,
-                "documents": [
-                    {
-                        "client_document_id": "F001",
-                        "role": "PRESCRIPTION",
-                        "readability": _readability("READABLE"),
-                        "identity_observations": observations,
-                    }
-                ],
-            }
-        )
+        TriageModelOutput.model_validate(payload)
 
 
-def _readability(status: str) -> dict[str, object]:
+def _payload() -> dict[str, object]:
     return {
-        "status": status,
-        "preview": {
-            "page": 1,
-            "sha256": "a" * 64,
-            "transform_version": "preview-v1",
-        },
+        "schema_version": 3,
+        "documents": [
+            {
+                "client_document_id": "F005",
+                "role": "PRESCRIPTION",
+                "role_evidence_refs": ["a" * 64],
+                "readability": "READABLE",
+                "readability_evidence_refs": ["a" * 64],
+                "identity_observations": [_identity("Rajesh Kumar", "b" * 64)],
+            }
+        ],
     }
 
 
-def _identity(value: str) -> dict[str, object]:
+def _identity(value: str, observation_id: str) -> dict[str, object]:
     return {
         "kind": "PATIENT_NAME",
         "value": value,
-        "page": 1,
-        "region": {"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.1},
-        "source_text_sha256": "b" * 64,
-        "confidence": 0.9,
+        "observation_id": observation_id,
     }

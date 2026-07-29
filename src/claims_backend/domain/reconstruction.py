@@ -18,6 +18,7 @@ class ClaimReconstruction(BaseModel):
     workflow_events: tuple[dict[str, object], ...]
     workflow_effects: tuple[dict[str, object], ...]
     audit_events: tuple[dict[str, object], ...]
+    document_triage: tuple[dict[str, object], ...] = ()
     casefile: dict[str, object] | None
     evidence_references: tuple[str, ...]
     model_extractions: tuple[dict[str, object], ...]

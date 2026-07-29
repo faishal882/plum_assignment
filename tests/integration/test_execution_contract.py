@@ -93,8 +93,8 @@ def _contract(*, model_id: str) -> ExecutionContract:
                 "FAST_TRIAGE",
                 model_id,
                 "ap-south-1",
-                "fast-triage-prompt-v1",
-                "triage-output-v2",
+                "fast-triage-prompt-v2",
+                "triage-output-v3",
             ),
         ),
     )

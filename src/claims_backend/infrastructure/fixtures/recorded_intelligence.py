@@ -308,41 +308,38 @@ class RecordedDocumentModelTransport:
             observations = document.get("observations")
             if not isinstance(client_document_id, str) or not isinstance(observations, list):
                 raise RecordedInputUnavailableError("Recorded triage document is incomplete.")
-            canonical_observations = json.dumps(
-                observations,
-                sort_keys=True,
-                separators=(",", ":"),
-            )
             record = _record_from_observations(observations)
             role = _role_from_observations(observations)
+            evidence_refs = [
+                observation["observation_id"]
+                for observation in observations
+                if isinstance(observation, dict)
+                and isinstance(observation.get("observation_id"), str)
+            ]
+            if not evidence_refs:
+                raise RecordedInputUnavailableError(
+                    "Recorded triage document has no OCR observation references."
+                )
             identity_observations: list[dict[str, object]] = []
             if record is not None and record.patient_name is not None:
                 identity_observations.append(
                     {
                         "kind": "PATIENT_NAME",
                         "value": record.patient_name,
-                        "page": 1,
-                        "region": {"x": 0.05, "y": 0.1, "width": 0.9, "height": 0.2},
-                        "source_text_sha256": sha256(record.patient_name.encode()).hexdigest(),
-                        "confidence": 0.99,
+                        "observation_id": evidence_refs[0],
                     }
                 )
             output_documents.append(
                 {
                     "client_document_id": client_document_id,
                     "role": role.value,
-                    "readability": {
-                        "status": ("READABLE" if record is None else record.readability),
-                        "preview": {
-                            "page": 1,
-                            "sha256": sha256(canonical_observations.encode()).hexdigest(),
-                            "transform_version": "recorded-discovery-v1",
-                        },
-                    },
+                    "role_evidence_refs": evidence_refs,
+                    "readability": ("READABLE" if record is None else record.readability),
+                    "readability_evidence_refs": evidence_refs,
                     "identity_observations": identity_observations,
                 }
             )
-        raw_output = {"schema_version": 2, "documents": output_documents}
+        raw_output = {"schema_version": 3, "documents": output_documents}
         return _invocation(raw_output)
 
 

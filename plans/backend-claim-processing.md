@@ -603,6 +603,33 @@ Finish the diagnostic and quality system around the complete backend. Every work
 
 ---
 
+## Phase 27: Backend-owned triage provenance
+
+### What to build
+
+Remove deterministic provenance fields from the fast-triage model contract. The model performs
+document classification and patient-name extraction using exact OCR observation references; the
+application validates those references and reconstructs trusted provenance from PostgreSQL.
+
+### Acceptance criteria
+
+- [x] `triage-output-v3` contains semantic predictions and backend-issued observation references,
+  but no hashes, page numbers, regions, render metadata, document-version IDs, or OCR confidence.
+- [x] Unknown, duplicated, and cross-document observation references fail grounding validation.
+- [x] Patient-name values must be contained in the referenced OCR text after deterministic Unicode
+  and whitespace normalization.
+- [x] Source-text hashes, page numbers, regions, and confidence are copied or computed from the
+  persisted OCR observation.
+- [x] Preview hashes and render versions come from persisted page artifacts.
+- [x] Empty OCR output becomes a deterministic unreadable result instead of an invariant failure.
+- [x] Role/readability references and identity observation IDs are persisted with triage results and
+  exposed by `PostgresClaimReconstructor`.
+- [x] Recorded public API/worker processing and the twelve-case rendered acceptance gate pass.
+- [ ] Re-run the live Bedrock worker tracer after the configured AWS Marketplace payment
+  instrument permits structured model invocation.
+
+---
+
 ## Completion definition
 
 The backend implementation is complete when all 26 phase acceptance sections pass and:

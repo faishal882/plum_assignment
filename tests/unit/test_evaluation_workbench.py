@@ -187,10 +187,10 @@ def _versions(
         overlay_sha256="c" * 64,
         model_id="qwen.qwen3-235b-a22b-2507-v1:0",
         prompt_versions=(
-            "fast-triage-prompt-v1",
+            "fast-triage-prompt-v2",
             "complex-extraction-prompt-v4",
         ),
-        schema_versions=("triage-output-v2", "complex-extraction-v1"),
+        schema_versions=("triage-output-v3", "complex-extraction-v1"),
         graph_version="claim-processing-v7",
         execution_profile=profile,
         ocr_mode=(
