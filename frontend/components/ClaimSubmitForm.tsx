@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileDropzone } from "./FileDropzone";
 import { DocumentManifestEditor } from "./DocumentManifestEditor";
@@ -11,7 +11,12 @@ import {
   ClaimMetadata,
   ApiErrorResponse,
 } from "@/lib/claims-types";
-import { PlusCircle, RefreshCw, Shield, FileText, CheckCircle2 } from "lucide-react";
+import { PlusCircle, RefreshCw, Shield, UserCheck } from "lucide-react";
+import {
+  DEV_IDENTITY_CHANGED_EVENT,
+  DEV_IDENTITY_STORAGE_KEY,
+  readStoredDevIdentity,
+} from "@/lib/dev-identities";
 
 export function ClaimSubmitForm() {
   const router = useRouter();
@@ -23,6 +28,29 @@ export function ClaimSubmitForm() {
   const [treatmentDate, setTreatmentDate] = useState("2024-11-01");
   const [claimedAmount, setClaimedAmount] = useState("1500.00");
   const [currency, setCurrency] = useState<"INR">("INR");
+  const [devIdentityLabel, setDevIdentityLabel] = useState("member.emp001 / EMP001");
+
+  useEffect(() => {
+    const syncMemberFromDevIdentity = () => {
+      const identity = readStoredDevIdentity();
+      setDevIdentityLabel(
+        identity.memberId
+          ? `${identity.username} / ${identity.memberId} / ${identity.displayName}`
+          : `${identity.username} / ${identity.displayName}`
+      );
+      if (identity.memberId) {
+        setMemberId(identity.memberId);
+      }
+    };
+
+    syncMemberFromDevIdentity();
+    window.addEventListener(DEV_IDENTITY_CHANGED_EVENT, syncMemberFromDevIdentity);
+    window.addEventListener("storage", syncMemberFromDevIdentity);
+    return () => {
+      window.removeEventListener(DEV_IDENTITY_CHANGED_EVENT, syncMemberFromDevIdentity);
+      window.removeEventListener("storage", syncMemberFromDevIdentity);
+    };
+  }, []);
 
   const [files, setFiles] = useState<File[]>([]);
   const [manifest, setManifest] = useState<DocumentManifestItem[]>([]);
@@ -71,7 +99,7 @@ export function ClaimSubmitForm() {
       files.forEach((file) => formData.append("files", file));
 
       const devUsername =
-        localStorage.getItem("plum_dev_username") || "member.emp001";
+        localStorage.getItem(DEV_IDENTITY_STORAGE_KEY) || "member.emp001";
 
       const res = await fetch("/api/claims", {
         method: "POST",
@@ -125,6 +153,21 @@ export function ClaimSubmitForm() {
         <span className="px-3 py-1 rounded-label bg-violet-pale text-violet font-mono text-xs font-semibold neu-raised-sm">
           Multipart API Ingest
         </span>
+      </div>
+
+      <div className="rounded-card bg-violet-pale/45 border border-violet/20 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 w-8 h-8 rounded-control bg-canvas text-violet flex items-center justify-center neu-raised-sm shrink-0">
+            <UserCheck className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-ink">Active dev identity</p>
+            <p className="text-xs text-copy font-mono">{devIdentityLabel}</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-copy max-w-md">
+          Change the identity in the top-right switcher. The member id below updates automatically so TC001–TC012 submissions use the correct <code className="text-violet">X-Dev-Username</code>.
+        </p>
       </div>
 
       {/* Claim Metadata Form Grid */}

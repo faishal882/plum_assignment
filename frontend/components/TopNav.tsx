@@ -5,22 +5,35 @@ import { usePathname } from "next/navigation";
 import { HealthBadge } from "./HealthBadge";
 import { Shield, PlusCircle, ClipboardList, UserCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  DEV_IDENTITIES,
+  DEV_IDENTITY_CHANGED_EVENT,
+  DEV_IDENTITY_STORAGE_KEY,
+  DEFAULT_DEV_USERNAME,
+  getDevIdentity,
+} from "@/lib/dev-identities";
 
 export function TopNav() {
   const pathname = usePathname();
-  const [selectedUser, setSelectedUser] = useState<string>("member.emp001");
+  const [selectedUser, setSelectedUser] = useState<string>(DEFAULT_DEV_USERNAME);
   const [showIdentityMenu, setShowIdentityMenu] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("plum_dev_username");
+    const saved = localStorage.getItem(DEV_IDENTITY_STORAGE_KEY);
     if (saved) {
-      setSelectedUser(saved);
+      setSelectedUser(getDevIdentity(saved).username);
     }
   }, []);
 
   const handleUserChange = (username: string) => {
-    setSelectedUser(username);
-    localStorage.setItem("plum_dev_username", username);
+    const identity = getDevIdentity(username);
+    setSelectedUser(identity.username);
+    localStorage.setItem(DEV_IDENTITY_STORAGE_KEY, identity.username);
+    window.dispatchEvent(
+      new CustomEvent(DEV_IDENTITY_CHANGED_EVENT, {
+        detail: { username: identity.username },
+      })
+    );
     setShowIdentityMenu(false);
   };
 
@@ -84,7 +97,9 @@ export function TopNav() {
               <span className="hidden sm:inline text-[11px] text-copy">
                 Dev User:
               </span>
-              <span className="font-semibold text-ink">{selectedUser}</span>
+              <span className="font-semibold text-ink">
+                {getDevIdentity(selectedUser).memberId || selectedUser}
+              </span>
             </button>
 
             {showIdentityMenu && (
@@ -97,38 +112,62 @@ export function TopNav() {
                     Header: <code className="text-violet">X-Dev-Username</code>
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1">
                   <p className="text-[10px] font-semibold text-copy uppercase tracking-wider">
                     Member Identities
                   </p>
-                  {["member.emp001", "member.emp002", "member.emp003"].map(
-                    (u) => (
+                  {DEV_IDENTITIES.filter((identity) => identity.role === "member").map(
+                    (identity) => (
                       <button
-                        key={u}
-                        onClick={() => handleUserChange(u)}
-                        className={`w-full text-left px-2 py-1 rounded-control text-xs font-mono transition-colors ${
-                          selectedUser === u
+                        key={identity.username}
+                        onClick={() => handleUserChange(identity.username)}
+                        className={`w-full text-left px-2.5 py-2 rounded-control text-xs transition-colors ${
+                          selectedUser === identity.username
                             ? "bg-violet text-white font-semibold"
                             : "hover:bg-violet-pale text-ink"
                         }`}
                       >
-                        {u} (EMP00{u.slice(-1)})
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="font-mono">{identity.memberId}</span>
+                          <span
+                            className={`truncate ${
+                              selectedUser === identity.username ? "text-white/80" : "text-copy"
+                            }`}
+                          >
+                            {identity.displayName}
+                          </span>
+                        </span>
+                        <span
+                          className={`block font-mono text-[10px] ${
+                            selectedUser === identity.username ? "text-white/70" : "text-copy"
+                          }`}
+                        >
+                          {identity.username}
+                        </span>
                       </button>
                     )
                   )}
-                  <p className="text-[10px] font-semibold text-copy uppercase tracking-wider pt-1">
+                  <p className="text-[10px] font-semibold text-copy uppercase tracking-wider pt-2">
                     Reviewer Identity
                   </p>
-                  <button
-                    onClick={() => handleUserChange("reviewer.local")}
-                    className={`w-full text-left px-2 py-1 rounded-control text-xs font-mono transition-colors ${
-                      selectedUser === "reviewer.local"
-                        ? "bg-violet text-white font-semibold"
-                        : "hover:bg-violet-pale text-ink"
-                    }`}
-                  >
-                    reviewer.local
-                  </button>
+                  {DEV_IDENTITIES.filter((identity) => identity.role === "reviewer").map(
+                    (identity) => (
+                      <button
+                        key={identity.username}
+                        onClick={() => handleUserChange(identity.username)}
+                        className={`w-full text-left px-2.5 py-2 rounded-control text-xs transition-colors ${
+                          selectedUser === identity.username
+                            ? "bg-violet text-white font-semibold"
+                            : "hover:bg-violet-pale text-ink"
+                        }`}
+                      >
+                        <span className="font-mono">{identity.username}</span>
+                        <span className="block text-[10px] opacity-75">
+                          {identity.displayName}
+                        </span>
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
             )}
