@@ -26,6 +26,8 @@ unverified historical test counts into an operational-completion claim.
   PostgreSQL workflow events and JSONL records retain local reconstruction data.
 - Test execution refuses the application database unless an explicit destructive override is set.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
+- The deterministic suite completed with **227 passed, 3 skipped** in 91.02 seconds. The three
+  skipped checks are the explicitly opt-in synthetic Textract, Bedrock, and full-live-TC004 tests.
 
 ## Local operation
 
@@ -54,11 +56,8 @@ decisions, review records, and audit records.
 
 - Complete recovery construction from a compatible persisted historical execution contract.
 - Add an explicitly authorized synthetic full live AWS tracer and document its actual result.
-- Implement a versioned, provenance-preserving alias registry for live model field aliases (the
-  current known example is `clinical.diagnosis` to `clinical.condition`).
-- Generate committed sanitized evaluation, version-manifest, privacy, and current test-summary
-  artifacts.
-- Re-run and capture the final complete deterministic suite with its exact pass/skip count.
+- Add the remaining live-only evidence after an explicitly authorized run; recorded-evaluation,
+  version-manifest, privacy, and deterministic test-summary artifacts are committed.
 
 ## Current limitations
 

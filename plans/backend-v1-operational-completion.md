@@ -136,6 +136,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   diagnosis path as normal output.
 - [x] Sanitized recorded-evaluation, version-manifest, and telemetry-privacy proof artifacts are
   committed without runtime logs, documents, OCR, prompts, responses, or trace identifiers.
+- [x] Final deterministic suite evidence is recorded: `227 passed, 3 skipped`; all skips require
+  explicit paid-AWS authorization.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
