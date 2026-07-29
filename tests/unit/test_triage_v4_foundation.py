@@ -92,6 +92,39 @@ def test_v4_execution_contract_pins_the_evidence_policy() -> None:
     assert rebuilt.evidence_policy_version == "triage-evidence-policy-v1"
 
 
+def test_legacy_execution_contract_retains_its_v2_v3_triage_route() -> None:
+    contract = ExecutionContract(
+        schema_version="execution-contract-v1",
+        execution_profile="RECORDED_LOCAL",
+        ocr_provider_name="RECORDED_DISCOVERY_OCR",
+        ocr_provider_version="recorded-discovery-v1",
+        model_provider_name="RECORDED_DOCUMENT_MODEL",
+        model_provider_version="recorded-document-v1",
+        model_routes=(
+            (
+                "FAST_TRIAGE",
+                "recorded-model",
+                "ap-south-1",
+                "fast-triage-prompt-v2",
+                "triage-output-v3",
+            ),
+            (
+                "COMPLEX_EXTRACTION",
+                "recorded-model",
+                "ap-south-1",
+                "complex-extraction-prompt-v4",
+                "complex-extraction-v1",
+            ),
+        ),
+    )
+
+    rebuilt = ModelRouter.from_execution_contract(contract).resolve_fast_triage()
+
+    assert contract.triage_evidence_policy_version == "triage-evidence-policy-legacy-v0"
+    assert rebuilt.prompt_version == "fast-triage-prompt-v2"
+    assert rebuilt.schema_version == "triage-output-v3"
+
+
 def test_v4_normal_response_persists_an_unchanged_normalization_report() -> None:
     observation = OcrObservation(
         observation_id="a" * 64,

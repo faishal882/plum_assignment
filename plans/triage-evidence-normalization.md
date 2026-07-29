@@ -62,7 +62,7 @@ Durable decisions that apply across all phases:
 - [x] Phase 2: Valid over-citation tracer
 - [x] Phase 3: Duplicate-reference normalization
 - [x] Phase 4: Adversarial failure boundaries
-- [ ] Phase 5: Durable recovery and legacy compatibility
+- [x] Phase 5: Durable recovery and legacy compatibility
 - [ ] Phase 6: Acceptance and regression closure
 
 ---
@@ -417,9 +417,9 @@ evidence to a Phoenix provider response using the raw-output digest.
 
 #### New workflow recovery
 
-- [ ] A newly created workflow persists prompt-v3, provider-output-v4, canonical-output-v3, and
+- [x] A newly created workflow persists prompt-v3, provider-output-v4, canonical-output-v3, and
   policy-v1 identities.
-- [ ] Recovery reconstructs the exact provider schema and evidence policy from the execution
+- [x] Recovery reconstructs the exact provider schema and evidence policy from the execution
   contract.
 - [ ] Changing current route defaults does not change a resumed workflow.
 - [ ] Changing the configured model identifier does not change a resumed workflow's pinned model.
@@ -429,8 +429,8 @@ evidence to a Phoenix provider response using the raw-output digest.
 
 #### Legacy workflow execution
 
-- [ ] A legacy execution contract containing prompt-v2 and provider-output-v3 remains readable.
-- [ ] Absence of a policy field is accepted only for the explicitly supported legacy combination.
+- [x] A legacy execution contract containing prompt-v2 and provider-output-v3 remains readable.
+- [x] Absence of a policy field is accepted only for the explicitly supported legacy combination.
 - [ ] A legacy workflow rebuilds its v3 provider parser rather than adopting v4 behavior.
 - [ ] A legacy response at its prior accepted boundary behaves exactly as before.
 - [ ] A legacy response outside its prior schema limit retains its prior failure behavior.
@@ -439,42 +439,42 @@ evidence to a Phoenix provider response using the raw-output digest.
 
 #### Database compatibility
 
-- [ ] The additive migration upgrades a database containing historical triage rows.
+- [x] The additive migration upgrades a database containing historical triage rows.
 - [ ] Historical rows retain their original canonical evidence columns.
-- [ ] Historical rows with null normalization metadata remain reconstructable.
+- [x] Historical rows with null normalization metadata remain reconstructable.
 - [ ] Reconstruction labels missing legacy normalization metadata as unavailable.
 - [ ] Reconstruction never invents received or dropped references for a legacy row.
 - [ ] New rows require a policy version, normalization report, and raw-output digest at the
   application boundary.
-- [ ] New persistence writes canonical references and audit metadata atomically.
-- [ ] Schema-drift detection recognizes the new columns and constraints.
+- [x] New persistence writes canonical references and audit metadata atomically.
+- [x] Schema-drift detection recognizes the new columns and constraints.
 
 #### Durable reconstruction
 
 - [ ] A new normalized result can be reconstructed after worker and API restart.
-- [ ] Reconstructed canonical references match the persisted business columns.
+- [x] Reconstructed canonical references match the persisted business columns.
 - [ ] Reconstructed normalization counts and partitions are internally consistent.
 - [ ] Reconstructed evidence-policy version matches the workflow execution contract.
-- [ ] Reconstructed raw-output digest matches the normalization report.
-- [ ] PostgreSQL reconstruction remains sufficient after Phoenix data is unavailable.
+- [x] Reconstructed raw-output digest matches the normalization report.
+- [x] PostgreSQL reconstruction remains sufficient after Phoenix data is unavailable.
 - [ ] Phoenix and PostgreSQL can be correlated when both are available.
-- [ ] Complete raw provider output is not duplicated into a new generic database ledger.
+- [x] Complete raw provider output is not duplicated into a new generic database ledger.
 
 #### API compatibility
 
-- [ ] Claim submission accepts the same public request shape.
-- [ ] Claim polling returns the same public response shape.
-- [ ] Review and member-action contracts are unchanged.
-- [ ] No normalization detail, raw output, or internal evidence reference is added to the member
+- [x] Claim submission accepts the same public request shape.
+- [x] Claim polling returns the same public response shape.
+- [x] Review and member-action contracts are unchanged.
+- [x] No normalization detail, raw output, or internal evidence reference is added to the member
   response.
 
 #### Phase verification
 
 - [ ] Recovery tests prove a new workflow retains policy-v1 across changed runtime defaults.
-- [ ] Compatibility tests prove legacy v2/v3 workflows remain executable.
+- [x] Compatibility tests prove legacy v2/v3 workflows remain executable.
 - [ ] Negative tests reject missing or unknown policy versions on nonlegacy routes.
-- [ ] Migration tests upgrade representative historical rows.
-- [ ] Reconstruction tests cover both legacy-null and new-report rows.
+- [x] Migration tests upgrade representative historical rows.
+- [x] Reconstruction tests cover both legacy-null and new-report rows.
 - [ ] Public API contract tests show no response-schema change.
 - [ ] Phases 1–4 tests remain passing.
 
