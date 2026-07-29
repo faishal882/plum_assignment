@@ -1,10 +1,13 @@
 import json
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from typing import TypedDict
 from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.graph import END, START, StateGraph
 from pypdf import PdfWriter
 from sqlalchemy import func, select, text
 
@@ -23,7 +26,10 @@ from claims_backend.domain.processing import (
     ProcessingRoute,
 )
 from claims_backend.domain.workflow import WorkflowRunStatus
-from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkflow
+from claims_backend.infrastructure.langgraph_workflow import (
+    LangGraphClaimWorkflow,
+    _checkpoint_url,
+)
 from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
 from claims_backend.infrastructure.postgres.models import (
     ClaimWorkItemRow,
@@ -133,6 +139,25 @@ class DecisionLeaseRecorder:
         self.commit_lease_tokens.append(str(lease.lease_token))
 
 
+class LegacyWorkflowCheckpointState(TypedDict, total=False):
+    workflow_run_id: str
+    claim_id: str
+    claim_version: int
+    work_item_id: str
+    operation_key: str
+    claim_loaded: bool
+    finalized: bool
+    terminal_committed: bool
+    effect_count: int
+    worker_id: str
+    lease_token: str
+    leased_at: str
+    lease_until: str
+    available_at: str
+    attempt_number: int
+    max_attempts: int
+
+
 @pytest.mark.asyncio
 async def test_expired_worker_resumes_from_committed_postgres_checkpoint(
     migrated_database_url: str,
@@ -197,6 +222,81 @@ async def test_expired_worker_resumes_from_committed_postgres_checkpoint(
             )
         ).scalars()
     assert checkpoint_threads.all() == [str(completed.id)]
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_legacy_checkpoint_ignores_stored_lease_and_uses_reclaimed_context(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client)
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    stale_lease = (await scheduler.lease("stale-worker", 1, timedelta(minutes=5)))[0]
+    repository = PostgresWorkflowRepository(app.state.session_factory)
+    runtime = LangGraphClaimWorkflow(migrated_database_url, repository)
+    workflow_run = await repository.get_or_create(
+        stale_lease,
+        runtime.graph_name,
+        runtime.graph_version,
+        runtime.execution_contract,
+    )
+    workflow_run = await repository.mark_running(workflow_run.id)
+
+    async def crash_at_finalize(_: LegacyWorkflowCheckpointState) -> dict[str, object]:
+        raise ControlledCrash
+
+    async with AsyncPostgresSaver.from_conn_string(_checkpoint_url(migrated_database_url)) as saver:
+        await saver.setup()
+        legacy = StateGraph(LegacyWorkflowCheckpointState)
+        legacy.add_node("load_claim", lambda _: {"claim_loaded": True})
+        legacy.add_node("finalize", crash_at_finalize)
+        legacy.add_edge(START, "load_claim")
+        legacy.add_edge("load_claim", "finalize")
+        legacy.add_edge("finalize", END)
+        graph = legacy.compile(checkpointer=saver)
+        with pytest.raises(ControlledCrash):
+            await graph.ainvoke(
+                {
+                    "workflow_run_id": str(workflow_run.id),
+                    "claim_id": str(workflow_run.claim_id),
+                    "claim_version": workflow_run.claim_version,
+                    "work_item_id": str(workflow_run.work_item_id),
+                    "operation_key": workflow_run.operation_key,
+                    "claim_loaded": False,
+                    "finalized": False,
+                    "terminal_committed": False,
+                    "effect_count": 0,
+                    "worker_id": stale_lease.worker_id,
+                    "lease_token": str(stale_lease.lease_token),
+                    "leased_at": stale_lease.leased_at.isoformat(),
+                    "lease_until": stale_lease.lease_until.isoformat(),
+                    "available_at": stale_lease.available_at.isoformat(),
+                    "attempt_number": stale_lease.attempt_number,
+                    "max_attempts": stale_lease.max_attempts,
+                },
+                config={"configurable": {"thread_id": str(workflow_run.id)}},
+            )
+
+    clock.advance(timedelta(minutes=6))
+    recovery_lease = (await scheduler.lease("recovery-worker", 1, timedelta(minutes=5)))[0]
+    assert recovery_lease.lease_token != stale_lease.lease_token
+
+    await runtime.setup()
+    assert await runtime.run(workflow_run, recovery_lease, resume=True) is False
+
+    events = await repository.list_events(workflow_run.id)
+    assert events[-2].node_name == "finalize"
+    assert events[-2].event_type == "ENTRY"
+    assert events[-2].attempt_number == recovery_lease.attempt_number
+    assert events[-1].node_name == "finalize"
+    assert events[-1].event_type == "EXIT"
+    assert events[-1].attempt_number == recovery_lease.attempt_number
     await app.state.engine.dispose()
 
 

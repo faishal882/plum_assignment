@@ -110,7 +110,7 @@ Prove the architecture works across legacy and new checkpoints, remove the tempo
 
 ### Acceptance criteria
 
-- [ ] Legacy checkpoint resume, member-action reclaim/resume, decision reclaim/resume, stale-worker fencing, and unhandled-exception tests all pass.
-- [ ] The temporary checkpoint lease-refresh path is removed because no workflow node reads lease state from the checkpoint.
-- [ ] Focused integration, formatting, lint, type, migration, and full deterministic suites pass.
-- [ ] The implementation and trace behavior are documented for local operators.
+- [x] Legacy checkpoint resume, member-action reclaim/resume, decision reclaim/resume, stale-worker fencing, and unhandled-exception tests all pass.
+- [x] The temporary checkpoint lease-refresh path is removed because no workflow node reads lease state from the checkpoint.
+- [x] Focused integration, formatting, lint, type, migration, and full deterministic suites pass.
+- [x] The implementation and trace behavior are documented for local operators.

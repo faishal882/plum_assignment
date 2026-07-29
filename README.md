@@ -289,6 +289,27 @@ Phoenix `session.id`.
 > local data before sharing the workspace. PostgreSQL remains the authoritative decision record;
 > Phoenix is the correlated debugging view.
 
+### Lease recovery traces
+
+Workflow ownership is deliberately runtime-only: LangGraph checkpoints retain business progress,
+not a worker's lease. On every new or resumed invocation, the worker supplies a fresh PostgreSQL
+lease. Terminal member-action and decision writes are fenced in the same transaction by the active
+owner, token, and expiry.
+
+Phoenix workflow and node spans, plus the corresponding workflow JSONL records, expose these flat
+fields for recovery debugging:
+
+| Field | Meaning |
+|---|---|
+| `work.attempt` | The active scheduler attempt, including reclaim/resume attempts. |
+| `work.lease_id.sha256` | A deterministic hash for correlating one lease without emitting its token. |
+| `lease.validation.outcome` | `ACCEPTED`, `REJECTED_STALE`, or `NOT_EVALUATED`. |
+| `terminal.commit.outcome` | `COMMITTED` or `NOT_COMMITTED`. |
+
+To find a stale-worker terminal attempt in Phoenix, filter on
+`lease.validation.outcome = "REJECTED_STALE"`. Raw fencing tokens are intentionally absent from
+spans, JSONL, and public API responses.
+
 ## Testing and quality gates
 
 ### Evaluation data
