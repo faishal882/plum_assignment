@@ -268,19 +268,104 @@ Rich content capture is rejected unless all of the following are true: the proce
 
 ## Testing and quality gates
 
-Run the cost-free recorded acceptance gate:
+### Evaluation data
+
+The evaluation corpus is version-controlled under `problem_statement/`:
+
+| Source | Used for | Runtime authority |
+|---|---|---|
+| `assignment.md` | Assignment scope and acceptance context | No |
+| `policy_terms.json` | Policy source and member/setup facts | Yes, after compilation |
+| `test_cases.json` | Twelve synthetic claim submissions and the privileged expected-outcome oracle | Inputs only during execution; oracle only after actuals are frozen |
+| `sample_documents_guide.md` | Document-format/extraction guidance | No |
+| `config/policy/assignment-overlay-v1.json` | Reviewed clarification for policy contradictions | Yes, as part of the compiled policy version |
+
+The evaluation workbench is intentionally outside `src/claims_backend/`. The backend cannot import
+the scorer or accept expected decisions through the API. `load_evaluation_inputs()` extracts only
+`case_id`, name, description, and the case `input`; it drops every `expected` field. The runner
+then records immutable actual lifecycle, adjudication, amount, reason codes, provenance, failures,
+and trace-completeness results. Only after all actuals are finalized and hashed does `OracleScorer`
+open `test_cases.json` to compare them with the privileged expected outcomes.
+
+```mermaid
+flowchart LR
+    Data[test_cases.json] --> Public[Public case inputs only]
+    Public --> API[FastAPI submission]
+    API --> Worker[Normal composed worker]
+    Worker --> Actual[Freeze actual result + SHA-256]
+    Data --> Oracle[Expected outcomes]
+    Actual --> Score[Oracle scorer]
+    Oracle --> Score
+    Score --> Report[Pass/fail report and sanitized evidence]
+```
+
+### Evaluation modes
+
+| Gate | Providers | Cases | Purpose | AWS cost |
+|---|---|---:|---|---|
+| OCR-bypassed structured | Recorded structured components | 12 | Isolate policy/evidence behavior | No |
+| Rendered recorded | Generated rendered documents + recorded OCR/model adapters | 12 | Primary end-to-end correctness gate through FastAPI and worker | No |
+| Live provider smokes | Textract and Bedrock | targeted | Check provider connectivity and structured contract | Yes, explicit opt-in |
+| Live TC004 | Generated synthetic TC004 document, Textract, Bedrock, FastAPI, worker | 1 | Bounded live end-to-end proof | Yes, explicit opt-in |
+
+The rendered recorded gate is the v1 acceptance gate. It creates fresh test data, runs each case
+through normal workflow composition, verifies PostgreSQL reconstruction and complete workflow
+traces, and scans API/worker/evaluation telemetry for PHI canaries. It does not call AWS.
+
+### Run evaluation
+
+Run the fast diagnostic control when investigating deterministic policy or evidence behavior:
 
 ```bash
-uv run pytest \
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
+CLAIMS_RUN_LIVE_AWS=0 \
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
+CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
+  uv run pytest \
+  tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate \
+  -q
+```
+
+Run the primary twelve-case acceptance gate:
+
+```bash
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
+CLAIMS_RUN_LIVE_AWS=0 \
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
+CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
+  uv run pytest \
   tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate \
   -q
 ```
 
-Run the full suite with live AWS disabled unless you deliberately want to incur provider cost:
+Run the full suite without AWS cost. Pytest uses the separate `CLAIMS_TEST_DATABASE_URL` and
+refuses to target the application database unless a destructive override is explicitly supplied:
 
 ```bash
-CLAIMS_RUN_LIVE_AWS=0 uv run pytest -q
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
+CLAIMS_RUN_LIVE_AWS=0 \
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
+CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
+  uv run pytest -q
 ```
+
+Run the explicitly paid, synthetic live worker tracer only when AWS credentials are available:
+
+```bash
+CLAIMS_RUN_LIVE_AWS=1 \
+CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=1 \
+  uv run pytest tests/live/test_live_worker_tc004.py -q
+```
+
+Current sanitized outcomes, source hashes, and privacy checks are committed under
+[`artifacts/backend-v1/`](artifacts/backend-v1/). They contain no raw documents, OCR text,
+prompts, model responses, or trace identifiers.
+
+### Static quality checks
 
 Run static and migration checks:
 
