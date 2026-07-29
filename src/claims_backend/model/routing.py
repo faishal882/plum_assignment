@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from claims_backend.domain.extraction import ModelRoute
+from claims_backend.domain.workflow import ExecutionContract
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,50 @@ class ModelRouter:
                 ),
             )
         )
+
+    @classmethod
+    def from_execution_contract(cls, contract: ExecutionContract) -> "ModelRouter":
+        """Rebuild only a known, pinned route set from durable workflow metadata."""
+        routes: list[ModelRouteConfig] = []
+        for route, model_id, region, prompt_version, schema_version in contract.model_routes:
+            try:
+                model_route = ModelRoute(route)
+            except ValueError as error:
+                raise ModelRouteUnavailableError(
+                    f"Persisted model route {route!r} is unsupported."
+                ) from error
+            if model_route is ModelRoute.FAST_TRIAGE and (
+                prompt_version != "fast-triage-prompt-v1" or schema_version != "triage-output-v2"
+            ):
+                raise ModelRouteUnavailableError("Persisted fast triage contract is unsupported.")
+            if model_route is ModelRoute.COMPLEX_EXTRACTION and (
+                prompt_version
+                not in {
+                    "complex-extraction-prompt-v3",
+                    "complex-extraction-prompt-v4",
+                }
+                or schema_version != "complex-extraction-v1"
+            ):
+                raise ModelRouteUnavailableError(
+                    "Persisted complex extraction contract is unsupported."
+                )
+            routes.append(
+                ModelRouteConfig(
+                    route=model_route,
+                    model_id=model_id,
+                    region=region,
+                    prompt_version=prompt_version,
+                    schema_version=schema_version,
+                    enabled=True,
+                    evaluation_approved=True,
+                )
+            )
+        expected = {ModelRoute.FAST_TRIAGE, ModelRoute.COMPLEX_EXTRACTION}
+        if {route.route for route in routes} != expected:
+            raise ModelRouteUnavailableError(
+                "Persisted execution contract has an incomplete route set."
+            )
+        return cls(tuple(routes))
 
     def resolve(self, route: ModelRoute) -> ModelRouteConfig:
         config = self._routes.get(route)

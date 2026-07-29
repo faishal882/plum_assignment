@@ -9,9 +9,12 @@ from claims_backend.domain.extraction import (
     ModelSemanticValidationError,
 )
 from claims_backend.domain.ocr import OcrObservation, OcrObservationKind
+from claims_backend.domain.workflow import ExecutionContract
 from claims_backend.model.application import (
     COMPLEX_EXTRACTION_SYSTEM_PROMPT,
+    COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3,
     _merge_textract_derived_candidates,
+    complex_extraction_system_prompt,
 )
 from claims_backend.model.extraction import validate_complex_output
 from claims_backend.model.routing import ModelRouter
@@ -43,6 +46,38 @@ def test_fast_and_complex_routes_are_independently_versioned_and_approved() -> N
     assert "clinical.condition for a diagnosis or condition" in COMPLEX_EXTRACTION_SYSTEM_PROMPT
     assert "Do not use clinical.diagnosis" in COMPLEX_EXTRACTION_SYSTEM_PROMPT
     assert "field_type is TOTAL" in COMPLEX_EXTRACTION_SYSTEM_PROMPT
+
+
+def test_router_rebuilds_a_supported_historical_contract_and_prompt() -> None:
+    contract = ExecutionContract(
+        schema_version="execution-contract-v1",
+        execution_profile="RECORDED_LOCAL",
+        ocr_provider_name="RECORDED_DISCOVERY_OCR",
+        ocr_provider_version="recorded-discovery-v1",
+        model_provider_name="RECORDED_DOCUMENT_MODEL",
+        model_provider_version="recorded-document-v1",
+        model_routes=(
+            (
+                "FAST_TRIAGE",
+                "qwen.qwen3-235b-a22b-2507-v1:0",
+                "us-west-2",
+                "fast-triage-prompt-v1",
+                "triage-output-v2",
+            ),
+            (
+                "COMPLEX_EXTRACTION",
+                "qwen.qwen3-235b-a22b-2507-v1:0",
+                "us-west-2",
+                "complex-extraction-prompt-v3",
+                "complex-extraction-v1",
+            ),
+        ),
+    )
+
+    config = ModelRouter.from_execution_contract(contract).resolve(ModelRoute.COMPLEX_EXTRACTION)
+
+    assert config.prompt_version == "complex-extraction-prompt-v3"
+    assert complex_extraction_system_prompt(config) == COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3
 
 
 def test_authority_bearing_model_output_is_rejected_before_schema_parsing() -> None:

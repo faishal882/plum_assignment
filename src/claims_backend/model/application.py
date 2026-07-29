@@ -24,6 +24,13 @@ from claims_backend.model.extraction import (
 from claims_backend.model.routing import ModelRouteConfig, ModelRouter
 from claims_backend.model.transport import ModelInvocation, StructuredModelTransport
 
+COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3 = (
+    "Extract grounded evidence candidates only. Never decide policy or payment. "
+    "Every fact_path must begin with exactly one allowed namespace: billing., "
+    "clinical., document., patient., provider., or treatment. Use billing.total for "
+    "a bill's total amount and provider.name for the treating hospital or provider. "
+    "Every candidate must cite one or more supplied observation_id values."
+)
 COMPLEX_EXTRACTION_SYSTEM_PROMPT = (
     "Extract grounded evidence candidates only. Never decide policy or payment. "
     "Every fact_path must begin with exactly one allowed namespace: billing., "
@@ -34,6 +41,14 @@ COMPLEX_EXTRACTION_SYSTEM_PROMPT = (
     "candidate grounded to that observation unless its value is unreadable. "
     "Every candidate must cite one or more supplied observation_id values."
 )
+
+
+def complex_extraction_system_prompt(config: ModelRouteConfig) -> str:
+    if config.prompt_version == "complex-extraction-prompt-v3":
+        return COMPLEX_EXTRACTION_SYSTEM_PROMPT_V3
+    if config.prompt_version == "complex-extraction-prompt-v4":
+        return COMPLEX_EXTRACTION_SYSTEM_PROMPT
+    raise ModelSchemaValidationError("Persisted complex extraction prompt is unsupported.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +128,7 @@ class StructuredModelApplication:
         messages = [
             (
                 "system",
-                COMPLEX_EXTRACTION_SYSTEM_PROMPT,
+                complex_extraction_system_prompt(config),
             ),
             (
                 "human",
