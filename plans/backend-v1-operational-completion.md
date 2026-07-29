@@ -154,7 +154,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [ ] Operational no-fixture clean-decision tracer and all remaining recorded cases.
 - [x] Recovery construction resolves supported persisted provider/model/prompt contracts before
   execution; an existing v3 workflow never silently adopts the current v4 runtime.
-- [ ] Complete Phoenix claim-session correlation and evaluation metrics.
+- [x] Unified claim-session test proves correlated API/worker Phoenix sessions, durable workflow
+  event trace IDs, separate JSONL streams, and content-free telemetry canary scans.
 - [ ] Explicit live AWS complete tracer, versioned alias compatibility, and closure artifacts.
 
 ---

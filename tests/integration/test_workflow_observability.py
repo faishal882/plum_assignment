@@ -171,6 +171,75 @@ async def test_submission_span_uses_claim_as_session_id(
     await app.state.engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_claim_session_correlates_api_worker_events_logs_and_privacy(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    canaries = ("Kavita Nair", "Chronic Joint Pain")
+    api_exporter = InMemorySpanExporter()
+    worker_exporter = InMemorySpanExporter()
+    api_observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path / "logs", phi_canaries=canaries),
+        process_name="api",
+        span_exporter=api_exporter,
+    )
+    worker_observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path / "logs", phi_canaries=canaries),
+        process_name="worker",
+        span_exporter=worker_exporter,
+    )
+    app = create_app(
+        Settings(database_url=migrated_database_url, data_root=tmp_path),
+        observability=api_observability,
+    )
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            claim_id = await _submit_claim(client, "claim-session-boundary")
+        repository = PostgresWorkflowRepository(app.state.session_factory)
+        runtime = LangGraphClaimWorkflow(
+            migrated_database_url,
+            repository,
+            observability=worker_observability,
+        )
+        await runtime.setup()
+        assert await WorkerService(PostgresWorkScheduler(app.state.session_factory)).run_once(
+            "claim-session-worker",
+            ClaimWorkflowProcessor(repository, runtime).process,
+        )
+        async with app.state.session_factory() as session:
+            run_row = await session.scalar(
+                select(WorkflowRunRow).where(WorkflowRunRow.claim_id == claim_id)
+            )
+        assert run_row is not None
+        events = await repository.list_events(run_row.id)
+    finally:
+        api_observability.shutdown()
+        worker_observability.shutdown()
+
+    api_spans = api_exporter.get_finished_spans()
+    worker_spans = worker_exporter.get_finished_spans()
+    submission = next(span for span in api_spans if span.name == "api.claim_submitted")
+    workflow = next(span for span in worker_spans if span.name == "claim.workflow")
+    assert submission.attributes["session.id"] == str(claim_id)
+    assert workflow.attributes["session.id"] == str(claim_id)
+    assert events and all(event.trace_id == f"{workflow.context.trace_id:032x}" for event in events)
+
+    api_records = [
+        json.loads(line) for line in (tmp_path / "logs" / "api.jsonl").read_text().splitlines()
+    ]
+    worker_records = [
+        json.loads(line) for line in (tmp_path / "logs" / "worker.jsonl").read_text().splitlines()
+    ]
+    assert api_records and worker_records
+    scan_telemetry_for_phi(
+        [dict(span.attributes) for span in (*api_spans, *worker_spans)],
+        phi_canaries=canaries,
+    )
+    scan_telemetry_for_phi((*api_records, *worker_records), phi_canaries=canaries)
+    await app.state.engine.dispose()
+
+
 async def _submit_claim(client: AsyncClient, idempotency_key: str) -> UUID:
     response = await client.post(
         "/v1/claims",
