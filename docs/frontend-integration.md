@@ -34,6 +34,32 @@ The following capabilities do not exist yet:
 
 These are current-contract limitations, not frontend workarounds to conceal.
 
+## Start here: first frontend slice
+
+Build a submit-and-track member flow and a separate reviewer flow. Do not begin with a member
+dashboard because the backend does not yet expose `GET /v1/claims`.
+
+```text
+frontend/
+├── app/
+│   ├── claims/new/page.tsx            # multipart submission form
+│   ├── claims/[claimId]/page.tsx      # polling status, action, or decision view
+│   ├── review/page.tsx                # reviewer queue
+│   ├── review/[taskId]/page.tsx       # evidence and resolution form
+│   └── api/                           # same-origin BFF route handlers
+│       ├── claims/route.ts
+│       ├── claims/[claimId]/route.ts
+│       ├── claims/[claimId]/actions/route.ts
+│       └── review-tasks/
+├── lib/claims-api.ts                  # server-only FastAPI client
+├── lib/claims-types.ts                # contracts copied from this document
+└── components/claims/                 # form, status, action, and decision UI
+```
+
+The browser calls only same-origin `/api/*` routes. Route Handlers add the local identity and
+forward the request to FastAPI. Keep `CLAIMS_API_BASE_URL` and `CLAIMS_DEV_USERNAME` server-only;
+do not use a `NEXT_PUBLIC_` prefix.
+
 ## Local operational startup and polling
 
 Start the API and worker in separate terminals:
@@ -47,10 +73,12 @@ For one deterministic worker pass, use `uv run claims-worker run-once`. The defa
 `RECORDED_LOCAL` profile is cost-free and does not construct AWS clients. A submitted claim moves
 from `QUEUED` to one of `ACTION_REQUIRED`, `IN_REVIEW`, `DECIDED`, or `PROCESSING_FAILED`.
 
-Poll the returned `status_url` every 1–2 seconds while `progress.is_terminal` is `false`. Stop
-polling at any terminal state. `PROCESSING_FAILED` is a safe processing result, not a rejection;
-show retry guidance rather than a coverage decision. `ACTION_REQUIRED` means the member should
-follow the `action` payload and submit a replacement document.
+Poll the returned `status_url` every 1–2 seconds while `progress.is_terminal` is `false`; back
+off to 10–15 seconds after the first few polls. Stop polling when it is `true`, when the tab is
+hidden, or after a UI-level timeout. `PROCESSING_FAILED` is terminal and is a safe processing
+result, not a rejection; show `processing_failure.retry_guidance` rather than a coverage decision.
+`ACTION_REQUIRED` means the member should follow the `action` payload and submit a replacement
+document.
 
 Use `GET /health/live` for a process check and `GET /health/ready` before accepting local UI work.
 Readiness returns `503` when PostgreSQL is unavailable. Neither endpoint invokes OCR or model
@@ -304,6 +332,7 @@ export type ClaimLifecycle =
   | "ACTION_REQUIRED"
   | "IN_REVIEW"
   | "DECIDED"
+  | "PROCESSING_FAILED"
 
 export interface DocumentManifestItem {
   upload_index: number
@@ -389,6 +418,10 @@ export interface Claim {
       retryable: boolean
       effect_on_handling: string
     }>
+  }
+  processing_failure?: {
+    code: string
+    retry_guidance: string
   }
   created_at: IsoDateTime
   updated_at: IsoDateTime
@@ -548,11 +581,11 @@ Use the lifecycle to select the screen:
 | `ACTION_REQUIRED` | Member input is required | Render `action`; enable replacement when applicable |
 | `IN_REVIEW` | Human reviewer owns next step | Show pending review; adjudication details are withheld |
 | `DECIDED` | Terminal public result | Stop polling; show adjudication and explanation |
+| `PROCESSING_FAILED` | Terminal safe processing failure | Stop polling; show retry guidance, not a coverage result |
 
-`progress.is_terminal` is currently `true` only for `DECIDED`. Polling should still have a UI-level
-timeout and a manual refresh control. A reasonable local pattern is 2 seconds initially, backing
-off to 10–15 seconds while the tab remains visible. Do not infer progress percentages from
-`current_stage`.
+`progress.is_terminal` is `true` for terminal public states, including `DECIDED` and
+`PROCESSING_FAILED`. Keep a UI-level timeout and manual refresh control. Do not infer progress
+percentages from `current_stage`.
 
 ### Replace a document
 
@@ -734,8 +767,8 @@ Use `claim.version` and `task.claim_version` as optimistic-concurrency tokens, n
 values. On any `STALE_CLAIM_VERSION`, discard the stale form, fetch current server state, and ask
 the user to reconfirm if their intended action still applies.
 
-Do not optimistically mark a claim decided. Mutation acceptance and final workflow state are
-separate facts. Only a fresh claim response with `lifecycle_status: "DECIDED"` is terminal.
+Do not optimistically mark a claim complete. Mutation acceptance and final workflow state are
+separate facts. Only a fresh claim response with `progress.is_terminal: true` is terminal.
 
 Because there is no member list endpoint, a temporary local UI may store claim IDs in browser
 storage. Treat this as a development convenience only: it is incomplete across browsers and
@@ -780,10 +813,16 @@ At minimum, cover:
 - BFF preserves upstream status codes and bodies;
 - API-unavailable errors are distinct from backend validation errors.
 
-For backend contract verification:
+For backend contract verification, pin the cost-free recorded profile so inherited live-debug
+environment variables cannot alter the run:
 
 ```bash
-uv run pytest tests/contract -q
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
+CLAIMS_RUN_LIVE_AWS=0 \
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
+CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
+  uv run pytest tests/contract -q
 ```
 
 These tests truncate the database named by `CLAIMS_TEST_DATABASE_URL`. Do not point that setting
@@ -792,7 +831,12 @@ at a database containing manual development claims that must be preserved.
 For complete recorded workflow verification:
 
 ```bash
-uv run pytest tests/integration -q
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
+CLAIMS_RUN_LIVE_AWS=0 \
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
+CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
+CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
+  uv run pytest tests/integration -q
 ```
 
 Interactive API reference is available after starting FastAPI:
@@ -806,11 +850,12 @@ http://127.0.0.1:8000/openapi.json
 
 These should be explicit backend stories rather than inferred frontend behavior:
 
-1. a runnable worker composition root;
-2. `GET /v1/claims` with owner scoping, pagination, and filters;
-3. a readiness/health endpoint;
-4. authenticated identity propagation replacing `X-Dev-Username`;
-5. document preview/download contracts with authorization;
-6. paginated/filterable review queues;
-7. SSE or another event channel if polling becomes inadequate; and
-8. a versioned, generated frontend client if OpenAPI is expanded to describe all custom errors.
+1. `GET /v1/claims` with owner scoping, pagination, and filters;
+2. authenticated identity propagation replacing `X-Dev-Username`;
+3. document preview/download contracts with authorization;
+4. paginated/filterable review queues;
+5. SSE or another event channel if polling becomes inadequate;
+6. a versioned, generated frontend client if OpenAPI is expanded to describe all custom errors; and
+7. safe structured agent-decision summaries in Phoenix when richer synthetic-only trace views are
+   needed. Member and reviewer UI must continue to rely on FastAPI and PostgreSQL projections,
+   never Phoenix directly.
