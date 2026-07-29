@@ -2,12 +2,13 @@
   "artifact_schema": "backend-v1-test-summary-v1",
   "command": "uv run pytest -q",
   "result": "PASSED",
-  "passed": 227,
-  "skipped": 3,
+  "passed": 232,
+  "skipped": 4,
   "failed": 0,
-  "duration_seconds": 91.02,
+  "duration_seconds": 99.88,
   "skipped_checks": [
     "tests/live/test_bedrock_live.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
+    "tests/live/test_live_worker_tc004.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
     "tests/live/test_tc004_live_intelligence.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
     "tests/live/test_textract_live.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required"
   ],
