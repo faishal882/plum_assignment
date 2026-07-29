@@ -90,12 +90,11 @@ class ClaimWorkflowProcessor:
         self,
         lease: WorkLease,
     ) -> WorkCompleted | WorkCommitted | WorkRetry | WorkFailed:
-        existing = await self._repository.get_by_work_item(lease.work_item_id)
-        runtime = (
-            self._runtime
-            if self._runtime_resolver is None
-            else await self._runtime_resolver(existing)
-        )
+        if self._runtime_resolver is None:
+            runtime = self._runtime
+        else:
+            existing = await self._repository.get_by_work_item(lease.work_item_id)
+            runtime = await self._runtime_resolver(existing)
         workflow_run = await self._repository.get_or_create(
             lease,
             runtime.graph_name,
