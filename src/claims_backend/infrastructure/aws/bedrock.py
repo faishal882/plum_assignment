@@ -1,3 +1,5 @@
+import base64
+import json
 from collections.abc import Mapping
 from threading import BoundedSemaphore
 from time import monotonic
@@ -12,7 +14,9 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
     ReadTimeoutError,
 )
 from langchain_aws import ChatBedrockConverse
-from openinference.semconv.trace import OpenInferenceSpanKindValues
+from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
+from opentelemetry import trace
+from opentelemetry.util.types import AttributeValue
 from pydantic import BaseModel
 
 from claims_backend.config import Settings
@@ -64,6 +68,37 @@ class ChatBedrockConverseTransport:
     ) -> ModelInvocation:
         if self._observability is None:
             return self._invoke(config, schema, messages)
+        input_payload = {
+            "messages": [
+                {
+                    "role": role,
+                    "content": content,
+                }
+                for role, content in messages
+            ],
+            "response_schema": schema.model_json_schema(),
+        }
+        input_attributes = {
+            SpanAttributes.INPUT_VALUE: _json(input_payload),
+            SpanAttributes.INPUT_MIME_TYPE: "application/json",
+            SpanAttributes.LLM_MODEL_NAME: config.model_id,
+            "llm.provider": "aws",
+            "llm.system": "bedrock",
+            "llm.invocation_parameters": _json(
+                {
+                    "model": config.model_id,
+                    "region": config.region,
+                    "temperature": config.temperature,
+                    "route": config.route.value,
+                    "prompt_version": config.prompt_version,
+                    "schema_version": config.schema_version,
+                    "structured_output_method": config.structured_output_method,
+                }
+            ),
+        }
+        for index, (role, content) in enumerate(messages):
+            input_attributes[f"llm.input_messages.{index}.message.role"] = role
+            input_attributes[f"llm.input_messages.{index}.message.content"] = content
         with self._observability.span(
             "bedrock.converse",
             component="bedrock",
@@ -75,6 +110,7 @@ class ChatBedrockConverseTransport:
                 "model.prompt_version": config.prompt_version,
                 "model.schema_version": config.schema_version,
                 "model.structured_output_method": config.structured_output_method,
+                **input_attributes,
             },
         ) as span:
             try:
@@ -97,6 +133,19 @@ class ChatBedrockConverseTransport:
                     "provider.request_id": invocation.provider_request_id,
                     "llm.token_count.prompt": invocation.input_tokens,
                     "llm.token_count.completion": invocation.output_tokens,
+                    "llm.token_count.total": (
+                        invocation.total_tokens
+                        if invocation.total_tokens is not None
+                        else invocation.input_tokens + invocation.output_tokens
+                    ),
+                    SpanAttributes.OUTPUT_VALUE: _json(
+                        invocation.provider_output or {"normalized_output": invocation.raw_output}
+                    ),
+                    SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
+                    "llm.output_messages.0.message.role": "assistant",
+                    "llm.output_messages.0.message.content": _json(
+                        invocation.provider_output or {"normalized_output": invocation.raw_output}
+                    ),
                     "model.latency_ms": invocation.latency_ms,
                     "model.stop_reason": invocation.stop_reason,
                 },
@@ -174,6 +223,33 @@ class ChatBedrockConverseTransport:
             ) from error
         latency_ms = max(0, round((monotonic() - started) * 1000))
         result = _mapping(raw_result)
+        raw_message = result.get("raw")
+        response_metadata = _optional_mapping(getattr(raw_message, "response_metadata", {}))
+        usage_metadata = _optional_mapping(getattr(raw_message, "usage_metadata", {}))
+        provider_output = {
+            "normalized_output": _jsonable(result.get("parsed")),
+            "raw_provider_message": _provider_message(raw_message),
+            "parsing_error": _jsonable(result.get("parsing_error")),
+        }
+        if self._observability is not None:
+            trace_attributes: dict[str, object] = {
+                SpanAttributes.OUTPUT_VALUE: _json(provider_output),
+                SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
+                "llm.output_messages.0.message.role": "assistant",
+                "llm.output_messages.0.message.content": _json(provider_output),
+            }
+            for source, target in (
+                ("input_tokens", SpanAttributes.LLM_TOKEN_COUNT_PROMPT),
+                ("output_tokens", SpanAttributes.LLM_TOKEN_COUNT_COMPLETION),
+                ("total_tokens", SpanAttributes.LLM_TOKEN_COUNT_TOTAL),
+            ):
+                value = usage_metadata.get(source)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    trace_attributes[target] = value
+            self._observability.set_attributes(
+                trace.get_current_span(),
+                cast(Mapping[str, AttributeValue], trace_attributes),
+            )
         if result.get("parsing_error") is not None:
             raise ModelSchemaValidationError("Bedrock structured output failed schema parsing.")
         parsed = result.get("parsed")
@@ -181,9 +257,6 @@ class ChatBedrockConverseTransport:
             raise ModelSchemaValidationError(
                 "Bedrock structured output did not contain a parsed model."
             )
-        raw_message = result.get("raw")
-        response_metadata = _mapping(getattr(raw_message, "response_metadata", {}))
-        usage_metadata = _mapping(getattr(raw_message, "usage_metadata", {}))
         aws_metadata = response_metadata.get("ResponseMetadata", {})
         request_metadata = _mapping(aws_metadata)
         request_id = request_metadata.get("RequestId") or response_metadata.get("request_id")
@@ -199,6 +272,14 @@ class ChatBedrockConverseTransport:
             output_tokens=_nonnegative_integer(usage_metadata.get("output_tokens", 0)),
             latency_ms=latency_ms,
             stop_reason=(stop_reason if isinstance(stop_reason, str) else "UNKNOWN"),
+            provider_output=provider_output,
+            total_tokens=_nonnegative_integer(
+                usage_metadata.get(
+                    "total_tokens",
+                    _nonnegative_integer(usage_metadata.get("input_tokens", 0))
+                    + _nonnegative_integer(usage_metadata.get("output_tokens", 0)),
+                )
+            ),
         )
 
 
@@ -216,3 +297,39 @@ def _nonnegative_integer(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ModelSchemaValidationError("Bedrock token metadata has an invalid shape.")
     return value
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _provider_message(message: object) -> dict[str, object]:
+    if isinstance(message, BaseModel):
+        dumped = message.model_dump(mode="json")
+        return cast(dict[str, object], dumped)
+    return {
+        "id": _jsonable(getattr(message, "id", None)),
+        "type": _jsonable(getattr(message, "type", None)),
+        "content": _jsonable(getattr(message, "content", None)),
+        "additional_kwargs": _jsonable(getattr(message, "additional_kwargs", {})),
+        "response_metadata": _jsonable(getattr(message, "response_metadata", {})),
+        "usage_metadata": _jsonable(getattr(message, "usage_metadata", {})),
+        "tool_calls": _jsonable(getattr(message, "tool_calls", [])),
+        "invalid_tool_calls": _jsonable(getattr(message, "invalid_tool_calls", [])),
+    }
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, bytes):
+        return {"base64": base64.b64encode(value).decode("ascii")}
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(child) for key, child in value.items()}
+    if isinstance(value, list | tuple):
+        return [_jsonable(child) for child in value]
+    if isinstance(value, Exception):
+        return {"type": type(value).__name__, "message": str(value)}
+    return repr(value)

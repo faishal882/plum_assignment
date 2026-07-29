@@ -1,3 +1,4 @@
+import base64
 import json
 from collections.abc import Callable, Mapping
 from hashlib import sha256
@@ -13,7 +14,7 @@ from botocore.exceptions import (  # type: ignore[import-untyped]
     EndpointConnectionError,
     ReadTimeoutError,
 )
-from openinference.semconv.trace import OpenInferenceSpanKindValues
+from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
 
 from claims_backend.application.intelligence import RenderedPage
 from claims_backend.config import Settings
@@ -75,8 +76,26 @@ class TextractAdapter:
         role: DocumentRole,
     ) -> OcrPageResult:
         if self._observability is None:
-            return self._analyze_with_errors(page, role)
+            result, _ = self._analyze_with_errors(page, role)
+            return result
         profile = _profile(role)
+        input_payload = {
+            "requested_role": role.value,
+            "textract_profile": profile.value,
+            "document": {
+                "document_id": str(page.document_id),
+                "document_version_id": str(page.document_version_id),
+                "page_number": page.page_number,
+                "original_sha256": page.original_sha256,
+                "rendered_sha256": page.sha256,
+                "media_type": page.media_type,
+                "content_base64": base64.b64encode(page.content).decode("ascii"),
+                "size_bytes": page.size_bytes,
+                "width": page.width,
+                "height": page.height,
+                "render_version": page.render_version,
+            },
+        }
         with self._observability.span(
             "textract.analyze_page",
             component="textract",
@@ -85,10 +104,12 @@ class TextractAdapter:
                 "provider.name": self.provider_name,
                 "textract.profile": profile.value,
                 "textract.page_number": page.page_number,
+                SpanAttributes.INPUT_VALUE: _json(input_payload),
+                SpanAttributes.INPUT_MIME_TYPE: "application/json",
             },
         ) as span:
             try:
-                result = self._analyze_with_errors(page, role)
+                result, raw_response = self._analyze_with_errors(page, role)
             except Exception as error:
                 self._observability.log(
                     EngineeringLogEvent(
@@ -107,6 +128,13 @@ class TextractAdapter:
                     "provider.request_id": result.provider_request_id,
                     "provider.retry_count": result.retry_attempts,
                     "textract.observation_count": len(result.observations),
+                    SpanAttributes.OUTPUT_VALUE: _json(
+                        {
+                            "normalized_result": result.model_dump(mode="json"),
+                            "raw_provider_response": raw_response,
+                        }
+                    ),
+                    SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
                 },
             )
             self._observability.log(
@@ -125,7 +153,7 @@ class TextractAdapter:
         self,
         page: RenderedPage,
         role: DocumentRole,
-    ) -> OcrPageResult:
+    ) -> tuple[OcrPageResult, Mapping[str, object]]:
         try:
             with self._permit:
                 return self._analyze(page, role)
@@ -171,7 +199,7 @@ class TextractAdapter:
         self,
         page: RenderedPage,
         role: DocumentRole,
-    ) -> OcrPageResult:
+    ) -> tuple[OcrPageResult, Mapping[str, object]]:
         profile = _profile(role)
         if profile is TextractProfile.EXPENSE:
             response = self._client.analyze_expense(Document={"Bytes": page.content})
@@ -186,22 +214,25 @@ class TextractAdapter:
             response = self._client.detect_document_text(Document={"Bytes": page.content})
             observations = _block_observations(response, page, role)
         metadata = _mapping(response.get("ResponseMetadata"))
-        return OcrPageResult(
-            profile=profile,
-            provider_request_id=_required_string(metadata, "RequestId"),
-            retry_attempts=_integer(metadata.get("RetryAttempts", 0)),
-            observations=tuple(
-                sorted(
-                    observations,
-                    key=lambda item: (
-                        item.page_number,
-                        item.region.y,
-                        item.region.x,
-                        item.kind.value,
-                        item.source_id,
-                    ),
-                )
+        return (
+            OcrPageResult(
+                profile=profile,
+                provider_request_id=_required_string(metadata, "RequestId"),
+                retry_attempts=_integer(metadata.get("RetryAttempts", 0)),
+                observations=tuple(
+                    sorted(
+                        observations,
+                        key=lambda item: (
+                            item.page_number,
+                            item.region.y,
+                            item.region.x,
+                            item.kind.value,
+                            item.source_id,
+                        ),
+                    )
+                ),
             ),
+            response,
         )
 
 
@@ -430,3 +461,7 @@ def _integer(value: object) -> int:
 
 def _confidence(value: object) -> float:
     return _number(value) / 100
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

@@ -1357,14 +1357,14 @@ The displayed confidence includes a version and semantic label. A raw `0.87` wit
 
 ## 16. Observability and explainability
 
-Complete observability does not require a cloud product. Keep the authoritative business trace in PostgreSQL and write privacy-safe engineering events to rotating local files.
+Complete observability does not require a cloud product. Keep the authoritative business trace in PostgreSQL, write compact engineering events to rotating local files, and export full-content OpenInference spans to the local Phoenix instance for assignment debugging.
 
 ### 16.1 Two independent records
 
 | Record | Store | Purpose | Contains |
 |---|---|---|---|
 | Domain audit/decision trace | PostgreSQL | Reconstruct why the claim has its state/outcome | Evidence refs, rules, amounts, commands, versions, actor |
-| Engineering telemetry | Local rotating JSONL files | Diagnose latency, errors, retries, saturation, cost | Sanitized logs, span events, metrics, provider metadata |
+| Engineering telemetry | Local Phoenix plus rotating JSONL files | Diagnose agent behavior, OCR/model calls, latency, errors, retries, saturation, and cost | Full trace inputs/outputs and compact correlated logs |
 
 Deleting every engineering log must still leave enough PostgreSQL data to reconstruct the decision. Conversely, the audit table is not a substitute for latency, retry, and worker-health diagnostics.
 
@@ -1397,7 +1397,7 @@ flowchart LR
     CASE --> AUDIT
     POLICY --> AUDIT
     COMMIT --> AUDIT
-    ROOT -. sanitized .-> LOGS
+    ROOT -. correlated event .-> LOGS
     ROOT -. start · end · parent .-> SPANS
     TX -. request ID · latency · status .-> LOGS
     BR -. request ID · model route · tokens .-> LOGS
@@ -1406,7 +1406,7 @@ flowchart LR
 
 ### 16.3 Correlation keys
 
-Allowed operational correlation:
+Operational correlation includes:
 
 ```text
 claim_id
@@ -1425,7 +1425,14 @@ schema_version
 prompt_version
 ```
 
-Do not add patient name, diagnosis, source text, local file path, member phone/email, raw model body, prompt/response, or credentials to span attributes/logs.
+For this local assignment build, Phoenix spans intentionally also include patient names, source
+text, OCR observations, rendered page bytes, prompts, response schemas, raw and normalized provider
+responses, and exception details. Credentials, authorization headers, process environment, and AWS
+credential-chain values are never traced. JSONL logs remain compact event records rather than
+payload mirrors.
+
+This trace mode is unsuitable for production or real PHI. Phoenix must remain local and its data
+must not be published or committed.
 
 ### 16.4 Metrics
 
@@ -1829,8 +1836,9 @@ flowchart LR
 - Use owner-only permissions for local documents/logs; keep their directories out of Git.
 - Authorize every claim by principal/tenant/member relationship.
 - Use role-derived member/operations projections; callers cannot select their own privilege view.
-- Redact PHI before telemetry export.
-- Keep provider/model body logging off by default.
+- The assignment-only Phoenix exporter captures full OCR/model bodies for debugging; do not use it
+  with real PHI or expose the local Phoenix instance.
+- Never capture AWS credentials, authorization headers, or environment secrets.
 - Apply least privilege to PostgreSQL roles; audit table is append-only to the app.
 - Record every reviewer access/action in the domain audit.
 - Use synthetic/de-identified documents for normal development and evaluation.

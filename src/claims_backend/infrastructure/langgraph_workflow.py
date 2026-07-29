@@ -1,3 +1,4 @@
+import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from time import monotonic
@@ -7,6 +8,7 @@ from uuid import UUID
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
+from openinference.semconv.trace import SpanAttributes
 from sqlalchemy.engine import make_url
 
 from claims_backend.application.processing import ClaimProcessor
@@ -312,6 +314,16 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                         0,
                         round((lease.leased_at - lease.available_at).total_seconds() * 1000),
                     ),
+                    SpanAttributes.INPUT_VALUE: _json(
+                        initial_state
+                        if initial_state is not None
+                        else {
+                            "resume": True,
+                            "claim_id": str(workflow_run.claim_id),
+                            "workflow_run_id": str(workflow_run.id),
+                        }
+                    ),
+                    SpanAttributes.INPUT_MIME_TYPE: "application/json",
                 }
                 with self._observability.span(
                     "claim.workflow",
@@ -368,6 +380,8 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                             "workflow.terminal_outcome": (
                                 "COMMITTED" if result["terminal_committed"] else "FINALIZED"
                             ),
+                            SpanAttributes.OUTPUT_VALUE: _json(result),
+                            SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
                         },
                     )
             if not result["finalized"] and not result["terminal_committed"]:
@@ -422,8 +436,10 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "workflow.run_id": state["workflow_run_id"],
                     "node.name": node_name,
                     "work.attempt": state["attempt_number"],
+                    SpanAttributes.INPUT_VALUE: _json(state),
+                    SpanAttributes.INPUT_MIME_TYPE: "application/json",
                 },
-            ):
+            ) as node_span:
                 trace_id, span_id = trace_identifiers()
                 await self._repository.record_event(
                     run_id,
@@ -473,6 +489,13 @@ class LangGraphClaimWorkflow(WorkflowRuntime):
                     "node_finished",
                     duration_ms,
                     "OK",
+                )
+                self._observability.set_attributes(
+                    node_span,
+                    {
+                        SpanAttributes.OUTPUT_VALUE: _json(result),
+                        SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
+                    },
                 )
                 return result
 
@@ -883,6 +906,10 @@ async def _no_op_hook(_: str) -> None:
 
 def _workflow_run_id(state: WorkflowState) -> UUID:
     return UUID(state["workflow_run_id"])
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _workflow_run(

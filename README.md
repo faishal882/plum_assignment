@@ -76,7 +76,7 @@ stateDiagram-v2
 | `infrastructure/` | PostgreSQL repositories, local storage/rendering, LangGraph, recorded adapters, Textract, Bedrock |
 | `runtime/` | Dependency composition and profile-specific provider selection |
 | `worker/` | Worker command and durable lease-processing loop |
-| `observability.py` | PHI-safe spans, JSONL engineering logs, and telemetry scanning |
+| `observability.py` | Full-content Phoenix spans, correlated JSONL engineering logs, and trace utilities |
 
 PostgreSQL is the reconstruction authority. Phoenix and JSONL are diagnostic views, not the source
 of truth. A reconstruction joins the claim/version, policy, work item, workflow run/events/effects,
@@ -141,8 +141,6 @@ For normal development, keep these values in `.env`:
 ```dotenv
 CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL
 CLAIMS_RUN_LIVE_AWS=0
-CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0
 ```
 
 `RECORDED_LOCAL` is the default no-cost path. Environment variables supplied to a command override
@@ -252,7 +250,6 @@ To run a live synthetic gate, opt in per command:
 ```bash
 CLAIMS_RUN_LIVE_AWS=1 \
 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=1 \
   uv run pytest tests/live/test_live_worker_tc004.py -q
 ```
 
@@ -278,16 +275,19 @@ data/logs/worker.jsonl
 data/logs/evaluation.jsonl
 ```
 
-By default, Phoenix spans and logs contain identifiers, versions, workflow nodes, durations,
-outcomes, sanitized exception classes, provider request IDs, and token counts. They intentionally
-exclude patient names, diagnoses, OCR text, document bytes, raw prompts, raw model responses,
-and local paths. This means Phoenix session input/output panels are normally empty; PostgreSQL
-workflow events and decision records are the authoritative answer to “why did this claim decide
-this way?”
+Phoenix is configured as a full-content local debugging surface. There is no content-capture or
+synthetic-only privacy gate. Claim-submission, workflow, and node spans populate OpenInference
+`input.value` and `output.value`; Bedrock spans include prompts, response schema, parsed and raw
+provider output, model/route/prompt/schema metadata, stop reason, latency, request ID, and
+prompt/completion/total tokens. Textract spans include the rendered page bytes as base64, page
+metadata, raw provider response, and every normalized OCR observation including text, confidence,
+page, and region. Exceptions include their messages and stack traces. The claim ID remains the
+Phoenix `session.id`.
 
-Rich content capture is rejected unless all of the following are true: the process uses
-`LIVE_INTELLIGENCE`, `CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=1`, and
-`CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=1`. Use it only for generated synthetic documents.
+> **Debug-data warning:** Phoenix now contains complete uploaded document and model/OCR content,
+> including patient data. Use only assignment/synthetic data, keep Phoenix local, and delete its
+> local data before sharing the workspace. PostgreSQL remains the authoritative decision record;
+> Phoenix is the correlated debugging view.
 
 ## Testing and quality gates
 
@@ -332,8 +332,8 @@ flowchart LR
 | Live TC004 | Generated synthetic TC004 document, Textract, Bedrock, FastAPI, worker | 1 | Bounded live end-to-end proof | Yes, explicit opt-in |
 
 The rendered recorded gate is the v1 acceptance gate. It creates fresh test data, runs each case
-through normal workflow composition, verifies PostgreSQL reconstruction and complete workflow
-traces, and scans API/worker/evaluation telemetry for PHI canaries. It does not call AWS.
+through normal workflow composition and verifies PostgreSQL reconstruction plus complete workflow
+traces. It does not call AWS.
 
 ### Run evaluation
 
@@ -343,8 +343,6 @@ Run the fast diagnostic control when investigating deterministic policy or evide
 CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
 CLAIMS_RUN_LIVE_AWS=0 \
 CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
   uv run pytest \
   tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate \
   -q
@@ -356,8 +354,6 @@ Run the primary twelve-case acceptance gate:
 CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
 CLAIMS_RUN_LIVE_AWS=0 \
 CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
   uv run pytest \
   tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate \
   -q
@@ -370,8 +366,6 @@ refuses to target the application database unless a destructive override is expl
 CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
 CLAIMS_RUN_LIVE_AWS=0 \
 CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-CLAIMS_OBSERVABILITY_CAPTURE_CONTENT=0 \
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=0 \
   uv run pytest -q
 ```
 
@@ -380,7 +374,6 @@ Run the explicitly paid, synthetic live worker tracer only when AWS credentials 
 ```bash
 CLAIMS_RUN_LIVE_AWS=1 \
 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
-CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY=1 \
   uv run pytest tests/live/test_live_worker_tc004.py -q
 ```
 

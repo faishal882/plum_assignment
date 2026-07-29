@@ -38,8 +38,6 @@ _ENVIRONMENT = {
     "CLAIMS_WORKER_POLL_SECONDS": "3",
     "CLAIMS_WORKER_LEASE_SECONDS": "301",
     "CLAIMS_WORKER_SHUTDOWN_SECONDS": "121",
-    "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT": "0",
-    "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY": "0",
     "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE": "0",
 }
 
@@ -85,8 +83,6 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.worker_poll_seconds == 3
     assert settings.worker_lease_seconds == 301
     assert settings.worker_shutdown_seconds == 121
-    assert settings.observability_capture_content is False
-    assert settings.observability_synthetic_only is False
     assert settings.inject_anomaly_enrichment_failure is False
 
 

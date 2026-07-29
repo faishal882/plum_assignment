@@ -1,3 +1,4 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event, Lock
@@ -13,6 +14,7 @@ from claims_backend.domain.extraction import (
     ComplexExtractionOutput,
     ModelProviderError,
     ModelRoute,
+    ModelSchemaValidationError,
 )
 from claims_backend.infrastructure.aws.bedrock import ChatBedrockConverseTransport
 from claims_backend.model.routing import ModelRouter
@@ -33,6 +35,8 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output(
         }
     )
     raw_message = Mock(
+        content="provider raw structured response",
+        additional_kwargs={"tool_use": {"name": "ComplexExtractionOutput"}},
         response_metadata={
             "ResponseMetadata": {"RequestId": "bedrock-request-1"},
             "stopReason": "end_turn",
@@ -42,6 +46,10 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output(
             "output_tokens": 8,
             "total_tokens": 20,
         },
+        tool_calls=[{"name": "ComplexExtractionOutput", "args": {"candidates": []}}],
+        invalid_tool_calls=[],
+        id="message-1",
+        type="ai",
     )
     runnable = Mock()
     runnable.invoke.return_value = {
@@ -102,11 +110,36 @@ def test_bedrock_transport_uses_pinned_model_and_compatible_structured_output(
     assert span.attributes["model.id"] == "qwen.qwen3-235b-a22b-2507-v1:0"
     assert span.attributes["model.prompt_version"] == "complex-extraction-prompt-v4"
     assert span.attributes["model.schema_version"] == "complex-extraction-v1"
+    assert span.attributes["llm.model_name"] == "qwen.qwen3-235b-a22b-2507-v1:0"
     assert span.attributes["llm.token_count.prompt"] == 12
     assert span.attributes["llm.token_count.completion"] == 8
+    assert span.attributes["llm.token_count.total"] == 20
     assert span.attributes["provider.request_id"] == "bedrock-request-1"
-    assert "input.value" not in span.attributes
-    assert "output.value" not in span.attributes
+    assert span.attributes["input.mime_type"] == "application/json"
+    assert span.attributes["output.mime_type"] == "application/json"
+    assert json.loads(span.attributes["input.value"]) == {
+        "messages": [
+            {"content": "Extract grounded evidence only.", "role": "system"},
+            {"content": "Synthetic OCR observation.", "role": "human"},
+        ],
+        "response_schema": ComplexExtractionOutput.model_json_schema(),
+    }
+    trace_output = json.loads(span.attributes["output.value"])
+    assert trace_output["normalized_output"] == result.raw_output
+    assert trace_output["raw_provider_message"]["content"] == "provider raw structured response"
+    assert (
+        trace_output["raw_provider_message"]["response_metadata"] == raw_message.response_metadata
+    )
+    assert trace_output["raw_provider_message"]["usage_metadata"] == raw_message.usage_metadata
+    assert trace_output["raw_provider_message"]["tool_calls"] == raw_message.tool_calls
+    assert span.attributes["llm.input_messages.0.message.role"] == "system"
+    assert (
+        span.attributes["llm.input_messages.0.message.content"] == "Extract grounded evidence only."
+    )
+    assert span.attributes["llm.input_messages.1.message.role"] == "human"
+    assert span.attributes["llm.input_messages.1.message.content"] == "Synthetic OCR observation."
+    assert span.attributes["llm.output_messages.0.message.role"] == "assistant"
+    assert json.loads(span.attributes["llm.output_messages.0.message.content"]) == trace_output
 
 
 def test_bedrock_transport_bounds_concurrent_provider_calls() -> None:
@@ -171,6 +204,63 @@ def test_bedrock_transport_bounds_concurrent_provider_calls() -> None:
             future.result(timeout=2)
 
     assert maximum_active == 2
+
+
+def test_bedrock_schema_failure_preserves_raw_provider_output_in_trace(
+    tmp_path: Path,
+) -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
+    ).resolve(ModelRoute.COMPLEX_EXTRACTION)
+    raw_message = Mock(
+        content="malformed provider output",
+        additional_kwargs={},
+        response_metadata={"ResponseMetadata": {"RequestId": "failed-request-1"}},
+        usage_metadata={"input_tokens": 6, "output_tokens": 4, "total_tokens": 10},
+        tool_calls=[],
+        invalid_tool_calls=[{"error": "missing candidates"}],
+        id="failed-message-1",
+        type="ai",
+    )
+    runnable = Mock()
+    runnable.invoke.return_value = {
+        "parsed": None,
+        "raw": raw_message,
+        "parsing_error": ValueError("missing candidates"),
+    }
+    model = Mock()
+    model.with_structured_output.return_value = runnable
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path),
+        process_name="worker",
+        span_exporter=exporter,
+    )
+
+    with (
+        patch(
+            "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
+            return_value=model,
+        ),
+        pytest.raises(ModelSchemaValidationError),
+    ):
+        ChatBedrockConverseTransport(observability=observability).invoke(
+            config,
+            ComplexExtractionOutput,
+            [("human", "malformed synthetic request")],
+        )
+
+    observability.shutdown()
+    span = exporter.get_finished_spans()[0]
+    output = json.loads(span.attributes["output.value"])
+    assert output["raw_provider_message"]["content"] == "malformed provider output"
+    assert output["parsing_error"] == {
+        "message": "missing candidates",
+        "type": "ValueError",
+    }
+    assert span.attributes["llm.token_count.total"] == 10
+    assert span.attributes["error.message"] == "Bedrock structured output failed schema parsing."
 
 
 def test_bedrock_timeout_has_a_retryable_typed_failure() -> None:

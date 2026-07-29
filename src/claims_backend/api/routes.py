@@ -1,9 +1,11 @@
+import json
 import re
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
+from openinference.semconv.trace import SpanAttributes
 from pydantic import ValidationError
 
 from claims_backend.api.dependencies import (
@@ -100,6 +102,17 @@ async def submit_claim(
             for document in sorted(request.documents, key=lambda item: item.upload_index)
         ),
     )
+    trace_input = {
+        "metadata": request.model_dump(mode="json"),
+        "files": [
+            {
+                "filename": upload.filename,
+                "content_type": upload.content_type,
+                "size_bytes": upload.size,
+            }
+            for upload in files
+        ],
+    }
     try:
         claim = await application.submit(
             submission,
@@ -145,6 +158,12 @@ async def submit_claim(
         ) from error
     except DocumentIngestionError as error:
         raise _document_error(error) from error
+    receipt = ClaimReceiptResponse(
+        claim_id=claim.id,
+        version=claim.version,
+        lifecycle_status=claim.lifecycle.value,
+        status_url=f"/v1/claims/{claim.id}",
+    )
     observability = request_context.app.state.observability
     if observability is not None:
         with observability.span(
@@ -155,15 +174,14 @@ async def submit_claim(
                 "claim.id": str(claim.id),
                 "claim.version": claim.version,
                 "outcome": claim.lifecycle.value,
+                SpanAttributes.INPUT_VALUE: _json(trace_input),
+                SpanAttributes.INPUT_MIME_TYPE: "application/json",
+                SpanAttributes.OUTPUT_VALUE: _json(receipt.model_dump(mode="json")),
+                SpanAttributes.OUTPUT_MIME_TYPE: "application/json",
             },
         ):
             pass
-    return ClaimReceiptResponse(
-        claim_id=claim.id,
-        version=claim.version,
-        lifecycle_status=claim.lifecycle.value,
-        status_url=f"/v1/claims/{claim.id}",
-    )
+    return receipt
 
 
 @router.post("/{claim_id}/actions", response_model=ClaimActionResponse)
@@ -521,3 +539,7 @@ def _claim_not_found(error: ClaimNotFoundError) -> HTTPException:
             "details": [],
         },
     )
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

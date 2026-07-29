@@ -77,9 +77,6 @@ def create_process_runtime(
                 project_name=settings.phoenix_project,
                 log_max_bytes=settings.log_max_bytes,
                 log_backup_count=settings.log_backup_count,
-                execution_profile=settings.execution_profile,
-                capture_content=settings.observability_capture_content,
-                synthetic_only=settings.observability_synthetic_only,
             ),
             process_name=process_name,
         )

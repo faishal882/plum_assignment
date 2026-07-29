@@ -171,8 +171,6 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
     exporter = InMemorySpanExporter()
     observability_config = ObservabilityConfig(
         log_root=tmp_path / "diagnostics",
-        execution_profile=ExecutionProfile.RENDERED_RECORDED.value,
-        phi_canaries=tuple(_MEMBER_NAMES.values()),
     )
     api_observability = create_observability(
         observability_config,
@@ -299,10 +297,6 @@ async def test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate(
         [record for process_records in records.values() for record in process_records],
         phi_canaries=tuple(_MEMBER_NAMES.values()),
     )
-    scan_telemetry_for_phi(
-        [dict(span.attributes) for span in exporter.get_finished_spans()],
-        phi_canaries=tuple(_MEMBER_NAMES.values()),
-    )
     case_spans = [span for span in exporter.get_finished_spans() if span.name == "evaluation.case"]
     assert len(case_spans) == 12
     assert all(span.attributes["evaluation.schema_valid"] is True for span in case_spans)
@@ -336,7 +330,6 @@ async def test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate(
     worker_observability = create_observability(
         ObservabilityConfig(
             log_root=tmp_path / "diagnostics",
-            execution_profile=ExecutionProfile.STRUCTURED_COMPONENT.value,
         ),
         process_name="worker",
         span_exporter=exporter,

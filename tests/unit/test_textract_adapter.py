@@ -1,3 +1,5 @@
+import base64
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event, Lock
@@ -91,7 +93,19 @@ def test_textract_profiles_send_page_bytes_and_map_project_observations(
         "analyze-1",
         "text-1",
     ]
-    assert all("ocr_text" not in span.attributes for span in spans)
+    expense_span = spans[0]
+    assert expense_span.attributes["input.mime_type"] == "application/json"
+    assert expense_span.attributes["output.mime_type"] == "application/json"
+    expense_input = json.loads(expense_span.attributes["input.value"])
+    assert expense_input["requested_role"] == "PHARMACY_BILL"
+    assert expense_input["textract_profile"] == "EXPENSE"
+    assert expense_input["document"]["document_version_id"] == str(page.document_version_id)
+    assert expense_input["document"]["content_base64"] == base64.b64encode(page.content).decode(
+        "ascii"
+    )
+    expense_output = json.loads(expense_span.attributes["output.value"])
+    assert expense_output["normalized_result"] == expense.model_dump(mode="json")
+    assert expense_output["raw_provider_response"] == _expense_response()
 
 
 def test_malformed_textract_response_has_a_non_retryable_typed_failure() -> None:

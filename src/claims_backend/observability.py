@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import monotonic
-from typing import cast
 
 from openinference.semconv.resource import ResourceAttributes
 from openinference.semconv.trace import (
@@ -18,7 +17,7 @@ from openinference.semconv.trace import (
 from opentelemetry import context, trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import Span, TracerProvider
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
@@ -26,6 +25,7 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.trace import (
     NonRecordingSpan,
+    Span,
     SpanContext,
     Status,
     StatusCode,
@@ -35,31 +35,6 @@ from opentelemetry.trace import (
 )
 from opentelemetry.util.types import AttributeValue
 
-_SAFE_ATTRIBUTE_PREFIXES = (
-    "api.",
-    "casefile.",
-    "claim.",
-    "component",
-    "duration_ms",
-    "error.",
-    "evaluation.",
-    "http.",
-    "llm.token_count.",
-    "model.",
-    "node.",
-    "openinference.",
-    "outcome",
-    "persistence.",
-    "policy.",
-    "provider.",
-    "reconciliation.",
-    "review.",
-    "session.",
-    "service.",
-    "textract.",
-    "work.",
-    "workflow.",
-)
 _FORBIDDEN_KEY_PARTS = (
     "authorization",
     "credential",
@@ -72,10 +47,6 @@ _FORBIDDEN_KEY_PARTS = (
     "raw_response",
     "secret",
 )
-_RICH_CONTENT_KEYS = {
-    SpanAttributes.INPUT_VALUE,
-    SpanAttributes.OUTPUT_VALUE,
-}
 _PROCESS_NAMES = frozenset({"api", "worker", "evaluation"})
 
 
@@ -92,10 +63,6 @@ class ObservabilityConfig:
     service_version: str = "0.1.0"
     log_max_bytes: int = 5 * 1024 * 1024
     log_backup_count: int = 5
-    execution_profile: str = "LOCAL"
-    capture_content: bool = False
-    synthetic_only: bool = False
-    phi_canaries: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.log_max_bytes <= 0:
@@ -104,13 +71,6 @@ class ObservabilityConfig:
             raise ValueError("log_backup_count must be positive")
         if not self.project_name:
             raise ValueError("project_name cannot be empty")
-        if self.capture_content and (
-            self.execution_profile != "LIVE_INTELLIGENCE" or not self.synthetic_only
-        ):
-            raise ValueError(
-                "Rich content capture requires an explicit synthetic-only "
-                "LIVE_INTELLIGENCE profile."
-            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,37 +88,6 @@ class EngineeringLogEvent:
     error_type: str | None = None
 
 
-class PrivacyGuard:
-    def __init__(
-        self,
-        *,
-        phi_canaries: Sequence[str] = (),
-        allow_rich_content: bool = False,
-    ) -> None:
-        self._canaries = tuple(value.casefold() for value in phi_canaries if value)
-        self._allow_rich_content = allow_rich_content
-
-    def attributes(
-        self,
-        attributes: Mapping[str, AttributeValue],
-    ) -> dict[str, AttributeValue]:
-        for key, value in attributes.items():
-            normalized_key = key.casefold()
-            if any(part in normalized_key for part in _FORBIDDEN_KEY_PARTS):
-                raise PrivacyViolation(f"Telemetry contains forbidden attribute key: {key}")
-            if not any(normalized_key.startswith(prefix) for prefix in _SAFE_ATTRIBUTE_PREFIXES):
-                if not (self._allow_rich_content and key in _RICH_CONTENT_KEYS):
-                    raise PrivacyViolation(f"Telemetry contains forbidden attribute key: {key}")
-            self._value(value)
-        return dict(attributes)
-
-    def payload(self, payload: Mapping[str, object]) -> None:
-        _scan_value(payload, self._canaries)
-
-    def _value(self, value: AttributeValue) -> None:
-        _scan_value(value, self._canaries)
-
-
 class Observability:
     def __init__(
         self,
@@ -166,14 +95,12 @@ class Observability:
         tracer_provider: TracerProvider,
         tracer: Tracer,
         process_name: str,
-        guard: PrivacyGuard,
         logger: logging.Logger,
         handler: logging.Handler,
     ) -> None:
         self._tracer_provider = tracer_provider
         self._tracer = tracer
         self._process_name = process_name
-        self._guard = guard
         self._logger = logger
         self._handler = handler
 
@@ -188,28 +115,29 @@ class Observability:
         parent_trace_id: str | None = None,
         parent_span_id: str | None = None,
     ) -> Iterator[Span]:
-        safe_attributes: dict[str, AttributeValue] = {
+        span_attributes: dict[str, AttributeValue] = {
             "component": component,
             SpanAttributes.OPENINFERENCE_SPAN_KIND: span_kind,
             **(attributes or {}),
         }
-        safe_attributes = self._guard.attributes(safe_attributes)
         started = monotonic()
         failed_error: Exception | None = None
         parent_context = _parent_context(parent_trace_id, parent_span_id)
         with self._tracer.start_as_current_span(
             name,
             context=parent_context,
-            attributes=safe_attributes,
+            attributes=span_attributes,
             record_exception=False,
             set_status_on_exception=False,
         ) as span:
             try:
-                yield cast(Span, span)
+                yield span
             except Exception as error:
                 failed_error = error
                 span.set_attribute("error.type", type(error).__name__)
+                span.set_attribute("error.message", str(error))
                 span.set_attribute("outcome", "ERROR")
+                span.record_exception(error)
                 span.set_status(Status(StatusCode.ERROR))
                 raise
             finally:
@@ -224,7 +152,7 @@ class Observability:
         span: Span,
         attributes: Mapping[str, AttributeValue],
     ) -> None:
-        for key, value in self._guard.attributes(attributes).items():
+        for key, value in attributes.items():
             span.set_attribute(key, value)
 
     def log(self, event: EngineeringLogEvent) -> None:
@@ -246,7 +174,6 @@ class Observability:
             "provider_request_id": event.provider_request_id,
             "error_type": event.error_type,
         }
-        self._guard.payload(payload)
         record = self._logger.makeRecord(
             self._logger.name,
             getattr(logging, event.severity, logging.INFO),
@@ -288,16 +215,11 @@ def create_observability(
             BatchSpanProcessor(OTLPSpanExporter(endpoint=config.phoenix_endpoint))
         )
     tracer = provider.get_tracer("claims_backend", config.service_version)
-    guard = PrivacyGuard(
-        phi_canaries=config.phi_canaries,
-        allow_rich_content=config.capture_content,
-    )
     logger, handler = _engineering_logger(config, process_name)
     return Observability(
         tracer_provider=provider,
         tracer=tracer,
         process_name=process_name,
-        guard=guard,
         logger=logger,
         handler=handler,
     )

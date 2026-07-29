@@ -14,6 +14,8 @@ class ModelInvocation:
     output_tokens: int
     latency_ms: int
     stop_reason: str
+    provider_output: dict[str, object] | None = None
+    total_tokens: int | None = None
 
 
 class StructuredModelTransport(Protocol):

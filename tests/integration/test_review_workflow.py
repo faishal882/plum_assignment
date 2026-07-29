@@ -52,7 +52,6 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     exporter = InMemorySpanExporter()
     observability_config = ObservabilityConfig(
         log_root=tmp_path / "diagnostics",
-        phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
     )
     api_observability = create_observability(
         observability_config,

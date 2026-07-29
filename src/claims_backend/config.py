@@ -40,8 +40,6 @@ _REQUIRED_ENVIRONMENT_KEYS = (
     "CLAIMS_WORKER_POLL_SECONDS",
     "CLAIMS_WORKER_LEASE_SECONDS",
     "CLAIMS_WORKER_SHUTDOWN_SECONDS",
-    "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT",
-    "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY",
     "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE",
 )
 
@@ -92,8 +90,6 @@ class Settings:
     worker_poll_seconds: int = 1
     worker_lease_seconds: int = 300
     worker_shutdown_seconds: int = 120
-    observability_capture_content: bool = False
-    observability_synthetic_only: bool = False
     inject_anomaly_enrichment_failure: bool = False
 
     def __post_init__(self) -> None:
@@ -137,11 +133,6 @@ class Settings:
             run_live_aws=self.run_live_aws,
         )
         object.__setattr__(self, "execution_profile", profile)
-        if self.observability_capture_content and (
-            self.execution_profile is not ExecutionProfile.LIVE_INTELLIGENCE
-            or not self.observability_synthetic_only
-        ):
-            raise ValueError("Observability content capture requires synthetic live intelligence.")
         if self.inject_anomaly_enrichment_failure and (
             self.execution_profile is not ExecutionProfile.RECORDED_LOCAL
         ):
@@ -205,12 +196,6 @@ class Settings:
             worker_shutdown_seconds=_environment_integer(
                 values,
                 "CLAIMS_WORKER_SHUTDOWN_SECONDS",
-            ),
-            observability_capture_content=_environment_boolean(
-                values, "CLAIMS_OBSERVABILITY_CAPTURE_CONTENT"
-            ),
-            observability_synthetic_only=_environment_boolean(
-                values, "CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY"
             ),
             inject_anomaly_enrichment_failure=_environment_boolean(
                 values, "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE"

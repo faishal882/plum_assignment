@@ -26,11 +26,15 @@ Phase-by-phase evidence is indexed in [the Backend v1 acceptance audit](backend-
   `session.id`. Recorded evaluation spans capture schema validity, grounding coverage, trace
   completeness, reconstruction, provenance/failure counts, and aggregate pass-rate metrics.
   PostgreSQL workflow events and JSONL records retain local reconstruction data.
+- Assignment-debug Phoenix traces now capture complete workflow/node inputs and outputs, Bedrock
+  prompts, response schemas, raw and normalized responses, exact model metadata and token counts,
+  and Textract page bytes, raw response, and normalized OCR observations. Runtime PHI/content gates
+  were intentionally removed; this mode must not be used for production or real PHI.
 - Fast triage now uses `triage-output-v3`: Bedrock returns semantic values plus exact OCR
   observation references, while the backend computes hashes and reconstructs page, region,
   confidence, preview, and document-version provenance. These references are persisted and included
   in PostgreSQL claim reconstruction.
-- The post-hardening deterministic suite passes with **245 passed, 4 live-AWS checks skipped**; the
+- The post-hardening deterministic suite passes with **246 passed, 4 live-AWS checks skipped**; the
   twelve-case rendered acceptance gate passes independently.
 - Test execution refuses the application database unless an explicit destructive override is set.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
@@ -44,8 +48,7 @@ Phase-by-phase evidence is indexed in [the Backend v1 acceptance audit](backend-
   [`artifacts/backend-v1/live-intelligence-summary.json`](../../artifacts/backend-v1/live-intelligence-summary.json).
 - The explicitly authorized synthetic Textract and Bedrock smoke suite also passed: **2 passed**
   in 3.94 seconds.
-- The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions
-  and rejects synthetic patient/clinical canaries from span attributes.
+- The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions.
 - A manual local API → worker run on 2026-07-29 confirmed `GET /health/live`,
   `GET /health/ready`, submission, idempotent retry, member isolation, reviewer listing, Phoenix
   export, JSONL emission, and PostgreSQL reconstruction. A separately rendered synthetic invoice
@@ -72,8 +75,9 @@ The committed rendered evaluation artifact covers all cases through the normal c
 | TC011 | DECIDED | APPROVED | 400000 | FINAL_APPROVED |
 | TC012 | DECIDED | REJECTED | 0 | EXCLUDED_CONDITION |
 
-The source artifact also verifies complete workflow traces, no `ProcessingFixtureRow` use, and a
-telemetry PHI-canary scan without committing raw runtime content.
+The source artifact also verifies complete workflow traces and no `ProcessingFixtureRow` use. The
+committed artifact remains sanitized even though current local Phoenix traces are intentionally
+full-content.
 
 ## Local operation
 

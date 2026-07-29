@@ -19,7 +19,6 @@ from claims_backend.infrastructure.postgres.setup_import_repository import (
 from claims_backend.observability import (
     ObservabilityConfig,
     create_observability,
-    scan_telemetry_for_phi,
 )
 from claims_backend.runtime.composition import create_process_runtime
 from claims_backend.runtime.profiles import ExecutionProfile
@@ -55,16 +54,12 @@ async def test_live_tc004_runs_through_public_api_and_standard_worker(
     api_exporter = InMemorySpanExporter()
     worker_exporter = InMemorySpanExporter()
     api_observability = create_observability(
-        ObservabilityConfig(
-            log_root=settings.log_root, phi_canaries=("Rajesh Kumar", "Viral Fever")
-        ),
+        ObservabilityConfig(log_root=settings.log_root),
         process_name="api",
         span_exporter=api_exporter,
     )
     worker_observability = create_observability(
-        ObservabilityConfig(
-            log_root=settings.log_root, phi_canaries=("Rajesh Kumar", "Viral Fever")
-        ),
+        ObservabilityConfig(log_root=settings.log_root),
         process_name="worker",
         span_exporter=worker_exporter,
     )
@@ -126,10 +121,6 @@ async def test_live_tc004_runs_through_public_api_and_standard_worker(
             span.name == "claim.workflow"
             and (span.attributes or {}).get("session.id") == str(claim_id)
             for span in worker_spans
-        )
-        scan_telemetry_for_phi(
-            [dict(span.attributes or {}) for span in (*api_spans, *worker_spans)],
-            phi_canaries=("Rajesh Kumar", "Viral Fever"),
         )
     finally:
         await worker.close()

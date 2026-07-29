@@ -18,7 +18,7 @@ Durable decisions that apply across all phases:
 - **Financial authority**: Models produce evidence candidates only. Policy compilation and adjudication are deterministic Python operations over a frozen casefile and immutable Policy IR. Money is represented in integer paise.
 - **Decision model**: Claim lifecycle, adjudication recommendation, and handling disposition are separate axes. `APPROVED`, `PARTIAL`, and `REJECTED` are adjudication results; action-required and manual-review states describe workflow handling.
 - **Transaction boundary**: Claim acceptance and initial work creation commit atomically. Provider calls never run inside database transactions. Terminal decision, rule trace, amount trace, audit events, projection, and work completion commit atomically.
-- **Observability**: PostgreSQL is the authoritative decision trace. Local Phoenix receives OpenInference/OpenTelemetry agent traces, and rotating JSONL files contain engineering logs. Neither Phoenix nor logs are required to reconstruct a decision.
+- **Observability**: PostgreSQL is the authoritative decision trace. Local Phoenix receives full-content OpenInference/OpenTelemetry agent traces for assignment debugging, and rotating JSONL files contain compact engineering logs. Neither Phoenix nor logs are required to reconstruct a decision.
 - **Privacy**: Raw documents, OCR text, patient names, diagnoses, prompts, responses, credentials, and local paths are excluded from Phoenix and normal logs. Rich model capture is permitted only for explicitly synthetic evaluation.
 - **Evaluation**: Unit and recorded profiles make no network calls. Live-intelligence evaluation is explicit and uses real Textract and Bedrock. Privileged oracle data remains isolated from production schemas and runtime modules.
 - **Excluded infrastructure**: S3, SQS, SNS, CloudWatch, X-Ray, Redis, Kafka, hosted observability, and deployment architecture are outside this plan.
@@ -569,7 +569,7 @@ Classify component failures by retryability and decision criticality. Prove that
 
 ### What to build
 
-Finish the diagnostic and quality system around the complete backend. Every workflow run is inspectable in local Phoenix, correlated with privacy-safe engineering logs, reconstructable from PostgreSQL, and evaluated across structured, rendered-recorded, and explicitly live profiles.
+Finish the diagnostic and quality system around the complete backend. Every workflow run is inspectable in local Phoenix, correlated with engineering logs, reconstructable from PostgreSQL, and evaluated across structured, rendered-recorded, and explicitly live profiles. The original privacy restrictions in this phase were intentionally superseded by Phase 28 for assignment debugging.
 
 ### Acceptance criteria
 
@@ -577,9 +577,8 @@ Finish the diagnostic and quality system around the complete backend. Every work
 - [x] Bedrock spans include route, exact model, prompt/schema versions, token usage, latency, provider request ID, and sanitized errors.
 - [x] Textract, reconciliation, policy evaluation, persistence, and review operations appear as custom spans in the same trace.
 - [x] API, worker, and evaluation processes write separate rotating JSONL logs carrying claim, workflow, trace, span, attempt, duration, and outcome identifiers.
-- [x] Default Phoenix attributes and logs contain no patient names, diagnoses, OCR text, document bytes, local paths, raw prompts/responses, or credentials.
-- [x] PHI canary tests fail when forbidden fields or values enter trace/log attributes.
-- [x] Rich prompt and response capture can be enabled only in an explicit synthetic-only evaluation profile.
+- [x] The original privacy-gated trace mode was implemented and accepted before being superseded by
+  the explicit full-content assignment-debug mode in Phase 28.
 - [x] PostgreSQL retains the ordered workflow events, evidence references, frozen casefile, rule tree, amount steps, decision, failures, and human actions.
 - [x] Removing Phoenix data and JSONL logs does not prevent exact reconstruction of why a claim received its recommendation and handling.
 - [x] Unit and recorded profiles make no external network calls and cannot incur AWS cost.
@@ -594,10 +593,12 @@ Finish the diagnostic and quality system around the complete backend. Every work
 
 ### Delivered
 
-- `claims_backend.observability` exports privacy-guarded OpenTelemetry/OpenInference spans to local Phoenix and writes process-isolated rotating JSONL logs. Workflow node events persist the same trace/span identifiers in PostgreSQL; later human-review spans attach to the persisted workflow trace.
+- `claims_backend.observability` exports OpenTelemetry/OpenInference spans to local Phoenix and
+  writes process-isolated rotating JSONL logs. Workflow node events persist the same trace/span
+  identifiers in PostgreSQL; later human-review spans attach to the persisted workflow trace.
 - `PostgresClaimReconstructor` rebuilds the claim snapshot, workflow events/effects, audits, policy hashes, frozen casefile, evidence references, model envelopes, rule and amount tree, decision, component failures, member actions, and review resolutions. TC011 proves the canonical reconstruction hash remains identical after trace and log deletion.
 - `evaluation_workbench` is outside the installable backend package. Its public loader discards oracle fields, freezes and hashes all actuals before oracle scoring, blocks non-loopback connections in deterministic profiles, and permits selected subsets only for explicitly authorized synthetic live evaluation.
-- The structured-component and rendered-recorded gates each run TC001–TC012 through the production multipart API. The rendered gate generates document images, applies the deterministic unreadable transform, uses recorded OCR/model boundaries, seeds utilization/history, verifies complete traces, reconstructs PostgreSQL outcomes, checks all expected decisions/reasons/amounts, and scans API/worker/evaluation telemetry with PHI canaries.
+- The structured-component and rendered-recorded gates each run TC001–TC012 through the production multipart API. The rendered gate generates document images, applies the deterministic unreadable transform, uses recorded OCR/model boundaries, seeds utilization/history, verifies complete traces, reconstructs PostgreSQL outcomes, and checks all expected decisions/reasons/amounts.
 - The selected live TC004 path requires `CLAIMS_RUN_LIVE_AWS=1`, uses generated documents only, calls real Textract and Bedrock, and verifies the deterministic ₹1,350.00 result through the same versioned report contract. The Qwen provider contract was last exercised successfully on 2026-07-28; the default no-cost suite intentionally skips all three paid live tests.
 - Final local verification on 2026-07-29: `189 passed, 3 skipped`; Ruff, strict MyPy for both backend and evaluation workbench, Alembic autogeneration check, and `git diff --check` all passed.
 
@@ -627,6 +628,30 @@ application validates those references and reconstructs trusted provenance from 
 - [x] Recorded public API/worker processing and the twelve-case rendered acceptance gate pass.
 - [ ] Re-run the live Bedrock worker tracer after the configured AWS Marketplace payment
   instrument permits structured model invocation.
+
+---
+
+## Phase 28: Full-content Phoenix assignment debugging
+
+### What to build
+
+Remove runtime content/privacy gates from the local Phoenix exporter and make every material agent,
+model, and OCR interaction directly inspectable from the trace tree.
+
+### Acceptance criteria
+
+- [x] Claim-submission, workflow root, and workflow node spans populate JSON `input.value` and
+  `output.value`.
+- [x] Bedrock spans contain complete messages, response schema, exact configured model, route,
+  prompt/schema versions, invocation parameters, raw provider message, normalized output, stop
+  reason, latency, request ID, and prompt/completion/total token counts.
+- [x] Textract spans contain rendered page metadata and base64 bytes, raw provider response, and
+  normalized OCR observations including text, confidence, page, region, and source identifiers.
+- [x] Exception spans contain the exception message and stack trace.
+- [x] The runtime PHI-key, canary-value, capture-content, and synthetic-only trace gates are removed.
+- [x] Claim IDs remain Phoenix session IDs and PostgreSQL remains the authoritative decision trace.
+- [x] Documentation warns that this full-content local mode must not be used with real PHI or
+  exposed outside the assignment environment.
 
 ---
 

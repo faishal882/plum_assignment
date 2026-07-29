@@ -82,10 +82,7 @@ async def test_tc011_degrades_only_anomaly_enrichment_without_losing_decision(
     exporter = InMemorySpanExporter()
     log_root = tmp_path / "diagnostics"
     observability = create_observability(
-        ObservabilityConfig(
-            log_root=log_root,
-            phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
-        ),
+        ObservabilityConfig(log_root=log_root),
         process_name="worker",
         span_exporter=exporter,
     )

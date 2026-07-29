@@ -39,10 +39,7 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
 
     exporter = InMemorySpanExporter()
     observability = create_observability(
-        ObservabilityConfig(
-            log_root=tmp_path / "logs",
-            phi_canaries=("Kavita Nair", "Chronic Joint Pain"),
-        ),
+        ObservabilityConfig(log_root=tmp_path / "logs"),
         process_name="worker",
         span_exporter=exporter,
     )
@@ -82,6 +79,20 @@ async def test_workflow_has_one_correlated_trace_log_and_ordered_event_tree(
     assert root.attributes["workflow.execution_profile"] == "UNSPECIFIED"
     assert root.attributes["workflow.queue_wait_ms"] >= 0
     assert root.attributes["workflow.terminal_outcome"] == "FINALIZED"
+    assert root.attributes["input.mime_type"] == "application/json"
+    assert root.attributes["output.mime_type"] == "application/json"
+    root_input = json.loads(root.attributes["input.value"])
+    root_output = json.loads(root.attributes["output.value"])
+    assert root_input["claim_id"] == str(claim_id)
+    assert root_input["operation_key"] == run.operation_key
+    assert root_output["claim_id"] == str(claim_id)
+    assert root_output["finalized"] is True
+    load_claim = nodes[0]
+    assert json.loads(load_claim.attributes["input.value"])["claim_id"] == str(claim_id)
+    assert json.loads(load_claim.attributes["output.value"]) == {
+        "claim_loaded": True,
+        "effect_count": 1,
+    }
     assert [
         (event.sequence, event.node_name, event.event_type, event.outcome) for event in events
     ] == [
@@ -172,20 +183,19 @@ async def test_submission_span_uses_claim_as_session_id(
 
 
 @pytest.mark.asyncio
-async def test_claim_session_correlates_api_worker_events_logs_and_privacy(
+async def test_claim_session_correlates_api_worker_events_logs_and_full_content(
     migrated_database_url: str,
     tmp_path,
 ) -> None:
-    canaries = ("Kavita Nair", "Chronic Joint Pain")
     api_exporter = InMemorySpanExporter()
     worker_exporter = InMemorySpanExporter()
     api_observability = create_observability(
-        ObservabilityConfig(log_root=tmp_path / "logs", phi_canaries=canaries),
+        ObservabilityConfig(log_root=tmp_path / "logs"),
         process_name="api",
         span_exporter=api_exporter,
     )
     worker_observability = create_observability(
-        ObservabilityConfig(log_root=tmp_path / "logs", phi_canaries=canaries),
+        ObservabilityConfig(log_root=tmp_path / "logs"),
         process_name="worker",
         span_exporter=worker_exporter,
     )
@@ -222,7 +232,15 @@ async def test_claim_session_correlates_api_worker_events_logs_and_privacy(
     submission = next(span for span in api_spans if span.name == "api.claim_submitted")
     workflow = next(span for span in worker_spans if span.name == "claim.workflow")
     assert submission.attributes["session.id"] == str(claim_id)
+    submission_input = json.loads(submission.attributes["input.value"])
+    submission_output = json.loads(submission.attributes["output.value"])
+    assert submission_input["metadata"]["member_id"] == "EMP001"
+    assert submission_input["files"][0]["filename"] == "claim.pdf"
+    assert submission_output["claim_id"] == str(claim_id)
+    assert submission_output["lifecycle_status"] == "QUEUED"
     assert workflow.attributes["session.id"] == str(claim_id)
+    assert json.loads(workflow.attributes["input.value"])["claim_id"] == str(claim_id)
+    assert json.loads(workflow.attributes["output.value"])["finalized"] is True
     assert events and all(event.trace_id == f"{workflow.context.trace_id:032x}" for event in events)
 
     api_records = [
@@ -232,11 +250,6 @@ async def test_claim_session_correlates_api_worker_events_logs_and_privacy(
         json.loads(line) for line in (tmp_path / "logs" / "worker.jsonl").read_text().splitlines()
     ]
     assert api_records and worker_records
-    scan_telemetry_for_phi(
-        [dict(span.attributes) for span in (*api_spans, *worker_spans)],
-        phi_canaries=canaries,
-    )
-    scan_telemetry_for_phi((*api_records, *worker_records), phi_canaries=canaries)
     await app.state.engine.dispose()
 
 
