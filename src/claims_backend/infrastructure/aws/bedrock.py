@@ -17,7 +17,7 @@ from langchain_aws import ChatBedrockConverse
 from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
 from opentelemetry import trace
 from opentelemetry.util.types import AttributeValue
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from claims_backend.config import Settings
 from claims_backend.domain.extraction import ModelProviderError, ModelSchemaValidationError
@@ -226,11 +226,28 @@ class ChatBedrockConverseTransport:
         raw_message = result.get("raw")
         response_metadata = _optional_mapping(getattr(raw_message, "response_metadata", {}))
         usage_metadata = _optional_mapping(getattr(raw_message, "usage_metadata", {}))
+        parsed = result.get("parsed")
+        parsing_error = result.get("parsing_error")
+        wire_normalization: dict[str, object] | None = None
+        wire_recovery: dict[str, object] | None = None
+        if parsing_error is not None:
+            recovered, wire_recovery = _recover_provider_wire_output(schema, raw_message)
+            if recovered is not None:
+                parsed = recovered
+                parsing_error = None
+                wire_normalization = {
+                    "code": "TOOL_ARGUMENT_JSON_STRING_DECODED",
+                    "fields": ["documents"],
+                }
         provider_output = {
-            "normalized_output": _jsonable(result.get("parsed")),
+            "normalized_output": _jsonable(parsed),
             "raw_provider_message": _provider_message(raw_message),
-            "parsing_error": _jsonable(result.get("parsing_error")),
+            "parsing_error": _jsonable(parsing_error),
         }
+        if wire_normalization is not None:
+            provider_output["wire_normalization"] = wire_normalization
+        if wire_recovery is not None:
+            provider_output["wire_recovery"] = wire_recovery
         if self._observability is not None:
             trace_attributes: dict[str, object] = {
                 SpanAttributes.OUTPUT_VALUE: _json(provider_output),
@@ -250,9 +267,8 @@ class ChatBedrockConverseTransport:
                 trace.get_current_span(),
                 cast(Mapping[str, AttributeValue], trace_attributes),
             )
-        if result.get("parsing_error") is not None:
+        if parsing_error is not None:
             raise ModelSchemaValidationError("Bedrock structured output failed schema parsing.")
-        parsed = result.get("parsed")
         if not isinstance(parsed, BaseModel):
             raise ModelSchemaValidationError(
                 "Bedrock structured output did not contain a parsed model."
@@ -297,6 +313,75 @@ def _nonnegative_integer(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ModelSchemaValidationError("Bedrock token metadata has an invalid shape.")
     return value
+
+
+def _recover_provider_wire_output(
+    schema: type[BaseModel],
+    raw_message: object,
+) -> tuple[BaseModel | None, dict[str, object] | None]:
+    """Recover tolerated provider-wire quirks before strict backend validation.
+
+    Some Bedrock function-calling models return the v4 `documents` array as a
+    JSON-encoded string inside the tool arguments. That is a provider transport
+    shape error, not a semantic triage error, so normalize it for the tolerant v4
+    wire contract only and then let Pydantic validate the full object normally.
+    """
+
+    if schema.__name__ != "TriageProviderOutputV4":
+        return None, None
+    for tool_call in _tool_calls(raw_message):
+        if tool_call.get("name") != schema.__name__:
+            continue
+        args = tool_call.get("args")
+        if not isinstance(args, Mapping):
+            return None, {
+                "attempted": True,
+                "field": "documents",
+                "outcome": "REJECTED",
+                "reason": "TOOL_ARGUMENTS_NOT_OBJECT",
+            }
+        documents = args.get("documents")
+        if not isinstance(documents, str):
+            return None, {
+                "attempted": True,
+                "field": "documents",
+                "outcome": "SKIPPED",
+                "reason": "DOCUMENTS_NOT_JSON_STRING",
+            }
+        try:
+            decoded_documents = json.loads(documents)
+        except json.JSONDecodeError:
+            return None, {
+                "attempted": True,
+                "field": "documents",
+                "outcome": "REJECTED",
+                "reason": "DOCUMENTS_INVALID_JSON",
+            }
+        normalized_args = dict(args)
+        normalized_args["documents"] = decoded_documents
+        try:
+            return schema.model_validate(normalized_args), {
+                "attempted": True,
+                "field": "documents",
+                "outcome": "RECOVERED",
+            }
+        except ValidationError as error:
+            return None, {
+                "attempted": True,
+                "field": "documents",
+                "outcome": "REJECTED",
+                "reason": "DECODED_ARGUMENTS_SCHEMA_INVALID",
+                "validation_error": str(error),
+            }
+    return None, None
+    return None
+
+
+def _tool_calls(raw_message: object) -> tuple[Mapping[str, object], ...]:
+    tool_calls = getattr(raw_message, "tool_calls", ())
+    if not isinstance(tool_calls, list | tuple):
+        return ()
+    return tuple(tool_call for tool_call in tool_calls if isinstance(tool_call, Mapping))
 
 
 def _json(value: object) -> str:
