@@ -5,7 +5,7 @@
 **Primary framework:** FastAPI  
 **Frontend:** Deferred; a future Next.js application will consume the FastAPI contract  
 **Architecture authority:** [`docs/architecture.md`](../docs/architecture.md)
-**Domain language:** [`docs/domain-language.md`](../docs/domain-language.md)
+**Domain language:** [`CONTEXT.md`](../CONTEXT.md)
 
 > Operational completion requirements are defined in
 > [`backend_v1_operational_prd.md`](backend_v1_operational_prd.md).

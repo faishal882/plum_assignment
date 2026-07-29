@@ -4,7 +4,7 @@
 **Scope:** Close the operational gap in the existing Backend v1  
 **Parent product requirements:** `backend_prd.md`  
 **Architecture authority:** [`docs/architecture.md`](../docs/architecture.md)
-**Domain language:** [`docs/domain-language.md`](../docs/domain-language.md)
+**Domain language:** [`CONTEXT.md`](../CONTEXT.md)
 **Frontend:** Consumer of the existing FastAPI contract; frontend implementation remains deferred
 
 ## Problem Statement

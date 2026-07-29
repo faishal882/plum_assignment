@@ -111,7 +111,7 @@ unhandled workflow invariant failure.
 | Document | Purpose |
 |---|---|
 | [Architecture](docs/architecture.md) | Detailed design decisions, components, workflow, evaluation, and Mermaid diagrams |
-| [Domain language](docs/domain-language.md) | Canonical terms used by the backend and reviewers |
+| [Project context](CONTEXT.md) | Canonical domain terms and PRD context |
 | [Frontend integration](docs/frontend-integration.md) | API contract, local identities, polling, BFF guidance, and response shapes |
 | [Backend v1 completion](docs/validation/backend-v1-completion.md) | Current acceptance evidence, test results, and known limits |
 | [Backend v1 acceptance audit](docs/validation/backend-v1-acceptance-audit.md) | Phase-by-phase proof index |
