@@ -291,15 +291,36 @@ def reconcile_patient_identity(
     if not ordered:
         state = IdentityState.UNKNOWN
     else:
-        values = {_normalize(item.value) for item in ordered}
+        member = _normalize(member_name)
         state = (
-            IdentityState.KNOWN if values == {_normalize(member_name)} else IdentityState.CONFLICT
+            IdentityState.KNOWN
+            if _all_documents_match_member(ordered, member)
+            else IdentityState.CONFLICT
         )
     return ReconciledIdentity(
         state=state,
         member_name=member_name,
         candidates=ordered,
     )
+
+
+def _all_documents_match_member(candidates: tuple[IdentityCandidate, ...], member: str) -> bool:
+    grouped: dict[tuple[str, UUID], list[IdentityCandidate]] = defaultdict(list)
+    for candidate in candidates:
+        grouped[(candidate.client_document_id, candidate.document_version_id)].append(candidate)
+    for document_candidates in grouped.values():
+        values = {_normalize(item.value) for item in document_candidates}
+        if values == {member}:
+            continue
+        reading_order = sorted(
+            document_candidates,
+            key=lambda item: (item.page, item.region.y, item.region.x, item.source_text_sha256),
+        )
+        joined = _normalize(" ".join(item.value for item in reading_order))
+        if joined == member:
+            continue
+        return False
+    return True
 
 
 def _normalize(value: str) -> str:

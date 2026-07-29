@@ -51,12 +51,34 @@ def test_identity_reconciliation_distinguishes_known_from_unknown() -> None:
     assert known.state is IdentityState.KNOWN
 
 
+def test_identity_reconciliation_accepts_same_document_tokenized_full_name() -> None:
+    first = _candidate(
+        "F005",
+        "Rajesh",
+        confidence=0.99,
+        document_version_id="00000000-0000-0000-0000-000000000005",
+        x=0.20,
+    )
+    last = _candidate(
+        "F005",
+        "Kumar",
+        confidence=0.99,
+        document_version_id="00000000-0000-0000-0000-000000000005",
+        x=0.30,
+    )
+
+    result = reconcile_patient_identity("Rajesh Kumar", (last, first))
+
+    assert result.state is IdentityState.KNOWN
+
+
 def _candidate(
     client_document_id: str,
     value: str,
     *,
     confidence: float,
     document_version_id: str,
+    x: float = 0.1,
 ) -> IdentityCandidate:
     return IdentityCandidate(
         producer="fixture-fast-triage",
@@ -64,7 +86,7 @@ def _candidate(
         client_document_id=client_document_id,
         document_version_id=UUID(document_version_id),
         page=1,
-        region=NormalizedRegion(x=0.1, y=0.1, width=0.5, height=0.1),
+        region=NormalizedRegion(x=x, y=0.1, width=0.5, height=0.1),
         source_text_sha256="a" * 64,
         confidence=confidence,
         value=value,
