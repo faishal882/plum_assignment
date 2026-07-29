@@ -336,6 +336,120 @@ def test_bedrock_transport_traces_invalid_decoded_v4_documents(tmp_path: Path) -
     assert "Input should be a valid tuple" in output["wire_recovery"]["validation_error"]
 
 
+def test_bedrock_transport_traces_invalid_v4_documents_json(tmp_path: Path) -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="deepseek.v3.2",
+    ).resolve(ModelRoute.FAST_TRIAGE)
+    raw_message = Mock(
+        response_metadata={"ResponseMetadata": {"RequestId": "request-1"}},
+        usage_metadata={"input_tokens": 10, "output_tokens": 5},
+        tool_calls=[
+            {
+                "name": "TriageProviderOutputV4",
+                "args": {"documents": '[{"client_document_id":]'},
+            }
+        ],
+        invalid_tool_calls=[],
+    )
+    runnable = Mock()
+    runnable.invoke.return_value = {
+        "parsed": None,
+        "raw": raw_message,
+        "parsing_error": ValueError("documents should be an array"),
+    }
+    model = Mock()
+    model.with_structured_output.return_value = runnable
+    exporter = InMemorySpanExporter()
+    observability = create_observability(
+        ObservabilityConfig(log_root=tmp_path),
+        process_name="worker",
+        span_exporter=exporter,
+    )
+
+    with (
+        patch(
+            "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
+            return_value=model,
+        ),
+        pytest.raises(ModelSchemaValidationError),
+    ):
+        ChatBedrockConverseTransport(observability=observability).invoke(
+            config,
+            TriageProviderOutputV4,
+            [("human", "synthetic")],
+        )
+
+    observability.shutdown()
+    span = exporter.get_finished_spans()[0]
+    output = json.loads(span.attributes["output.value"])
+    assert output["wire_recovery"] == {
+        "attempted": True,
+        "field": "documents",
+        "outcome": "REJECTED",
+        "reason": "DOCUMENTS_INVALID_JSON",
+        "validation_error": "Expecting value",
+        "position": 23,
+        "line": 1,
+        "column": 24,
+    }
+
+
+def test_bedrock_transport_repairs_one_extra_trailing_v4_documents_brace() -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="deepseek.v3.2",
+    ).resolve(ModelRoute.FAST_TRIAGE)
+    documents = [
+        {
+            "client_document_id": "doc-b21ba281",
+            "role": "HOSPITAL_BILL",
+            "role_evidence_refs": ["a" * 64],
+            "readability": "READABLE",
+            "readability_evidence_refs": ["b" * 64],
+            "identity_observations": [],
+        }
+    ]
+    raw_message = Mock(
+        response_metadata={"ResponseMetadata": {"RequestId": "request-1"}},
+        usage_metadata={"input_tokens": 10, "output_tokens": 5},
+        tool_calls=[
+            {
+                "name": "TriageProviderOutputV4",
+                "args": {"documents": f"{json.dumps(documents)}}}"},
+            }
+        ],
+        invalid_tool_calls=[],
+    )
+    runnable = Mock()
+    runnable.invoke.return_value = {
+        "parsed": None,
+        "raw": raw_message,
+        "parsing_error": ValueError("documents should be an array"),
+    }
+    model = Mock()
+    model.with_structured_output.return_value = runnable
+
+    with patch(
+        "claims_backend.infrastructure.aws.bedrock.ChatBedrockConverse",
+        return_value=model,
+    ):
+        result = ChatBedrockConverseTransport().invoke(
+            config,
+            TriageProviderOutputV4,
+            [("human", "synthetic")],
+        )
+
+    assert result.raw_output["documents"] == documents
+    assert result.provider_output is not None
+    assert result.provider_output["wire_recovery"] == {
+        "attempted": True,
+        "field": "documents",
+        "outcome": "RECOVERED",
+        "repair": "SINGLE_TRAILING_CLOSE_BRACE_DROPPED",
+    }
+
+
 def test_bedrock_schema_failure_preserves_raw_provider_output_in_trace(
     tmp_path: Path,
 ) -> None:

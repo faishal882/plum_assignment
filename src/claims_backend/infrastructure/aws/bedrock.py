@@ -349,22 +349,29 @@ def _recover_provider_wire_output(
                 "reason": "DOCUMENTS_NOT_JSON_STRING",
             }
         try:
-            decoded_documents = json.loads(documents)
-        except json.JSONDecodeError:
+            decoded_documents, syntax_repair = _decode_v4_documents(documents)
+        except json.JSONDecodeError as error:
             return None, {
                 "attempted": True,
                 "field": "documents",
                 "outcome": "REJECTED",
                 "reason": "DOCUMENTS_INVALID_JSON",
+                "validation_error": error.msg,
+                "position": error.pos,
+                "line": error.lineno,
+                "column": error.colno,
             }
         normalized_args = dict(args)
         normalized_args["documents"] = decoded_documents
         try:
-            return schema.model_validate(normalized_args), {
+            diagnostic: dict[str, object] = {
                 "attempted": True,
                 "field": "documents",
                 "outcome": "RECOVERED",
             }
+            if syntax_repair is not None:
+                diagnostic["repair"] = syntax_repair
+            return schema.model_validate(normalized_args), diagnostic
         except ValidationError as error:
             return None, {
                 "attempted": True,
@@ -374,7 +381,25 @@ def _recover_provider_wire_output(
                 "validation_error": str(error),
             }
     return None, None
-    return None
+
+
+def _decode_v4_documents(documents: str) -> tuple[object, str | None]:
+    """Decode a v4 documents argument with one bounded DeepSeek wire repair.
+
+    Some DeepSeek tool calls append exactly one closing brace after an otherwise
+    complete JSON array. Accept only that isolated suffix; malformed JSON and
+    all other trailing data remain schema failures.
+    """
+
+    try:
+        return json.loads(documents), None
+    except json.JSONDecodeError as error:
+        if error.msg != "Extra data":
+            raise
+        decoded, end = json.JSONDecoder().raw_decode(documents)
+        if documents[end:].strip() != "}":
+            raise
+        return decoded, "SINGLE_TRAILING_CLOSE_BRACE_DROPPED"
 
 
 def _tool_calls(raw_message: object) -> tuple[Mapping[str, object], ...]:
