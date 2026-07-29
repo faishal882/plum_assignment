@@ -147,9 +147,9 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
                 "schema_version": "complex-extraction-v1",
                 "candidates": [
                     {
-                        "fact_path": "billing.total",
-                        "value": "800.00",
-                        "normalized_value": "800.00",
+                        "fact_path": "clinical.diagnosis",
+                        "value": "Viral Fever",
+                        "normalized_value": "Viral Fever",
                         "evidence_refs": [observation.observation_id],
                         "confidence": 0.98,
                     }
@@ -174,14 +174,18 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
 
     assert triage.output.documents[0].role.value == "HOSPITAL_BILL"
     assert first == replay
-    assert first.candidates[0].fact_path == "billing.total"
+    assert first.candidates[0].fact_path == "clinical.condition"
+    assert first.candidates[0].source_fact_path == "clinical.diagnosis"
+    assert first.candidates[0].alias_registry_version == "fact-path-aliases-v1"
     assert first.candidates[0].evidence_refs == (observation.observation_id,)
     assert recorded.calls == [
         ModelRoute.FAST_TRIAGE,
         ModelRoute.COMPLEX_EXTRACTION,
     ]
     assert len(provenanced) == 1
-    assert provenanced[0].value == "800.00"
+    assert provenanced[0].value == "Viral Fever"
+    assert provenanced[0].source_fact_path == "clinical.diagnosis"
+    assert provenanced[0].alias_registry_version == "fact-path-aliases-v1"
     assert provenanced[0].producer == "BEDROCK"
     assert provenanced[0].producer_version.startswith("qwen.qwen3-235b-a22b-2507-v1:0")
     assert provenanced[0].schema_version == "complex-extraction-v1"
@@ -197,8 +201,12 @@ async def test_recorded_routes_validate_and_persist_without_network_calls(
         candidate_count = await session.scalar(
             select(func.count()).select_from(EvidenceCandidateRow)
         )
+        candidate = await session.scalar(select(EvidenceCandidateRow))
     assert extraction_count == 1
     assert candidate_count == 1
+    assert candidate is not None
+    assert candidate.source_fact_path == "clinical.diagnosis"
+    assert candidate.alias_registry_version == "fact-path-aliases-v1"
     await app.state.engine.dispose()
 
 

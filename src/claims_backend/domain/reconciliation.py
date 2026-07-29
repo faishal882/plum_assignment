@@ -86,6 +86,8 @@ class ProvenancedEvidenceCandidate(BaseModel):
 
     candidate_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     fact_path: str = Field(min_length=1, max_length=128)
+    source_fact_path: str | None = Field(default=None, min_length=1, max_length=128)
+    alias_registry_version: str | None = Field(default=None, min_length=1, max_length=64)
     value: EvidenceScalar
     normalized_value: EvidenceScalar
     producer: str = Field(min_length=1, max_length=64)

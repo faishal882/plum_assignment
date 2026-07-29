@@ -41,6 +41,8 @@ class EvidenceCandidate(BaseModel):
 
     candidate_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     fact_path: str
+    source_fact_path: str
+    alias_registry_version: str | None = None
     value: JsonScalar
     normalized_value: JsonScalar
     evidence_refs: tuple[str, ...]

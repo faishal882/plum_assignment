@@ -1324,6 +1324,8 @@ class EvidenceCandidateRow(Base):
     )
     candidate_id: Mapped[str] = mapped_column(String(64), nullable=False)
     fact_path: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_fact_path: Mapped[str] = mapped_column(String(128), nullable=False)
+    alias_registry_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     value: Mapped[object] = mapped_column(JSONB, nullable=True)
     normalized_value: Mapped[object] = mapped_column(JSONB, nullable=True)
     evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False)

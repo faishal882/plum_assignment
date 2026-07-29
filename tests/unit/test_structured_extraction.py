@@ -109,6 +109,26 @@ def test_valid_candidates_are_grounded_and_canonically_identified() -> None:
     assert first[0].candidate_id
 
 
+def test_versioned_diagnosis_alias_preserves_source_path_and_registry_provenance() -> None:
+    config = ModelRouter.default(
+        region="us-west-2",
+        model_id="qwen.qwen3-235b-a22b-2507-v1:0",
+    ).resolve(ModelRoute.COMPLEX_EXTRACTION)
+    raw = _valid_output()
+    raw["candidates"][0]["fact_path"] = "clinical.diagnosis"  # type: ignore[index]
+
+    candidate = validate_complex_output(
+        raw,
+        config,
+        available_observation_ids={"ocr-1"},
+    )[0]
+
+    assert candidate.fact_path == "clinical.condition"
+    assert candidate.source_fact_path == "clinical.diagnosis"
+    assert candidate.alias_registry_version == "fact-path-aliases-v1"
+    assert candidate.evidence_refs == ("ocr-1",)
+
+
 def _valid_output() -> dict[str, object]:
     return {
         "schema_version": "complex-extraction-v1",

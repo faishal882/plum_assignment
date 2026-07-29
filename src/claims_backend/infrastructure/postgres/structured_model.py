@@ -103,6 +103,8 @@ class PostgresStructuredModelRepository:
                         model_extraction_id=row.id,
                         candidate_id=candidate.candidate_id,
                         fact_path=candidate.fact_path,
+                        source_fact_path=candidate.source_fact_path,
+                        alias_registry_version=candidate.alias_registry_version,
                         value=candidate.value,
                         normalized_value=candidate.normalized_value,
                         evidence_refs=list(candidate.evidence_refs),
@@ -177,6 +179,8 @@ class PostgresStructuredModelRepository:
                     {
                         "candidate_id": candidate.candidate_id,
                         "fact_path": candidate.fact_path,
+                        "source_fact_path": candidate.source_fact_path,
+                        "alias_registry_version": candidate.alias_registry_version,
                         "value": candidate.value,
                         "normalized_value": candidate.normalized_value,
                         "producer": candidate.producer,
@@ -220,6 +224,8 @@ def _to_result(
                 {
                     "candidate_id": candidate.candidate_id,
                     "fact_path": candidate.fact_path,
+                    "source_fact_path": candidate.source_fact_path,
+                    "alias_registry_version": candidate.alias_registry_version,
                     "value": candidate.value,
                     "normalized_value": candidate.normalized_value,
                     "evidence_refs": candidate.evidence_refs,

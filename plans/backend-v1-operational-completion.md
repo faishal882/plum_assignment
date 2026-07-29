@@ -130,6 +130,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
 - [x] Replacement and review activity carry the originating claim's Phoenix session correlation.
 - [x] Role-aware OCR observation identifiers are verified to remain isolated across Textract
   profiles, preventing cross-role evidence reuse.
+- [x] The versioned `clinical.diagnosis` compatibility alias preserves original-path and registry
+  provenance alongside its grounded canonical evidence.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).
