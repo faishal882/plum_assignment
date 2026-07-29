@@ -721,7 +721,7 @@ class PostgresClaimProcessor:
                 .with_for_update()
             )
             if work_item is None:
-                raise ProcessingInvariantError("Work lease was lost before decision commit.")
+                raise LeaseLostError("Work lease was lost before decision commit.")
             run = await session.scalar(
                 select(WorkflowRunRow).where(WorkflowRunRow.id == workflow_run.id).with_for_update()
             )

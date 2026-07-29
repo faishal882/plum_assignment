@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,12 +17,17 @@ from claims_backend.application.work import (
 )
 from claims_backend.application.workflow import ClaimWorkflowProcessor
 from claims_backend.config import Settings
-from claims_backend.domain.processing import EarlyGateResult, ProcessingRoute
+from claims_backend.domain.processing import (
+    EarlyGateResult,
+    FrozenCasefileRef,
+    ProcessingRoute,
+)
 from claims_backend.domain.workflow import WorkflowRunStatus
 from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkflow
 from claims_backend.infrastructure.postgres.claim_processor import PostgresClaimProcessor
 from claims_backend.infrastructure.postgres.models import (
     ClaimWorkItemRow,
+    DecisionRecordRow,
     MemberActionRow,
     WorkflowEffectRow,
 )
@@ -99,6 +105,32 @@ class LeaseLostRuntime:
 
     async def run(self, _workflow_run, _lease, *, resume: bool) -> bool:
         raise LeaseLostError
+
+
+class CrashAfterAdjudicationEffect:
+    async def __call__(self, node_name: str) -> None:
+        if node_name == "adjudicate":
+            raise ControlledCrash
+
+
+class DecisionLeaseRecorder:
+    def __init__(self) -> None:
+        self.commit_lease_tokens: list[str] = []
+
+    async def inspect_media(self, _workflow_run) -> dict[str, object]:
+        return {"status": "SAFE"}
+
+    async def route(self, _workflow_run) -> ProcessingRoute:
+        return ProcessingRoute.STRUCTURED_ADJUDICATION
+
+    async def freeze_casefile(self, _workflow_run) -> FrozenCasefileRef:
+        return FrozenCasefileRef(id=uuid4(), content_hash="casefile-hash")
+
+    async def evaluate_casefile(self, _casefile_id: UUID) -> str:
+        return "proposal-hash"
+
+    async def commit_decision(self, _workflow_run, lease, _casefile_id: UUID) -> None:
+        self.commit_lease_tokens.append(str(lease.lease_token))
 
 
 @pytest.mark.asyncio
@@ -259,6 +291,47 @@ async def test_resumed_member_action_uses_reclaimed_lease_token(
 
 
 @pytest.mark.asyncio
+async def test_resumed_decision_uses_reclaimed_lease_token(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url, data_root=tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _submit_claim(client)
+
+    clock = MutableClock(datetime.now(UTC))
+    scheduler = PostgresWorkScheduler(app.state.session_factory, clock=clock)
+    first_lease = (await scheduler.lease("crashing-worker", 1, timedelta(minutes=5)))[0]
+    repository = PostgresWorkflowRepository(app.state.session_factory)
+    processor = DecisionLeaseRecorder()
+    crashing_runtime = LangGraphClaimWorkflow(
+        migrated_database_url,
+        repository,
+        processor=processor,
+        after_effect=CrashAfterAdjudicationEffect(),
+    )
+    await crashing_runtime.setup()
+
+    with pytest.raises(ControlledCrash):
+        await ClaimWorkflowProcessor(repository, crashing_runtime).process(first_lease)
+
+    clock.advance(timedelta(minutes=6))
+    recovery_lease = (await scheduler.lease("recovery-worker", 1, timedelta(minutes=5)))[0]
+    recovery_runtime = LangGraphClaimWorkflow(
+        migrated_database_url,
+        repository,
+        processor=processor,
+    )
+    outcome = await ClaimWorkflowProcessor(repository, recovery_runtime).process(recovery_lease)
+
+    assert isinstance(outcome, WorkCommitted)
+    assert processor.commit_lease_tokens == [str(recovery_lease.lease_token)]
+    assert processor.commit_lease_tokens != [str(first_lease.lease_token)]
+    await app.state.engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_stale_lease_cannot_commit_member_action(
     migrated_database_url: str,
     tmp_path,
@@ -296,9 +369,16 @@ async def test_stale_lease_cannot_commit_member_action(
                 required_roles=("HOSPITAL_BILL",),
             ),
         )
+    with pytest.raises(LeaseLostError):
+        await PostgresClaimProcessor(app.state.session_factory).commit_decision(
+            workflow_run,
+            stale_lease,
+            uuid4(),
+        )
 
     async with app.state.session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(MemberActionRow)) == 0
+        assert await session.scalar(select(func.count()).select_from(DecisionRecordRow)) == 0
         assert await session.scalar(select(func.count()).select_from(WorkflowEffectRow)) == 0
         work_item = await session.scalar(
             select(ClaimWorkItemRow).where(ClaimWorkItemRow.id == stale_lease.work_item_id)

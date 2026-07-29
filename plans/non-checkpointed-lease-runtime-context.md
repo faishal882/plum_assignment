@@ -59,10 +59,10 @@ Apply the same active runtime-lease contract to the adjudication terminal path, 
 
 ### Acceptance criteria
 
-- [ ] A reclaimed workflow resumes to a decision commit using the current runtime lease.
-- [ ] A decision record, claim projection, workflow effect, work completion, and workflow completion remain atomic.
-- [ ] A stale worker cannot create a decision, overwrite the projection, or duplicate a terminal effect.
-- [ ] Existing policy and casefile acceptance behavior remains unchanged.
+- [x] A reclaimed workflow resumes to a decision commit using the current runtime lease.
+- [x] A decision record, claim projection, workflow effect, work completion, and workflow completion remain atomic.
+- [x] A stale worker cannot create a decision, overwrite the projection, or duplicate a terminal effect.
+- [x] Existing policy and casefile acceptance behavior remains unchanged.
 
 ---
 
