@@ -7,6 +7,7 @@ from claims_backend.domain.evidence import (
     NormalizedRegion,
     PreviewProvenance,
     Readability,
+    TriageEvidenceNormalizationCode,
     TriageProviderOutputV4,
 )
 from claims_backend.domain.ocr import OcrObservation, OcrObservationKind
@@ -143,6 +144,71 @@ def test_v4_normal_response_persists_an_unchanged_normalization_report() -> None
     assert report.readability.codes == ()
 
 
+def test_v4_valid_overcitation_retains_five_and_records_the_complete_audit() -> None:
+    document_version_id = UUID("10000000-0000-0000-0000-000000000003")
+    observations = tuple(
+        OcrObservation(
+            observation_id=f"{index:064x}",
+            document_version_id=document_version_id,
+            page_number=1,
+            kind=OcrObservationKind.LINE,
+            text=f"Bill line {index}",
+            confidence=0.98,
+            region=NormalizedRegion(x=0.1, y=0.1, width=0.4, height=0.1),
+            source_id=f"source-{index}",
+        )
+        for index in range(30)
+    )
+    references = tuple(observation.observation_id for observation in observations)
+    output = TriageProviderOutputV4.model_validate(
+        {
+            "schema_version": 4,
+            "documents": [
+                {
+                    "client_document_id": "document-30",
+                    "role": "HOSPITAL_BILL",
+                    "role_evidence_refs": references,
+                    "readability": "READABLE",
+                    "readability_evidence_refs": references,
+                    "identity_observations": [],
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_triage_with_reports(
+        output,
+        (
+            TriageDocumentContext(
+                client_document_id="document-30",
+                document_version_id=document_version_id,
+                observations=observations,
+                previews_by_page={
+                    1: PreviewProvenance(
+                        page=1,
+                        sha256="b" * 64,
+                        transform_version="pymupdf-v1",
+                    )
+                },
+            ),
+        ),
+        policy=resolve_evidence_reference_policy("triage-evidence-policy-v1"),
+    )
+
+    document = resolved.output.documents[0]
+    report = resolved.normalization_reports["document-30"]
+    assert document.role_evidence_refs == references[:5]
+    assert document.readability_evidence_refs == references[:5]
+    assert document.readability.preview.page == 1
+    assert report.role.received_refs == references
+    assert report.role.unique_refs == references
+    assert report.role.retained_refs == references[:5]
+    assert report.role.over_citation_dropped_refs == references[5:]
+    assert report.role.duplicate_dropped_refs == ()
+    assert report.role.codes == (TriageEvidenceNormalizationCode.TRUNCATED,)
+    assert report.readability.over_citation_dropped_refs == references[5:]
+
+
 async def test_fast_triage_v4_uses_provider_schema_and_stable_raw_output_digest() -> None:
     payload = _provider_payload()
     transport = _Transport(payload)
@@ -155,6 +221,7 @@ async def test_fast_triage_v4_uses_provider_schema_and_stable_raw_output_digest(
     result = await application.fast_triage([("system", "prompt"), ("human", "document")])
 
     assert transport.schema is TriageProviderOutputV4
+    assert transport.calls == 1
     assert result.output.schema_version == 4
     assert (
         result.raw_output_sha256
@@ -176,9 +243,11 @@ class _Transport:
     def __init__(self, raw_output: dict[str, object]) -> None:
         self._raw_output = raw_output
         self.schema: type[object] | None = None
+        self.calls = 0
 
     def invoke(self, config, schema, messages) -> ModelInvocation:
         del config, messages
+        self.calls += 1
         self.schema = schema
         return ModelInvocation(
             raw_output=self._raw_output,

@@ -19,6 +19,7 @@ from claims_backend.domain.evidence import (
     TriageDocumentResult,
     TriageEvidenceField,
     TriageEvidenceFieldNormalization,
+    TriageEvidenceNormalizationCode,
     TriageEvidenceNormalizationReport,
 )
 from claims_backend.domain.workflow import ExecutionContract, WorkflowRun, WorkflowRunStatus
@@ -55,13 +56,13 @@ async def test_v4_triage_audit_is_persisted_with_canonical_evidence_and_reconstr
         document_version = await session.scalar(select(DocumentVersionRow))
     assert document_version is not None
 
-    observation_id = "a" * 64
+    references = tuple(f"{index:064x}" for index in range(30))
     output = ResolvedTriageOutput(
         documents=(
             TriageDocumentResult(
                 client_document_id="hospital-bill",
                 role=DocumentRole.HOSPITAL_BILL,
-                role_evidence_refs=(observation_id,),
+                role_evidence_refs=references[:5],
                 readability=ReadabilityObservation(
                     status=Readability.READABLE,
                     preview=PreviewProvenance(
@@ -70,12 +71,12 @@ async def test_v4_triage_audit_is_persisted_with_canonical_evidence_and_reconstr
                         transform_version="pymupdf-v1",
                     ),
                 ),
-                readability_evidence_refs=(observation_id,),
+                readability_evidence_refs=references[:5],
                 identity_observations=(),
             ),
         )
     )
-    report = _report(observation_id)
+    report = _report(references)
     now = datetime.now(UTC)
     workflow_run = WorkflowRun(
         id=uuid4(),
@@ -105,8 +106,8 @@ async def test_v4_triage_audit_is_persisted_with_canonical_evidence_and_reconstr
     async with app.state.session_factory() as session:
         stored = await session.scalar(select(DocumentTriageResultRow))
     assert stored is not None
-    assert stored.role_evidence_refs == [observation_id]
-    assert stored.readability_evidence_refs == [observation_id]
+    assert stored.role_evidence_refs == list(references[:5])
+    assert stored.readability_evidence_refs == list(references[:5])
     assert stored.normalization_report == report.model_dump(mode="json")
     assert stored.raw_provider_output_sha256 == "b" * 64
 
@@ -121,15 +122,15 @@ async def test_v4_triage_audit_is_persisted_with_canonical_evidence_and_reconstr
     await app.state.engine.dispose()
 
 
-def _report(observation_id: str) -> TriageEvidenceNormalizationReport:
+def _report(references: tuple[str, ...]) -> TriageEvidenceNormalizationReport:
     field = TriageEvidenceFieldNormalization(
         field=TriageEvidenceField.ROLE,
-        received_refs=(observation_id,),
-        unique_refs=(observation_id,),
-        retained_refs=(observation_id,),
+        received_refs=references,
+        unique_refs=references,
+        retained_refs=references[:5],
         duplicate_dropped_refs=(),
-        over_citation_dropped_refs=(),
-        codes=(),
+        over_citation_dropped_refs=references[5:],
+        codes=(TriageEvidenceNormalizationCode.TRUNCATED,),
     )
     return TriageEvidenceNormalizationReport(
         policy_version="triage-evidence-policy-v1",

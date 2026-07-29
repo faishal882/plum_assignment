@@ -59,7 +59,7 @@ Durable decisions that apply across all phases:
 ## Plan status
 
 - [x] Phase 1: Versioned triage foundation
-- [ ] Phase 2: Valid over-citation tracer
+- [x] Phase 2: Valid over-citation tracer
 - [ ] Phase 3: Duplicate-reference normalization
 - [ ] Phase 4: Adversarial failure boundaries
 - [ ] Phase 5: Durable recovery and legacy compatibility
@@ -189,68 +189,68 @@ compliance—is the correctness boundary.
 
 #### Complete-reference validation
 
-- [ ] A v4 provider response containing 30 valid readability references parses successfully.
-- [ ] A v4 provider response containing 30 valid role references parses successfully.
-- [ ] All supplied references are checked against observations belonging to the current document.
-- [ ] Validation is completed before any reference is discarded.
-- [ ] The provider response's original order is preserved during validation.
-- [ ] Role and readability sequences are processed independently.
+- [x] A v4 provider response containing 30 valid readability references parses successfully.
+- [x] A v4 provider response containing 30 valid role references parses successfully.
+- [x] All supplied references are checked against observations belonging to the current document.
+- [x] Validation is completed before any reference is discarded.
+- [x] The provider response's original order is preserved during validation.
+- [x] Role and readability sequences are processed independently.
 
 #### Canonical reduction
 
-- [ ] Thirty valid unique references produce exactly five canonical references.
-- [ ] The retained references are the first five supplied references.
-- [ ] The remaining 25 references are classified as over-citation drops.
-- [ ] The output emits `TRIAGE_EVIDENCE_REFS_TRUNCATED`.
-- [ ] The output does not emit the deduplication code when all 30 references are unique.
-- [ ] Canonical selection is identical across repeated executions.
-- [ ] Readability preview provenance is derived from the first retained readability reference.
-- [ ] Canonical resolved triage remains schema version 3.
-- [ ] Document role, readability status, and identity semantics are not changed by reduction.
+- [x] Thirty valid unique references produce exactly five canonical references.
+- [x] The retained references are the first five supplied references.
+- [x] The remaining 25 references are classified as over-citation drops.
+- [x] The output emits `TRIAGE_EVIDENCE_REFS_TRUNCATED`.
+- [x] The output does not emit the deduplication code when all 30 references are unique.
+- [x] Canonical selection is identical across repeated executions.
+- [x] Readability preview provenance is derived from the first retained readability reference.
+- [x] Canonical resolved triage remains schema version 3.
+- [x] Document role, readability status, and identity semantics are not changed by reduction.
 
 #### No-retry behavior
 
-- [ ] Valid over-citation completes without a second model invocation.
-- [ ] The model-attempt count remains one.
-- [ ] The claim proceeds through the same downstream gates as an equivalent concise response.
-- [ ] The behavior is implemented independently of any model identifier.
-- [ ] The captured response passes using the currently configured model route.
+- [x] Valid over-citation completes without a second model invocation.
+- [x] The model-attempt count remains one.
+- [x] The claim proceeds through the same downstream gates as an equivalent concise response.
+- [x] The behavior is implemented independently of any model identifier.
+- [x] The captured response passes using the currently configured model route.
 
 #### Durable audit
 
-- [ ] PostgreSQL stores exactly five canonical role references when role over-citation occurs.
-- [ ] PostgreSQL stores exactly five canonical readability references when readability
+- [x] PostgreSQL stores exactly five canonical role references when role over-citation occurs.
+- [x] PostgreSQL stores exactly five canonical readability references when readability
   over-citation occurs.
-- [ ] The normalization report records 30 received, 30 unique, five retained, zero duplicate
+- [x] The normalization report records 30 received, 30 unique, five retained, zero duplicate
   drops, and 25 over-citation drops for the captured field.
-- [ ] The report contains all five retained references.
-- [ ] The report contains all 25 over-citation-dropped references.
-- [ ] The report contains `TRIAGE_EVIDENCE_REFS_TRUNCATED`.
-- [ ] The report and business reference columns agree exactly.
-- [ ] Reconstruction after closing and reopening the database session returns the same report.
-- [ ] The persisted raw-output digest matches a newly computed digest of the captured response.
-- [ ] The report remains bounded by the 100-reference and ten-document provider limits.
+- [x] The report contains all five retained references.
+- [x] The report contains all 25 over-citation-dropped references.
+- [x] The report contains `TRIAGE_EVIDENCE_REFS_TRUNCATED`.
+- [x] The report and business reference columns agree exactly.
+- [x] Reconstruction after closing and reopening the database session returns the same report.
+- [x] The persisted raw-output digest matches a newly computed digest of the captured response.
+- [x] The report remains bounded by the 100-reference and ten-document provider limits.
 
 #### Trace and metrics
 
-- [ ] Phoenix receives the complete captured provider response through the existing model span.
-- [ ] The normalization child span records all 30 supplied references.
-- [ ] The normalization child span records the five retained and 25 dropped references.
-- [ ] The child span records the truncation reason code.
-- [ ] The child span counts match the PostgreSQL report counts.
-- [ ] The child span digest matches the PostgreSQL digest.
-- [ ] The over-citation metric increments once for the affected field.
-- [ ] Received, retained, and over-citation-drop numeric metrics have the expected values.
-- [ ] Observation references are not used as metric dimensions.
+- [x] Phoenix receives the complete captured provider response through the existing model span.
+- [x] The normalization child span records all 30 supplied references.
+- [x] The normalization child span records the five retained and 25 dropped references.
+- [x] The child span records the truncation reason code.
+- [x] The child span counts match the PostgreSQL report counts.
+- [x] The child span digest matches the PostgreSQL digest.
+- [x] The over-citation metric increments once for the affected field.
+- [x] Received, retained, and over-citation-drop numeric metrics have the expected values.
+- [x] Observation references are not used as metric dimensions.
 
 #### Phase verification
 
-- [ ] A unit test proves 30 valid references normalize to five.
-- [ ] A captured-response application test proves the DeepSeek-style payload parses and resolves.
-- [ ] A persistence integration test proves canonical references and the report are atomic.
-- [ ] A workflow integration test proves no retry and normal downstream continuation.
-- [ ] A Phoenix integration test proves raw and canonical evidence visibility.
-- [ ] Phase 1 tests remain passing.
+- [x] A unit test proves 30 valid references normalize to five.
+- [x] A captured-response application test proves the DeepSeek-style payload parses and resolves.
+- [x] A persistence integration test proves canonical references and the report are atomic.
+- [x] A workflow integration test proves no retry and normal downstream continuation.
+- [x] A Phoenix integration test proves raw and canonical evidence visibility.
+- [x] Phase 1 tests remain passing.
 
 ---
 
