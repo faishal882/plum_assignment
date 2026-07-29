@@ -1,0 +1,38 @@
+{
+  "artifact_schema": "backend-v1-live-local-e2e-summary-v1",
+  "scope": "manual FastAPI to standalone-worker synthetic document flow",
+  "execution_profile": "LIVE_INTELLIGENCE",
+  "live_aws_authorized": true,
+  "result": "SAFE_FAILURE_VERIFIED",
+  "api_checks": {
+    "openapi": "PASSED",
+    "health_live": "PASSED",
+    "health_ready": "PASSED",
+    "claim_submission": "202_ACCEPTED",
+    "idempotent_retry": "SAME_CLAIM_RETURNED",
+    "cross_user_read": "404_BLOCKED",
+    "review_queue": "PASSED"
+  },
+  "workflow": {
+    "queue_progression": "QUEUED_TO_PROCESSING_FAILED",
+    "failure_code": "MODEL_SCHEMA_VALIDATION_FAILED",
+    "durable_work_item": "FAILED",
+    "workflow_run": "FAILED",
+    "trace_reconstruction": "POSTGRESQL_WORKFLOW_EVENTS_WITH_TRACE_AND_SPAN_IDS"
+  },
+  "observability": {
+    "phoenix_project": "plum-claims-local",
+    "session_observed": true,
+    "jsonl_worker_events_observed": true,
+    "synthetic_content_absent_from_jsonl_and_phoenix_storage": true
+  },
+  "limitation": "One manually rendered synthetic invoice caused Bedrock schema validation failure. The workflow failed closed and is not evidence of arbitrary-document accuracy. The separate generated TC004 live public-worker tracer remains the passing synthetic acceptance proof.",
+  "excluded_content": [
+    "claim_id",
+    "trace_id",
+    "span_id",
+    "document_text",
+    "raw_logs",
+    "raw_spans"
+  ]
+}

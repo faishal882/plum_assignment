@@ -2,15 +2,15 @@
   "artifact_schema": "backend-v1-test-summary-v1",
   "command": "uv run pytest -q",
   "result": "PASSED",
-  "passed": 235,
-  "skipped": 4,
+  "passed": 239,
+  "skipped": 0,
   "failed": 0,
-  "duration_seconds": 102.81,
-  "skipped_checks": [
-    "tests/live/test_bedrock_live.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
-    "tests/live/test_live_worker_tc004.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
-    "tests/live/test_tc004_live_intelligence.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required",
-    "tests/live/test_textract_live.py: explicit CLAIMS_RUN_LIVE_AWS=1 authorization required"
-  ],
-  "execution_profile_default": "RECORDED_LOCAL"
+  "duration_seconds": 157.78,
+  "live_aws_authorized": true,
+  "live_checks_executed": 4,
+  "execution_profile_default": "RECORDED_LOCAL",
+  "notes": [
+    "This run used the user's explicit CLAIMS_RUN_LIVE_AWS=1 setting.",
+    "With the default opt-out setting, the four live checks are skipped rather than charged."
+  ]
 }

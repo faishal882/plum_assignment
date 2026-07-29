@@ -28,9 +28,10 @@ Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
   PostgreSQL workflow events and JSONL records retain local reconstruction data.
 - Test execution refuses the application database unless an explicit destructive override is set.
 - `ruff format --check .`, `ruff check .`, `mypy`, and `alembic check` pass.
-- The deterministic suite completed with **235 passed, 4 skipped** in 102.81 seconds. The four
-  skipped checks are the explicitly opt-in synthetic Textract, Bedrock, direct-TC004, and
-  public-worker-TC004 live tests.
+- With the user's explicit `CLAIMS_RUN_LIVE_AWS=1` setting, the full suite completed with
+  **239 passed, 0 skipped** in 157.78 seconds. This includes the otherwise opt-in synthetic
+  Textract, Bedrock, direct-TC004, and public-worker-TC004 live checks. With the default opt-out
+  setting, those four live checks remain skipped rather than incurring AWS cost.
 - The explicitly authorized synthetic live TC004 provider-to-policy tracer and public FastAPI →
   standalone-worker tracer passed on 2026-07-29: real Textract and Qwen evidence reached the
   deterministic ₹1,350 approval. Their sanitized result is recorded in
@@ -39,6 +40,12 @@ Phase-by-phase evidence is indexed in `BACKEND_V1_ACCEPTANCE_AUDIT.md`.
   in 3.94 seconds.
 - The complete live public-worker tracer verifies correlated API and worker Phoenix claim sessions
   and rejects synthetic patient/clinical canaries from span attributes.
+- A manual local API → worker run on 2026-07-29 confirmed `GET /health/live`,
+  `GET /health/ready`, submission, idempotent retry, member isolation, reviewer listing, Phoenix
+  export, JSONL emission, and PostgreSQL reconstruction. A separately rendered synthetic invoice
+  reached the worker and safely ended as `PROCESSING_FAILED` with
+  `MODEL_SCHEMA_VALIDATION_FAILED`; it did not remain queued. The sanitized evidence is in
+  `artifacts/backend-v1/live-local-e2e-summary.json`.
 
 ## Recorded acceptance outcomes
 
@@ -93,5 +100,9 @@ decisions, review records, and audit records.
 - Live Textract/Bedrock variability is not represented as twelve-live-case coverage. The synthetic
   TC004 public-worker tracer passes with Textract-labelled total and diagnosis-line evidence
   decoders. Do not claim all twelve live cases pass.
+- The manual synthetic invoice run demonstrates that arbitrary document layouts can still trigger
+  model-schema safe failure. It is correctly observable and recoverable, but it is not proof that
+  arbitrary real documents will be approved. The passing generated TC004 tracer is the bounded
+  live acceptance claim.
 - Backend v1 is a local operational backend. Authentication, remote deployment, arbitrary
   real-world OCR/model accuracy, and twelve-case live-provider coverage remain out of scope.

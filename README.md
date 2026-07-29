@@ -97,11 +97,11 @@ The API is now available at `http://127.0.0.1:8000`. Use:
 - OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
 - Frontend contract: [`frontend_integration.md`](frontend_integration.md)
 
-There is currently no `/health` endpoint. Treat a successful `200` response from
-`/openapi.json` as the API-process smoke check:
+Use the liveness and readiness endpoints as the API-process smoke checks:
 
 ```bash
-curl --fail http://127.0.0.1:8000/openapi.json >/dev/null \
+curl --fail http://127.0.0.1:8000/health/live >/dev/null \
+  && curl --fail http://127.0.0.1:8000/health/ready >/dev/null \
   && echo "API is responding"
 ```
 
@@ -140,10 +140,9 @@ curl --fail-with-body \
 
 ### Current local runtime boundary
 
-`uvicorn` starts only the HTTP API. The repository contains the durable scheduler,
-`WorkerService`, and `LangGraphClaimWorkflow`, but it does not yet expose a worker executable or
-local composition root. Start `uv run claims-worker run-loop` alongside the API to advance a
-submitted claim through the durable PostgreSQL work queue.
+`uvicorn` starts only the HTTP API. Start `uv run claims-worker run-loop` alongside it to lease
+and advance submitted claims through the durable PostgreSQL work queue. For a bounded smoke pass,
+use `uv run claims-worker run-once`.
 
 Use the integration tests below to verify complete processing through triage, recorded OCR/model
 providers, adjudication, review, persistence, and reconstruction.
@@ -274,8 +273,8 @@ Submit a claim as multipart form data:
 - `files`: one file part for each manifest item.
 
 The accepted response contains a claim ID and status URL. The API queues durable work in
-PostgreSQL; see [Current local runtime boundary](#current-local-runtime-boundary) for the present
-worker-entrypoint limitation.
+PostgreSQL; see [Current local runtime boundary](#current-local-runtime-boundary) to start the
+standalone worker that processes it.
 
 ## Submission idempotency
 

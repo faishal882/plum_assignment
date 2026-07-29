@@ -1,6 +1,6 @@
 {
   "artifact_schema": "backend-v1-telemetry-privacy-report-v1",
-  "scope": "recorded twelve-case evaluation",
+  "scope": "recorded twelve-case evaluation and manual synthetic live local E2E",
   "result": "PASSED",
   "checks": {
     "api_worker_evaluation_jsonl_scanned": true,
@@ -9,7 +9,9 @@
     "medical_content_canaries_absent": true,
     "raw_document_bytes_absent": true,
     "ocr_text_absent": true,
-    "local_paths_absent": true
+    "local_paths_absent": true,
+    "manual_live_jsonl_and_phoenix_storage_scanned": true,
+    "manual_live_synthetic_content_absent": true
   },
   "excluded_from_artifact": ["canary_values", "raw_logs", "raw_spans"]
 }
