@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from claims_backend.application.work import WorkerService
 from claims_backend.application.workflow import ClaimWorkflowProcessor
+from claims_backend.domain.workflow import ExecutionContract, WorkflowRun
 from claims_backend.infrastructure.langgraph_workflow import LangGraphClaimWorkflow
 from claims_backend.infrastructure.postgres.work_scheduler import PostgresWorkScheduler
 from claims_backend.infrastructure.postgres.workflow_repository import (
@@ -95,15 +96,41 @@ def create_claim_worker(runtime: ProcessRuntime) -> ClaimWorker:
     """Build the complete durable-work dependency set outside FastAPI state."""
     settings = runtime.settings
     repository = PostgresWorkflowRepository(runtime.session_factory)
-    workflow = LangGraphClaimWorkflow(
+    workflows: dict[ExecutionContract, LangGraphClaimWorkflow] = {}
+
+    async def resolve_workflow(existing: WorkflowRun | None) -> LangGraphClaimWorkflow:
+        contract = (
+            create_execution_contract(settings) if existing is None else existing.execution_contract
+        )
+        workflow = workflows.get(contract)
+        if workflow is None:
+            workflow = LangGraphClaimWorkflow(
+                settings.database_url,
+                repository,
+                processor=create_claim_processor(runtime, execution_contract=contract),
+                observability=runtime.observability,
+                execution_profile=contract.execution_profile,
+                execution_contract=contract,
+            )
+            await workflow.setup()
+            workflows[contract] = workflow
+        return workflow
+
+    default_contract = create_execution_contract(settings)
+    default_workflow = LangGraphClaimWorkflow(
         settings.database_url,
         repository,
-        processor=create_claim_processor(runtime),
+        processor=create_claim_processor(runtime, execution_contract=default_contract),
         observability=runtime.observability,
-        execution_profile=runtime.profile.value,
-        execution_contract=create_execution_contract(settings),
+        execution_profile=default_contract.execution_profile,
+        execution_contract=default_contract,
     )
-    processor = ClaimWorkflowProcessor(repository, workflow)
+    workflows[default_contract] = default_workflow
+    processor = ClaimWorkflowProcessor(
+        repository,
+        default_workflow,
+        runtime_resolver=resolve_workflow,
+    )
     service = WorkerService(
         PostgresWorkScheduler(runtime.session_factory),
         lease_ttl=timedelta(seconds=settings.worker_lease_seconds),

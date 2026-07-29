@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 from uuid import UUID
 
@@ -74,10 +75,12 @@ class ClaimWorkflowProcessor:
         runtime: WorkflowRuntime,
         *,
         retry_schedule: RetrySchedule | None = None,
+        runtime_resolver: Callable[[WorkflowRun | None], Awaitable[WorkflowRuntime]] | None = None,
     ) -> None:
         self._repository = repository
         self._runtime = runtime
         self._retry_schedule = retry_schedule or RetrySchedule()
+        self._runtime_resolver = runtime_resolver
 
     async def setup(self) -> None:
         """Initialize durable workflow state before the worker leases work."""
@@ -87,11 +90,17 @@ class ClaimWorkflowProcessor:
         self,
         lease: WorkLease,
     ) -> WorkCompleted | WorkCommitted | WorkRetry | WorkFailed:
+        existing = await self._repository.get_by_work_item(lease.work_item_id)
+        runtime = (
+            self._runtime
+            if self._runtime_resolver is None
+            else await self._runtime_resolver(existing)
+        )
         workflow_run = await self._repository.get_or_create(
             lease,
-            self._runtime.graph_name,
-            self._runtime.graph_version,
-            self._runtime.execution_contract,
+            runtime.graph_name,
+            runtime.graph_version,
+            runtime.execution_contract,
         )
         if workflow_run.status is WorkflowRunStatus.COMPLETED:
             return WorkCompleted()
@@ -99,7 +108,7 @@ class ClaimWorkflowProcessor:
         resume = workflow_run.status is WorkflowRunStatus.RUNNING
         workflow_run = await self._repository.mark_running(workflow_run.id)
         try:
-            work_committed = await self._runtime.run(workflow_run, lease, resume=resume)
+            work_committed = await runtime.run(workflow_run, lease, resume=resume)
         except Exception as error:
             failure = classify_processing_failure(error)
             if failure is None:
