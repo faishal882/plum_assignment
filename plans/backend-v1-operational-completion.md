@@ -132,6 +132,8 @@ verified completed slices; unchecked acceptance criteria remain work to do.
   profiles, preventing cross-role evidence reuse.
 - [x] The versioned `clinical.diagnosis` compatibility alias preserves original-path and registry
   provenance alongside its grounded canonical evidence.
+- [x] The extraction prompt explicitly requires `clinical.condition` and rejects the legacy
+  diagnosis path as normal output.
 - [x] API submission spans correlated to the claim Phoenix session (`8dad379`).
 - [x] Local health checks and frontend worker/polling contract (`57d4846`, `2086cec`).
 - [x] Test database isolation guard and explicit destructive override (`cf69c35`).

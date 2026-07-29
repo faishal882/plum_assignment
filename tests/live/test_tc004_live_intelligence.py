@@ -173,7 +173,7 @@ async def test_live_tc004_intelligence_preserves_exact_policy_result() -> None:
             model_id=_SETTINGS.bedrock_model_id,
             prompt_versions=(
                 "fast-triage-prompt-v1",
-                "complex-extraction-prompt-v2",
+                "complex-extraction-prompt-v3",
             ),
             schema_versions=("triage-output-v2", "complex-extraction-v1"),
             graph_version="claim-processing-v7",

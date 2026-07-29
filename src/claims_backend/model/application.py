@@ -26,7 +26,8 @@ COMPLEX_EXTRACTION_SYSTEM_PROMPT = (
     "Extract grounded evidence candidates only. Never decide policy or payment. "
     "Every fact_path must begin with exactly one allowed namespace: billing., "
     "clinical., document., patient., provider., or treatment. Use billing.total for "
-    "a bill's total amount and provider.name for the treating hospital or provider. "
+    "a bill's total amount, clinical.condition for a diagnosis or condition, and "
+    "provider.name for the treating hospital or provider. Do not use clinical.diagnosis. "
     "Every candidate must cite one or more supplied observation_id values."
 )
 

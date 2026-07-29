@@ -7,6 +7,7 @@ from claims_backend.domain.extraction import (
     ModelSchemaValidationError,
     ModelSemanticValidationError,
 )
+from claims_backend.model.application import COMPLEX_EXTRACTION_SYSTEM_PROMPT
 from claims_backend.model.extraction import validate_complex_output
 from claims_backend.model.routing import ModelRouter
 
@@ -24,7 +25,7 @@ def test_fast_and_complex_routes_are_independently_versioned_and_approved() -> N
     assert complex_route.route is ModelRoute.COMPLEX_EXTRACTION
     assert fast.model_id == complex_route.model_id == "qwen.qwen3-235b-a22b-2507-v1:0"
     assert fast.prompt_version != complex_route.prompt_version
-    assert complex_route.prompt_version == "complex-extraction-prompt-v2"
+    assert complex_route.prompt_version == "complex-extraction-prompt-v3"
     assert fast.schema_version != complex_route.schema_version
     assert fast.enabled and fast.evaluation_approved
     assert complex_route.enabled and complex_route.evaluation_approved
@@ -34,6 +35,8 @@ def test_fast_and_complex_routes_are_independently_versioned_and_approved() -> N
         == complex_route.structured_output_method
         == "function_calling"
     )
+    assert "clinical.condition for a diagnosis or condition" in COMPLEX_EXTRACTION_SYSTEM_PROMPT
+    assert "Do not use clinical.diagnosis" in COMPLEX_EXTRACTION_SYSTEM_PROMPT
 
 
 def test_authority_bearing_model_output_is_rejected_before_schema_parsing() -> None:
