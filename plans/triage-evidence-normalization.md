@@ -63,7 +63,7 @@ Durable decisions that apply across all phases:
 - [x] Phase 3: Duplicate-reference normalization
 - [x] Phase 4: Adversarial failure boundaries
 - [x] Phase 5: Durable recovery and legacy compatibility
-- [ ] Phase 6: Acceptance and regression closure
+- [x] Phase 6: Acceptance and regression closure
 
 ---
 
@@ -421,43 +421,43 @@ evidence to a Phoenix provider response using the raw-output digest.
   policy-v1 identities.
 - [x] Recovery reconstructs the exact provider schema and evidence policy from the execution
   contract.
-- [ ] Changing current route defaults does not change a resumed workflow.
-- [ ] Changing the configured model identifier does not change a resumed workflow's pinned model.
-- [ ] A recovered workflow produces the same canonical references as its original process.
-- [ ] Unsupported policy versions fail recovery before leasing or invoking provider work.
-- [ ] Unsupported route combinations fail recovery explicitly rather than falling back.
+- [x] Changing current route defaults does not change a resumed workflow.
+- [x] Changing the configured model identifier does not change a resumed workflow's pinned model.
+- [x] A recovered workflow produces the same canonical references as its original process.
+- [x] Unsupported policy versions fail recovery before leasing or invoking provider work.
+- [x] Unsupported route combinations fail recovery explicitly rather than falling back.
 
 #### Legacy workflow execution
 
 - [x] A legacy execution contract containing prompt-v2 and provider-output-v3 remains readable.
 - [x] Absence of a policy field is accepted only for the explicitly supported legacy combination.
-- [ ] A legacy workflow rebuilds its v3 provider parser rather than adopting v4 behavior.
-- [ ] A legacy response at its prior accepted boundary behaves exactly as before.
-- [ ] A legacy response outside its prior schema limit retains its prior failure behavior.
-- [ ] Legacy recovery does not synthesize a policy-v1 normalization report.
-- [ ] A missing policy field on any nonlegacy route is rejected.
+- [x] A legacy workflow rebuilds its v3 provider parser rather than adopting v4 behavior.
+- [x] A legacy response at its prior accepted boundary behaves exactly as before.
+- [x] A legacy response outside its prior schema limit retains its prior failure behavior.
+- [x] Legacy recovery does not synthesize a policy-v1 normalization report.
+- [x] A missing policy field on any nonlegacy route is rejected.
 
 #### Database compatibility
 
 - [x] The additive migration upgrades a database containing historical triage rows.
-- [ ] Historical rows retain their original canonical evidence columns.
+- [x] Historical rows retain their original canonical evidence columns.
 - [x] Historical rows with null normalization metadata remain reconstructable.
-- [ ] Reconstruction labels missing legacy normalization metadata as unavailable.
-- [ ] Reconstruction never invents received or dropped references for a legacy row.
-- [ ] New rows require a policy version, normalization report, and raw-output digest at the
+- [x] Reconstruction labels missing legacy normalization metadata as unavailable.
+- [x] Reconstruction never invents received or dropped references for a legacy row.
+- [x] New rows require a policy version, normalization report, and raw-output digest at the
   application boundary.
 - [x] New persistence writes canonical references and audit metadata atomically.
 - [x] Schema-drift detection recognizes the new columns and constraints.
 
 #### Durable reconstruction
 
-- [ ] A new normalized result can be reconstructed after worker and API restart.
+- [x] A new normalized result can be reconstructed after worker and API restart.
 - [x] Reconstructed canonical references match the persisted business columns.
-- [ ] Reconstructed normalization counts and partitions are internally consistent.
-- [ ] Reconstructed evidence-policy version matches the workflow execution contract.
+- [x] Reconstructed normalization counts and partitions are internally consistent.
+- [x] Reconstructed evidence-policy version matches the workflow execution contract.
 - [x] Reconstructed raw-output digest matches the normalization report.
 - [x] PostgreSQL reconstruction remains sufficient after Phoenix data is unavailable.
-- [ ] Phoenix and PostgreSQL can be correlated when both are available.
+- [x] Phoenix and PostgreSQL can be correlated when both are available.
 - [x] Complete raw provider output is not duplicated into a new generic database ledger.
 
 #### API compatibility
@@ -470,13 +470,13 @@ evidence to a Phoenix provider response using the raw-output digest.
 
 #### Phase verification
 
-- [ ] Recovery tests prove a new workflow retains policy-v1 across changed runtime defaults.
+- [x] Recovery tests prove a new workflow retains policy-v1 across changed runtime defaults.
 - [x] Compatibility tests prove legacy v2/v3 workflows remain executable.
-- [ ] Negative tests reject missing or unknown policy versions on nonlegacy routes.
+- [x] Negative tests reject missing or unknown policy versions on nonlegacy routes.
 - [x] Migration tests upgrade representative historical rows.
 - [x] Reconstruction tests cover both legacy-null and new-report rows.
-- [ ] Public API contract tests show no response-schema change.
-- [ ] Phases 1–4 tests remain passing.
+- [x] Public API contract tests show no response-schema change.
+- [x] Phases 1–4 tests remain passing.
 
 ---
 
@@ -498,67 +498,67 @@ results without claiming paid live behavior that was not exercised.
 
 #### Captured regression
 
-- [ ] The captured DeepSeek-style response with 30 valid readability references passes.
-- [ ] The captured response retains exactly five readability references.
-- [ ] The captured response invokes the model exactly once.
-- [ ] The captured response persists the expected truncation report.
-- [ ] The captured response emits the expected Phoenix child span and metrics.
-- [ ] The captured response passes without changing the configured Bedrock model.
+- [x] The captured DeepSeek-style response with 30 valid readability references passes.
+- [x] The captured response retains exactly five readability references.
+- [x] The captured response invokes the model exactly once.
+- [x] The captured response persists the expected truncation report.
+- [x] The captured response emits the expected Phoenix child span and metrics.
+- [x] The captured response passes without changing the configured Bedrock model.
 
 #### Semantic non-regression
 
-- [ ] Identity-selection maximum remains two.
-- [ ] Identity value grounding remains unchanged.
-- [ ] Document role and readability enums remain unchanged.
-- [ ] Preview provenance still comes from backend-owned render data.
-- [ ] Models remain unable to supply hashes, page numbers, regions, policy decisions, or payable
+- [x] Identity-selection maximum remains two.
+- [x] Identity value grounding remains unchanged.
+- [x] Document role and readability enums remain unchanged.
+- [x] Preview provenance still comes from backend-owned render data.
+- [x] Models remain unable to supply hashes, page numbers, regions, policy decisions, or payable
   amounts.
-- [ ] Downstream evidence sufficiency, policy adjudication, and payable-amount calculation remain
+- [x] Downstream evidence sufficiency, policy adjudication, and payable-amount calculation remain
   deterministic.
-- [ ] An equivalent concise and over-cited response yields the same claim outcome.
-- [ ] Member-facing API schemas remain unchanged.
+- [x] An equivalent concise and over-cited response yields the same claim outcome.
+- [x] Member-facing API schemas remain unchanged.
 
 #### Evaluation gates
 
-- [ ] All evidence-normalization unit tests pass.
-- [ ] All provider-contract and routing tests pass.
-- [ ] All persistence, reconstruction, workflow recovery, and observability integration tests
+- [x] All evidence-normalization unit tests pass.
+- [x] All provider-contract and routing tests pass.
+- [x] All persistence, reconstruction, workflow recovery, and observability integration tests
   pass.
-- [ ] All legacy pinned-workflow tests pass.
-- [ ] All twelve recorded rendered evaluation cases pass.
-- [ ] The complete deterministic test suite passes.
-- [ ] Any skipped test is explicitly identified as paid-live or otherwise outside this PRD.
+- [x] All legacy pinned-workflow tests pass.
+- [x] All twelve recorded rendered evaluation cases pass.
+- [x] The complete deterministic test suite passes.
+- [x] Any skipped test is explicitly identified as paid-live or otherwise outside this PRD.
 
 #### Repository quality gates
 
-- [ ] Formatting check passes.
-- [ ] Lint check passes.
-- [ ] Strict type checking passes.
-- [ ] Database migration drift check passes.
-- [ ] Whitespace and patch-integrity checks pass.
-- [ ] The repository contains no committed raw claim documents, runtime logs, credentials, or
+- [x] Formatting check passes.
+- [x] Lint check passes.
+- [x] Strict type checking passes.
+- [x] Database migration drift check passes.
+- [x] Whitespace and patch-integrity checks pass.
+- [x] The repository contains no committed raw claim documents, runtime logs, credentials, or
   generated Phoenix storage from verification.
 
 #### Audit agreement
 
-- [ ] PostgreSQL canonical references match Phoenix retained references for the acceptance claim.
-- [ ] PostgreSQL raw-output digest matches the digest recorded in Phoenix.
-- [ ] PostgreSQL reason codes and counts match the normalization span.
-- [ ] Reconstruction succeeds when Phoenix is treated as unavailable.
-- [ ] Metrics expose counts and bounded outcomes without observation IDs as dimensions.
-- [ ] Failure traces distinguish output-limit, schema, and grounding failures.
+- [x] PostgreSQL canonical references match Phoenix retained references for the acceptance claim.
+- [x] PostgreSQL raw-output digest matches the digest recorded in Phoenix.
+- [x] PostgreSQL reason codes and counts match the normalization span.
+- [x] Reconstruction succeeds when Phoenix is treated as unavailable.
+- [x] Metrics expose counts and bounded outcomes without observation IDs as dimensions.
+- [x] Failure traces distinguish output-limit, schema, and grounding failures.
 
 #### Completion record
 
-- [ ] The implementation plan status marks all six phases complete only after their individual
+- [x] The implementation plan status marks all six phases complete only after their individual
   acceptance criteria pass.
-- [ ] The backend completion documentation describes the tolerant-provider/strict-canonical
+- [x] The backend completion documentation describes the tolerant-provider/strict-canonical
   boundary.
-- [ ] The documentation records the prompt, provider-schema, canonical-schema, and policy versions.
-- [ ] The documentation states that model switching was not required for the correctness fix.
-- [ ] The documentation keeps large-document selection/chunking and general output repair listed
+- [x] The documentation records the prompt, provider-schema, canonical-schema, and policy versions.
+- [x] The documentation states that model switching was not required for the correctness fix.
+- [x] The documentation keeps large-document selection/chunking and general output repair listed
   as follow-up work.
-- [ ] Recorded verification results use actual current counts and do not overstate live AWS
+- [x] Recorded verification results use actual current counts and do not overstate live AWS
   coverage.
 
 ## Definition of done
