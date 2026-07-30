@@ -131,9 +131,21 @@ unhandled workflow invariant failure.
 
 ```bash
 cp .env.example .env
-uv sync
-docker compose up -d postgres
-uv run alembic upgrade head
+npm ci
+npm run dev:bootstrap
+```
+
+`npm ci` installs the root workspace helpers, syncs backend Python dependencies with `uv`,
+and installs the frontend dependencies under `frontend/`.
+
+Useful npm commands:
+
+```bash
+npm run api       # FastAPI backend on 127.0.0.1:8000
+npm run worker    # durable claims worker loop
+npm run phoenix   # Phoenix tracing UI on 127.0.0.1:6006
+npm run frontend  # Next.js frontend on localhost:3000
+npm run stop      # stop local API/worker/Phoenix/Next dev processes
 ```
 
 For normal development, keep these values in `.env`:
@@ -149,6 +161,12 @@ CLAIMS_RUN_LIVE_AWS=0
 ### 2. Import and activate policy data
 
 A fresh database needs immutable setup data and an active compiled policy.
+
+```bash
+npm run setup:data
+```
+
+This command is idempotent. If you prefer the manual CLI flow, run:
 
 ```bash
 uv run claimsctl setup import --policy problem_statement/policy_terms.json

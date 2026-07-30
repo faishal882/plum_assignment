@@ -1,0 +1,21 @@
+{
+  "name": "plum-claims-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "uv sync --all-groups && npm ci --prefix frontend",
+    "setup": "uv sync --all-groups && npm ci --prefix frontend",
+    "db:up": "docker compose up -d postgres",
+    "db:migrate": "uv run alembic upgrade head",
+    "setup:data": "uv run python scripts/setup_dev_data.py",
+    "api": "uv run uvicorn claims_backend.api.app:app --host 127.0.0.1 --port 8000 --reload",
+    "worker": "uv run claims-worker run-loop",
+    "phoenix": "uv run phoenix serve --host 127.0.0.1 --port 6006",
+    "frontend": "npm run dev --prefix frontend",
+    "stop": "pkill -TERM -f 'claims-worker run-loop|uvicorn claims_backend.api.app:app|phoenix serve|phoenix.server.main|next dev' || true",
+    "dev:bootstrap": "npm run db:up && npm run db:migrate && npm run setup:data",
+    "lint": "npm run lint --prefix frontend",
+    "lint:backend": "uv run ruff check src tests",
+    "test": "uv run pytest"
+  }
+}
