@@ -503,11 +503,11 @@ async def test_audit_failure_rolls_back_the_entire_terminal_commit(
             .select_from(AuditEventRow)
             .where(AuditEventRow.event_type == "CLAIM_DECIDED")
         )
-    assert claim.lifecycle_status == "QUEUED"
+    assert claim.lifecycle_status == "PROCESSING_FAILED"
     assert claim.adjudication_recommendation is None
     assert claim.approved_paise is None
-    assert work.status == "LEASED"
-    assert workflow.status == "RUNNING"
+    assert work.status == "FAILED"
+    assert workflow.status == "FAILED"
     assert decision_count == 0
     assert rule_count == 0
     assert terminal_audit_count == 0
