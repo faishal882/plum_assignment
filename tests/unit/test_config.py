@@ -39,6 +39,10 @@ _ENVIRONMENT = {
     "CLAIMS_WORKER_LEASE_SECONDS": "301",
     "CLAIMS_WORKER_SHUTDOWN_SECONDS": "121",
     "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE": "0",
+    "CLAIMS_SQLADMIN_ENABLED": "0",
+    "CLAIMS_SQLADMIN_USERNAME": "",
+    "CLAIMS_SQLADMIN_PASSWORD": "",
+    "CLAIMS_SQLADMIN_SECRET_KEY": "",
 }
 
 
@@ -84,6 +88,10 @@ def test_settings_load_every_runtime_value_from_explicit_env_file(
     assert settings.worker_lease_seconds == 301
     assert settings.worker_shutdown_seconds == 121
     assert settings.inject_anomaly_enrichment_failure is False
+    assert settings.sqladmin_enabled is False
+    assert settings.sqladmin_username is None
+    assert settings.sqladmin_password is None
+    assert settings.sqladmin_secret_key is None
 
 
 def test_process_environment_overrides_env_file(
@@ -179,6 +187,37 @@ def test_anomaly_failure_injection_is_limited_to_recorded_local(
     }
     with pytest.raises(ValueError, match="limited to recorded local"):
         Settings.from_env(_write_env(tmp_path, live))
+
+
+def test_sqladmin_requires_explicit_strong_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_configuration(monkeypatch)
+    enabled = {
+        **_ENVIRONMENT,
+        "CLAIMS_SQLADMIN_ENABLED": "1",
+        "CLAIMS_SQLADMIN_USERNAME": "claims-admin",
+        "CLAIMS_SQLADMIN_PASSWORD": "a-long-local-password",
+        "CLAIMS_SQLADMIN_SECRET_KEY": "a-secret-key-with-at-least-32-characters",
+    }
+
+    settings = Settings.from_env(_write_env(tmp_path, enabled))
+
+    assert settings.sqladmin_enabled is True
+    assert settings.sqladmin_username == "claims-admin"
+
+    missing_username = {**enabled, "CLAIMS_SQLADMIN_USERNAME": ""}
+    with pytest.raises(ValueError, match="sqladmin_username is required"):
+        Settings.from_env(_write_env(tmp_path, missing_username))
+
+    weak_password = {**enabled, "CLAIMS_SQLADMIN_PASSWORD": "short"}
+    with pytest.raises(ValueError, match="at least 12 characters"):
+        Settings.from_env(_write_env(tmp_path, weak_password))
+
+    weak_secret = {**enabled, "CLAIMS_SQLADMIN_SECRET_KEY": "short"}
+    with pytest.raises(ValueError, match="at least 32 characters"):
+        Settings.from_env(_write_env(tmp_path, weak_secret))
 
 
 def _clear_configuration(monkeypatch: pytest.MonkeyPatch) -> None:

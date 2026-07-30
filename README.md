@@ -221,6 +221,23 @@ curl --fail-with-body \
 Seeded local identities are `member.emp001` through `member.emp010`, `reviewer.local`, and
 `operator.local`. `X-Dev-Username` is a replaceable local identity adapter, not authentication.
 
+### Optional SQLAdmin identity administration
+
+An authenticated SQLAdmin UI can manage local users, roles, and member links and inspect the
+policy-member identifiers used by those links. It is disabled by default. Configure a unique
+username, a password of at least 12 characters, and a random secret key of at least 32 characters:
+
+```dotenv
+CLAIMS_SQLADMIN_ENABLED=1
+CLAIMS_SQLADMIN_USERNAME=claims-admin
+CLAIMS_SQLADMIN_PASSWORD=replace-with-a-long-random-password
+CLAIMS_SQLADMIN_SECRET_KEY=replace-with-at-least-32-random-characters
+```
+
+After restarting the API, open `http://127.0.0.1:8000/admin`. Do not expose this local operational
+UI to the public internet. User deletion is intentionally disabled because claim ownership,
+idempotency, review resolutions, and audit history retain immutable user references.
+
 ## HTTP surface
 
 | Method | Path | Actor | Purpose |

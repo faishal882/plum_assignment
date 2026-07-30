@@ -91,6 +91,10 @@ class Settings:
     worker_lease_seconds: int = 300
     worker_shutdown_seconds: int = 120
     inject_anomaly_enrichment_failure: bool = False
+    sqladmin_enabled: bool = False
+    sqladmin_username: str | None = None
+    sqladmin_password: str | None = None
+    sqladmin_secret_key: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -137,6 +141,18 @@ class Settings:
             self.execution_profile is not ExecutionProfile.RECORDED_LOCAL
         ):
             raise ValueError("Anomaly failure injection is limited to recorded local execution.")
+        if self.sqladmin_enabled:
+            if not self.sqladmin_username or not self.sqladmin_username.strip():
+                raise ValueError("sqladmin_username is required when SQLAdmin is enabled")
+            if self.sqladmin_password is None or len(self.sqladmin_password) < 12:
+                raise ValueError(
+                    "sqladmin_password must contain at least 12 characters when SQLAdmin is enabled"
+                )
+            if self.sqladmin_secret_key is None or len(self.sqladmin_secret_key) < 32:
+                raise ValueError(
+                    "sqladmin_secret_key must contain at least 32 characters "
+                    "when SQLAdmin is enabled"
+                )
 
     @classmethod
     def from_env(cls, env_file: Path | None = None) -> "Settings":
@@ -199,6 +215,23 @@ class Settings:
             ),
             inject_anomaly_enrichment_failure=_environment_boolean(
                 values, "CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE"
+            ),
+            sqladmin_enabled=_optional_environment_boolean(
+                values,
+                "CLAIMS_SQLADMIN_ENABLED",
+                default=False,
+            ),
+            sqladmin_username=_optional_environment_value(
+                values,
+                "CLAIMS_SQLADMIN_USERNAME",
+            ),
+            sqladmin_password=_optional_environment_value(
+                values,
+                "CLAIMS_SQLADMIN_PASSWORD",
+            ),
+            sqladmin_secret_key=_optional_environment_value(
+                values,
+                "CLAIMS_SQLADMIN_SECRET_KEY",
             ),
         )
 
@@ -263,6 +296,28 @@ def _environment_ratio(values: Mapping[str, str | None], name: str) -> float:
 
 def _environment_boolean(values: Mapping[str, str | None], name: str) -> bool:
     raw = _environment_value(values, name)
+    if raw not in {"0", "1"}:
+        raise ConfigurationError(f"{name} must be 0 or 1")
+    return raw == "1"
+
+
+def _optional_environment_value(
+    values: Mapping[str, str | None],
+    name: str,
+) -> str | None:
+    value = values.get(name)
+    return value if value else None
+
+
+def _optional_environment_boolean(
+    values: Mapping[str, str | None],
+    name: str,
+    *,
+    default: bool,
+) -> bool:
+    raw = values.get(name)
+    if raw in {None, ""}:
+        return default
     if raw not in {"0", "1"}:
         raise ConfigurationError(f"{name} must be 0 or 1")
     return raw == "1"

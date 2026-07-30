@@ -9,6 +9,7 @@ dependencies = [
     "arize-phoenix-otel>=0.16,<1",
     "boto3>=1.40,<2",
     "fastapi>=0.116,<1",
+    "itsdangerous>=2.2,<3",
     "langchain-aws>=1,<2",
     "langgraph>=1,<2",
     "langgraph-checkpoint-postgres>=3,<4",
@@ -23,6 +24,7 @@ dependencies = [
     "pypdfium2>=4.30,<5",
     "python-dotenv>=1.2,<2",
     "python-multipart>=0.0.20,<1",
+    "sqladmin>=0.21,<1",
     "sqlalchemy>=2.0,<3",
     "uvicorn[standard]>=0.35,<1",
 ]
@@ -39,6 +41,7 @@ dev = [
     "pytest>=8.4,<9",
     "pytest-asyncio>=1.1,<2",
     "ruff>=0.12,<1",
+    "types-wtforms>=3.2,<4",
 ]
 observability = [
     "arize-phoenix>=19.9,<20",
