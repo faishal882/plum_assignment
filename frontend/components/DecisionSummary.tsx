@@ -1,6 +1,8 @@
 import { Claim } from "@/lib/claims-types";
-import { CheckCircle2, DollarSign, FileCheck, ShieldAlert, Award } from "lucide-react";
+import { CheckCircle2, DollarSign, FileCheck, ShieldAlert, Award, FileText, Sparkles, Eye } from "lucide-react";
 import { DeductionList } from "./DeductionList";
+import { RuleTraceList } from "./RuleTraceList";
+import { AllOcrObservationsRegistry } from "./AllOcrObservationsRegistry";
 
 interface DecisionSummaryProps {
   claim: Claim;
@@ -21,6 +23,10 @@ export function DecisionSummary({ claim }: DecisionSummaryProps) {
   const isApproved =
     adjudication.recommendation.includes("APPROVE") ||
     adjudication.recommendation === "ACCEPT";
+
+  const ocrList = claim.ocr_observations
+    ? Object.values(claim.ocr_observations)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -89,6 +95,21 @@ export function DecisionSummary({ claim }: DecisionSummaryProps) {
           deductions={explanation.deductions || []}
           lineItems={explanation.line_items || []}
         />
+      )}
+
+      {/* Rule Execution Trace & Grounded OCR Evidence */}
+      {claim.rule_traces && claim.rule_traces.length > 0 && (
+        <div className="p-6 rounded-card bg-canvas neu-raised border border-hairline space-y-4">
+          <RuleTraceList
+            rules={claim.rule_traces}
+            ocrObservations={claim.ocr_observations}
+          />
+        </div>
+      )}
+
+      {/* All Extracted OCR Observations Debug Panel */}
+      {claim.ocr_observations && Object.keys(claim.ocr_observations).length > 0 && (
+        <AllOcrObservationsRegistry observations={claim.ocr_observations} />
       )}
     </div>
   );

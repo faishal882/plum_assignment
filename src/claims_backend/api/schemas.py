@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
@@ -53,6 +53,25 @@ class ClaimReceiptResponse(BaseModel):
     status_url: str
 
 
+class RuleTraceResponse(BaseModel):
+    sequence: int
+    rule_id: str
+    status: str
+    reason_code: str | None = None
+    policy_path: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    amount_before: Decimal | None = None
+    adjustment: Decimal | None = None
+    amount_after: Decimal | None = None
+
+    @field_serializer("amount_before", "adjustment", "amount_after")
+    def serialize_optional_amount(self, amount: Decimal | None) -> str | None:
+        if amount is None:
+            return None
+        return f"{amount:.2f}"
+
+
 class ClaimResponse(BaseModel):
     claim_id: UUID
     version: int
@@ -70,6 +89,8 @@ class ClaimResponse(BaseModel):
     handling_status: str | None = None
     processing_quality: "ProcessingQualityResponse | None" = None
     processing_failure: "ProcessingFailureResponse | None" = None
+    rule_traces: list[RuleTraceResponse] | None = None
+    ocr_observations: dict[str, "OcrObservationResponse"] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -215,6 +236,17 @@ class ReviewTaskSummaryResponse(BaseModel):
         return f"{amount:.2f}"
 
 
+class OcrObservationResponse(BaseModel):
+    observation_id: str
+    client_document_id: str
+    page_number: int
+    kind: str
+    text: str
+    confidence: float
+    region: dict[str, object]
+    field_type: str | None = None
+
+
 class ReviewTaskDetailResponse(BaseModel):
     task: ReviewTaskSummaryResponse
     evidence: dict[str, object]
@@ -222,6 +254,7 @@ class ReviewTaskDetailResponse(BaseModel):
     rules: list[dict[str, object]]
     calculations: list[dict[str, object]]
     failures: list[dict[str, object]]
+    ocr_observations: dict[str, OcrObservationResponse] = Field(default_factory=dict)
 
 
 class ReviewCommandRequest(BaseModel):

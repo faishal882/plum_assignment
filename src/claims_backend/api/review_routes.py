@@ -10,6 +10,7 @@ from claims_backend.api.dependencies import (
     ReviewApplicationDependency,
 )
 from claims_backend.api.schemas import (
+    OcrObservationResponse,
     ReviewCommandRequest,
     ReviewResolutionResponse,
     ReviewTaskDetailResponse,
@@ -159,6 +160,10 @@ def _detail(detail: ReviewTaskDetail) -> ReviewTaskDetailResponse:
         rules=list(detail.rules),
         calculations=list(detail.calculations),
         failures=list(detail.failures),
+        ocr_observations={
+            key: OcrObservationResponse(**value)
+            for key, value in detail.ocr_observations.items()
+        },
     )
 
 

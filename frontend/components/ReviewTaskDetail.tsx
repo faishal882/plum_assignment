@@ -8,6 +8,8 @@ import {
   ReviewResolution,
 } from "@/lib/claims-types";
 import { RuleTraceList } from "./RuleTraceList";
+import { ExtractedEvidenceChecklist } from "./ExtractedEvidenceChecklist";
+import { AllOcrObservationsRegistry } from "./AllOcrObservationsRegistry";
 import { JsonDisclosure } from "./JsonDisclosure";
 import { ErrorCallout } from "./ErrorCallout";
 import {
@@ -189,13 +191,18 @@ export function ReviewTaskDetail({ taskDetail, onRefresh }: ReviewTaskDetailProp
           {/* Tab Content */}
           {activeTab === "trace" && (
             <div className="space-y-4">
-              <RuleTraceList rules={rules} />
+              <RuleTraceList rules={rules} ocrObservations={taskDetail.ocr_observations} />
             </div>
           )}
 
           {activeTab === "evidence" && (
-            <div className="space-y-4">
-              <JsonDisclosure title="Extracted Evidence" data={evidence} defaultOpen />
+            <div className="space-y-6">
+              {/* Level 2: Grounded Extracted Structured Facts Checklist */}
+              <ExtractedEvidenceChecklist
+                evidence={evidence}
+                ocrObservations={taskDetail.ocr_observations}
+              />
+
               {conflicts.length > 0 && (
                 <div className="p-4 rounded-card bg-rose-50 border border-rose-200 space-y-2">
                   <h4 className="text-xs font-semibold text-rose-900 uppercase tracking-wider">
@@ -203,6 +210,15 @@ export function ReviewTaskDetail({ taskDetail, onRefresh }: ReviewTaskDetailProp
                   </h4>
                   <JsonDisclosure title="Conflicts JSON" data={conflicts} defaultOpen />
                 </div>
+              )}
+
+              <JsonDisclosure title="Raw Casefile JSON" data={evidence} />
+
+              {/* Level 4: All Extracted OCR Observations Debug Panel */}
+              {taskDetail.ocr_observations && Object.keys(taskDetail.ocr_observations).length > 0 && (
+                <AllOcrObservationsRegistry
+                  observations={taskDetail.ocr_observations}
+                />
               )}
             </div>
           )}

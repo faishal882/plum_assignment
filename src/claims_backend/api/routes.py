@@ -1,12 +1,14 @@
 import json
 import re
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
 from openinference.semconv.trace import SpanAttributes
 from pydantic import ValidationError
+
+from sqlalchemy import select
 
 from claims_backend.api.dependencies import (
     ClaimsApplicationDependency,
@@ -25,11 +27,20 @@ from claims_backend.api.schemas import (
     MemberDeductionResponse,
     MemberExplanationResponse,
     MemberLineItemExplanationResponse,
+    OcrObservationResponse,
     ProcessingFailureResponse,
     ProcessingQualityResponse,
     ProgressResponse,
     ReplaceDocumentCommandRequest,
     ReplacementDocumentResponse,
+    RuleTraceResponse,
+)
+from claims_backend.infrastructure.postgres.models import (
+    DecisionRecordRow,
+    DocumentRow,
+    DocumentVersionRow,
+    OcrObservationRow,
+    RuleResultRow,
 )
 from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
@@ -295,6 +306,7 @@ async def apply_claim_action(
 )
 async def get_claim(
     claim_id: UUID,
+    request_context: Request,
     application: ClaimsApplicationDependency,
     principal: CurrentPrincipalDependency,
 ) -> ClaimResponse:
@@ -302,7 +314,11 @@ async def get_claim(
         claim = await application.get(claim_id, principal)
     except ClaimNotFoundError as error:
         raise _claim_not_found(error) from error
-    return _to_response(claim)
+    rule_traces, ocr_observations = await _fetch_explainability(
+        getattr(request_context.app.state, "session_factory", None),
+        claim_id,
+    )
+    return _to_response(claim, rule_traces=rule_traces, ocr_observations=ocr_observations)
 
 
 def _validate_idempotency_key(value: str | None) -> str:
@@ -373,7 +389,11 @@ def _rupees_to_paise(amount: Decimal) -> int:
     return int(amount * 100)
 
 
-def _to_response(claim: Claim) -> ClaimResponse:
+def _to_response(
+    claim: Claim,
+    rule_traces: list[RuleTraceResponse] | None = None,
+    ocr_observations: dict[str, OcrObservationResponse] | None = None,
+) -> ClaimResponse:
     return ClaimResponse(
         claim_id=claim.id,
         version=claim.version,
@@ -431,6 +451,8 @@ def _to_response(claim: Claim) -> ClaimResponse:
                 ),
             )
         ),
+        rule_traces=rule_traces,
+        ocr_observations=ocr_observations,
         action=(
             None
             if claim.action is None
@@ -539,6 +561,88 @@ def _claim_not_found(error: ClaimNotFoundError) -> HTTPException:
             "details": [],
         },
     )
+
+
+async def _fetch_explainability(
+    session_factory: Any,
+    claim_id: UUID,
+) -> tuple[list[RuleTraceResponse] | None, dict[str, OcrObservationResponse] | None]:
+    if session_factory is None:
+        return None, None
+    async with session_factory() as session:
+        decision = await session.scalar(
+            select(DecisionRecordRow).where(DecisionRecordRow.claim_id == claim_id)
+        )
+        rule_traces: list[RuleTraceResponse] | None = None
+        if decision is not None:
+            rules = (
+                await session.scalars(
+                    select(RuleResultRow)
+                    .where(RuleResultRow.decision_record_id == decision.id)
+                    .order_by(RuleResultRow.sequence)
+                )
+            ).all()
+            if rules:
+                rule_traces = [
+                    RuleTraceResponse(
+                        sequence=r.sequence,
+                        rule_id=r.rule_id,
+                        status=r.status,
+                        reason_code=r.reason_code,
+                        policy_path=r.policy_path,
+                        evidence_refs=list(r.evidence_refs or []),
+                        inputs=dict(r.inputs or {}),
+                        amount_before=(
+                            None
+                            if r.amount_before_paise is None
+                            else Decimal(r.amount_before_paise) / 100
+                        ),
+                        adjustment=(
+                            None
+                            if r.adjustment_paise is None
+                            else Decimal(r.adjustment_paise) / 100
+                        ),
+                        amount_after=(
+                            None
+                            if r.amount_after_paise is None
+                            else Decimal(r.amount_after_paise) / 100
+                        ),
+                    )
+                    for r in rules
+                ]
+
+        ocr_rows = (
+            await session.execute(
+                select(
+                    OcrObservationRow,
+                    DocumentRow.client_document_id,
+                )
+                .join(
+                    DocumentVersionRow,
+                    DocumentVersionRow.id == OcrObservationRow.document_version_id,
+                )
+                .join(
+                    DocumentRow,
+                    DocumentRow.id == DocumentVersionRow.document_id,
+                )
+                .where(DocumentRow.claim_id == claim_id)
+            )
+        ).all()
+        ocr_observations: dict[str, OcrObservationResponse] | None = None
+        if ocr_rows:
+            ocr_observations = {}
+            for row, doc_filename in ocr_rows:
+                ocr_observations[row.observation_id] = OcrObservationResponse(
+                    observation_id=row.observation_id,
+                    client_document_id=doc_filename,
+                    text=row.text,
+                    page_number=row.page_number,
+                    confidence=row.confidence,
+                    region=row.region,
+                    kind=row.kind,
+                    field_type=row.field_type,
+                )
+        return rule_traces, ocr_observations
 
 
 def _json(value: object) -> str:

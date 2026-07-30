@@ -107,6 +107,8 @@ export interface Claim {
     code: string;
     retry_guidance: string;
   };
+  rule_traces?: RuleTrace[];
+  ocr_observations?: Record<string, OcrObservation>;
   created_at: IsoDateTime;
   updated_at: IsoDateTime;
 }
@@ -144,6 +146,17 @@ export interface RuleTrace {
   amount_after_paise?: number;
 }
 
+export interface OcrObservation {
+  observation_id: string;
+  client_document_id: string;
+  page_number: number;
+  kind: string;
+  text: string;
+  confidence: number;
+  region: Record<string, unknown>;
+  field_type?: string | null;
+}
+
 export interface ReviewTaskDetail {
   task: ReviewTaskSummary;
   evidence: Record<string, unknown>;
@@ -151,6 +164,7 @@ export interface ReviewTaskDetail {
   rules: RuleTrace[];
   calculations: Array<Record<string, unknown>>;
   failures: Array<Record<string, unknown>>;
+  ocr_observations?: Record<string, OcrObservation>;
 }
 
 export interface ReviewCommand {

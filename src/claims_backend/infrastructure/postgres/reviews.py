@@ -31,6 +31,9 @@ from claims_backend.infrastructure.postgres.models import (
     ClaimRow,
     ClaimWorkItemRow,
     DecisionRecordRow,
+    DocumentRow,
+    DocumentVersionRow,
+    OcrObservationRow,
     ReviewResolutionRow,
     ReviewTaskRow,
     RuleResultRow,
@@ -102,6 +105,23 @@ class PostgresReviewRepository:
                     .order_by(RuleResultRow.sequence)
                 )
             ).all()
+            ocr_rows = (
+                await session.execute(
+                    select(
+                        OcrObservationRow,
+                        DocumentRow.client_document_id,
+                    )
+                    .join(
+                        DocumentVersionRow,
+                        DocumentVersionRow.id == OcrObservationRow.document_version_id,
+                    )
+                    .join(
+                        DocumentRow,
+                        DocumentRow.id == DocumentVersionRow.document_id,
+                    )
+                    .where(DocumentRow.claim_id == task.claim_id)
+                )
+            ).all()
         content = {} if casefile is None else casefile.content
         evidence_value = content.get("evidence")
         evidence = evidence_value if isinstance(evidence_value, dict) else {}
@@ -116,6 +136,19 @@ class PostgresReviewRepository:
             else ()
         )
         rendered_rules = tuple(_rule_value(row) for row in rules)
+        ocr_observations = {
+            obs.observation_id: {
+                "observation_id": obs.observation_id,
+                "client_document_id": doc_id,
+                "page_number": obs.page_number,
+                "kind": obs.kind,
+                "text": obs.text,
+                "confidence": obs.confidence,
+                "region": obs.region,
+                "field_type": obs.field_type,
+            }
+            for obs, doc_id in ocr_rows
+        }
         return ReviewTaskDetail(
             summary=_summary(task),
             evidence=evidence,
@@ -128,6 +161,7 @@ class PostgresReviewRepository:
                 or str(item["rule_id"]).startswith("amount.")
             ),
             failures=tuple(item for item in rendered_rules if item["status"] == "FAIL"),
+            ocr_observations=ocr_observations,
         )
 
     async def resolve(

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -48,6 +48,7 @@ class ReviewTaskDetail:
     rules: tuple[dict[str, object], ...]
     calculations: tuple[dict[str, object], ...]
     failures: tuple[dict[str, object], ...]
+    ocr_observations: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
