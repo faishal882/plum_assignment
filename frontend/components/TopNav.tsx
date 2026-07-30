@@ -15,7 +15,6 @@ import {
 type NewIdentityForm = {
   username: string;
   full_name: string;
-  member_id: string;
   date_of_birth: string;
   gender: string;
   join_date: string;
@@ -24,7 +23,6 @@ type NewIdentityForm = {
 const emptyForm: NewIdentityForm = {
   username: "",
   full_name: "",
-  member_id: "",
   date_of_birth: "",
   gender: "",
   join_date: "",
@@ -85,15 +83,8 @@ export function TopNav() {
   async function createIdentity() {
     setCreateError(null);
     const normalizedUsername = form.username.trim().toLowerCase();
-    const normalizedMemberId = form.member_id.trim().toLowerCase();
-    if (
-      identities.some(
-        (identity) =>
-          identity.username === normalizedUsername ||
-          (identity.member_id || "").trim().toLowerCase() === normalizedMemberId
-      )
-    ) {
-      setCreateError("That username or employee/member ID already exists in the selector.");
+    if (identities.some((identity) => identity.username === normalizedUsername)) {
+      setCreateError("That username already exists in the selector.");
       return;
     }
     const response = await fetch("/api/dev/identities", {
@@ -171,7 +162,9 @@ export function TopNav() {
               <UserCheck className="w-3.5 h-3.5 text-violet" />
               <span className="hidden sm:inline text-[11px] text-copy">Dev User:</span>
               <span className="font-semibold text-ink">
-                {selectedIdentity?.member_id || selectedUser}
+                {selectedIdentity
+                  ? `${selectedIdentity.display_name} · ${selectedIdentity.member_id || selectedIdentity.username}`
+                  : selectedUser}
               </span>
             </button>
 
@@ -180,7 +173,7 @@ export function TopNav() {
                 <div className="mb-3 pb-2 border-b border-hairline">
                   <p className="text-xs font-semibold text-ink">Local Demo Identity Selector</p>
                   <p className="text-[10px] text-copy">
-                    Search database identities or create a local demo member.
+                    Switch to any DB-backed user by employee ID, name, or username.
                   </p>
                 </div>
 
@@ -203,7 +196,7 @@ export function TopNav() {
                       }`}
                     >
                       <span className="flex items-center justify-between gap-3">
-                        <span className="font-mono">{identity.member_id || identity.username}</span>
+                        <span className="font-mono">{identity.member_id || "No employee ID"}</span>
                         <span
                           className={`truncate ${
                             selectedUser === identity.username ? "text-white/80" : "text-copy"
@@ -235,10 +228,12 @@ export function TopNav() {
                   {showCreateForm && (
                     <div className="mt-3 space-y-2">
                       {createError && <p className="text-[11px] text-danger">{createError}</p>}
+                      <p className="text-[10px] text-copy">
+                        Employee ID is assigned automatically and saved with the local member.
+                      </p>
                       {[
                         ["full_name", "Full name", "text"],
                         ["username", "Username", "text"],
-                        ["member_id", "Employee/member ID", "text"],
                         ["date_of_birth", "Date of birth", "date"],
                         ["gender", "Gender", "text"],
                         ["join_date", "Join date", "date"],

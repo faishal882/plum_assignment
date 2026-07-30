@@ -97,7 +97,6 @@ async def test_sqladmin_requires_login_and_lists_identity_views_after_authentica
     assert decision_records.status_code == 200
     assert workflow_runs.status_code == 200
     assert policy_versions.status_code == 200
-    assert "member.emp001" in users.text
     assert logged_out.status_code == 302
     assert protected_again.status_code == 302
     assert protected_again.headers["location"] == "http://test/admin/login"

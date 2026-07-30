@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import uuid4
@@ -8,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from claims_backend.domain.identity import Role, normalize_username
 from claims_backend.infrastructure.postgres.models import (
@@ -36,7 +38,6 @@ class CreateDevIdentityRequest(BaseModel):
 
     username: str = Field(min_length=3, max_length=64)
     full_name: str = Field(min_length=1, max_length=255)
-    member_id: str = Field(min_length=1, max_length=64)
     date_of_birth: date
     gender: str = Field(min_length=1, max_length=32)
     join_date: date
@@ -45,7 +46,7 @@ class CreateDevIdentityRequest(BaseModel):
 
 @router.get("", response_model=list[DevIdentityResponse])
 async def list_dev_identities(request: Request) -> list[DevIdentityResponse]:
-    _require_recorded_local(request)
+    _require_local_dev_profile(request)
     factory = request.app.state.session_factory
     async with factory() as session:
         users = (await session.scalars(select(UserRow).order_by(UserRow.normalized_username))).all()
@@ -105,23 +106,9 @@ async def create_dev_identity(
     request: Request,
     command: CreateDevIdentityRequest,
 ) -> DevIdentityResponse:
-    _require_recorded_local(request)
+    _require_local_dev_profile(request)
     username = normalize_username(command.username)
     now = datetime.now(UTC)
-    payload = {
-        "kind": "LOCAL_DEMO_IDENTITY",
-        "username": username,
-        "member_id": command.member_id,
-        "full_name": command.full_name,
-        "date_of_birth": command.date_of_birth.isoformat(),
-        "gender": command.gender,
-        "join_date": command.join_date.isoformat(),
-        "relationship": command.relationship,
-        "policy_id": "PLUM_GHI_2024",
-    }
-    payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    payload_sha = hashlib.sha256(payload_bytes).hexdigest()
-
     factory = request.app.state.session_factory
     try:
         async with factory.begin() as session:
@@ -137,21 +124,7 @@ async def create_dev_identity(
                         "details": [],
                     },
                 )
-            existing_member = await session.scalar(
-                select(MemberRow.id).where(
-                    MemberRow.policy_id == "PLUM_GHI_2024",
-                    MemberRow.external_member_id == command.member_id,
-                )
-            )
-            if existing_member is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "code": "MEMBER_ID_ALREADY_EXISTS",
-                        "message": "A local member with this employee/member ID already exists.",
-                        "details": [],
-                    },
-                )
+            member_id = await _next_employee_id(session)
             policy_source_id = await session.scalar(
                 select(PolicyVersionRow.policy_source_id).where(
                     PolicyVersionRow.policy_id == "PLUM_GHI_2024",
@@ -167,6 +140,22 @@ async def create_dev_identity(
                         "details": [],
                     },
                 )
+
+            payload = {
+                "kind": "LOCAL_DEMO_IDENTITY",
+                "username": username,
+                "member_id": member_id,
+                "full_name": command.full_name,
+                "date_of_birth": command.date_of_birth.isoformat(),
+                "gender": command.gender,
+                "join_date": command.join_date.isoformat(),
+                "relationship": command.relationship,
+                "policy_id": "PLUM_GHI_2024",
+            }
+            payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+            payload_sha = hashlib.sha256(payload_bytes).hexdigest()
 
             user_id = uuid4()
             member_row_id = uuid4()
@@ -184,7 +173,7 @@ async def create_dev_identity(
                 MemberRow(
                     id=member_row_id,
                     policy_id="PLUM_GHI_2024",
-                    external_member_id=command.member_id,
+                    external_member_id=member_id,
                     created_at=now,
                 )
             )
@@ -204,7 +193,7 @@ async def create_dev_identity(
             )
             await session.flush()
             session.add(UserRoleRow(user_id=user_id, role=Role.MEMBER.value))
-            session.add(UserMemberLinkRow(user_id=user_id, member_id=command.member_id))
+            session.add(UserMemberLinkRow(user_id=user_id, member_id=member_id))
             session.add(
                 MemberVersionRow(
                     id=uuid4(),
@@ -235,11 +224,34 @@ async def create_dev_identity(
     return DevIdentityResponse(
         username=username,
         display_name=command.full_name,
-        member_id=command.member_id,
+        member_id=member_id,
         roles=[Role.MEMBER.value],
     )
 
 
-def _require_recorded_local(request: Request) -> None:
-    if request.app.state.settings.execution_profile is not ExecutionProfile.RECORDED_LOCAL:
+async def _next_employee_id(session: AsyncSession) -> str:
+    member_ids = (
+        await session.scalars(
+            select(MemberRow.external_member_id).where(MemberRow.policy_id == "PLUM_GHI_2024")
+        )
+    ).all()
+    linked_member_ids = (await session.scalars(select(UserMemberLinkRow.member_id))).all()
+    existing_ids = [*member_ids, *linked_member_ids]
+    highest = 0
+    width = 3
+    for existing_id in existing_ids:
+        match = re.fullmatch(r"EMP(\d+)", existing_id.upper())
+        if match is None:
+            continue
+        numeric_part = match.group(1)
+        highest = max(highest, int(numeric_part))
+        width = max(width, len(numeric_part))
+    return f"EMP{highest + 1:0{width}d}"
+
+
+def _require_local_dev_profile(request: Request) -> None:
+    if request.app.state.settings.execution_profile not in {
+        ExecutionProfile.RECORDED_LOCAL,
+        ExecutionProfile.LIVE_INTELLIGENCE,
+    }:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
