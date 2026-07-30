@@ -1,0 +1,24 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --all-groups --no-install-project
+
+COPY alembic.ini ./
+COPY config ./config
+COPY migrations ./migrations
+COPY problem_statement ./problem_statement
+COPY scripts ./scripts
+COPY src ./src
+
+RUN uv sync --frozen --all-groups
+
+EXPOSE 8000 6006
+
+CMD ["uv", "run", "uvicorn", "claims_backend.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

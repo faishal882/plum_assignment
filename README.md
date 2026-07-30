@@ -148,6 +148,35 @@ npm run frontend  # Next.js frontend on localhost:3000
 npm run stop      # stop local API/worker/Phoenix/Next dev processes
 ```
 
+### Docker quick start
+
+To run the full stack in containers:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- PostgreSQL on `127.0.0.1:55432`
+- one-shot setup service that runs migrations and activates `PLUM_GHI_2024`
+- FastAPI on `http://127.0.0.1:8000`
+- claims worker
+- Phoenix on `http://127.0.0.1:6006`
+- Next.js frontend on `http://127.0.0.1:3000`
+
+Stop containers:
+
+```bash
+docker compose down
+```
+
+Reset all Docker-managed data:
+
+```bash
+docker compose down -v
+```
+
 For normal development, keep these values in `.env`:
 
 ```dotenv
