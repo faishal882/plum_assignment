@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from claims_backend.api.admin import install_sqladmin
+from claims_backend.api.dev_identity_routes import router as dev_identity_router
 from claims_backend.api.health import router as health_router
 from claims_backend.api.review_routes import router as review_router
 from claims_backend.api.routes import router
@@ -49,6 +50,7 @@ def create_app(
     if runtime.observability is not None:
         _install_observability_middleware(app, runtime.observability)
     app.include_router(router)
+    app.include_router(dev_identity_router)
     app.include_router(review_router)
     app.include_router(health_router)
     app.state.sqladmin = install_sqladmin(app, runtime.engine, resolved_settings)

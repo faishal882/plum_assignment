@@ -34,12 +34,12 @@ export function ClaimSubmitForm() {
     const syncMemberFromDevIdentity = () => {
       const identity = readStoredDevIdentity();
       setDevIdentityLabel(
-        identity.memberId
-          ? `${identity.username} / ${identity.memberId} / ${identity.displayName}`
-          : `${identity.username} / ${identity.displayName}`
+        identity.member_id
+          ? `${identity.username} / ${identity.member_id} / ${identity.display_name}`
+          : `${identity.username} / ${identity.display_name}`
       );
-      if (identity.memberId) {
-        setMemberId(identity.memberId);
+      if (identity.member_id) {
+        setMemberId(identity.member_id);
       }
     };
 

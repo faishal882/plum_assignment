@@ -5,6 +5,19 @@ const getBaseUrl = (): string => {
   return url;
 };
 
+export async function callBackendApi(
+  path: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const baseUrl = getBaseUrl();
+  const targetUrl = new URL(path, baseUrl);
+
+  return fetch(targetUrl.toString(), {
+    ...init,
+    cache: "no-store",
+  });
+}
+
 export async function callClaimsApi(
   path: string,
   init: RequestInit = {},
