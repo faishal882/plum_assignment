@@ -7,9 +7,9 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
 from openinference.semconv.trace import SpanAttributes
 from pydantic import ValidationError
-
 from sqlalchemy import select
 
+from claims_backend.api.claim_progress import project_claim_progress
 from claims_backend.api.dependencies import (
     ClaimsApplicationDependency,
     CurrentPrincipalDependency,
@@ -34,13 +34,6 @@ from claims_backend.api.schemas import (
     ReplaceDocumentCommandRequest,
     ReplacementDocumentResponse,
     RuleTraceResponse,
-)
-from claims_backend.infrastructure.postgres.models import (
-    DecisionRecordRow,
-    DocumentRow,
-    DocumentVersionRow,
-    OcrObservationRow,
-    RuleResultRow,
 )
 from claims_backend.api.uploads import FastAPIUploadSource
 from claims_backend.application.claims import (
@@ -67,6 +60,16 @@ from claims_backend.domain.claims import (
     DocumentManifestItem,
     ReplaceDocument,
     SubmitClaim,
+)
+from claims_backend.domain.workflow import WorkflowEvent
+from claims_backend.infrastructure.postgres.models import (
+    DecisionRecordRow,
+    DocumentRow,
+    DocumentVersionRow,
+    OcrObservationRow,
+    RuleResultRow,
+    WorkflowEventRow,
+    WorkflowRunRow,
 )
 
 router = APIRouter(prefix="/v1/claims", tags=["claims"])
@@ -318,7 +321,18 @@ async def get_claim(
         getattr(request_context.app.state, "session_factory", None),
         claim_id,
     )
-    return _to_response(claim, rule_traces=rule_traces, ocr_observations=ocr_observations)
+    progress = await _fetch_progress(
+        getattr(request_context.app.state, "session_factory", None),
+        claim.id,
+        claim.version,
+        claim.lifecycle,
+    )
+    return _to_response(
+        claim,
+        rule_traces=rule_traces,
+        ocr_observations=ocr_observations,
+        progress=progress,
+    )
 
 
 def _validate_idempotency_key(value: str | None) -> str:
@@ -393,6 +407,7 @@ def _to_response(
     claim: Claim,
     rule_traces: list[RuleTraceResponse] | None = None,
     ocr_observations: dict[str, OcrObservationResponse] | None = None,
+    progress: ProgressResponse | None = None,
 ) -> ClaimResponse:
     return ClaimResponse(
         claim_id=claim.id,
@@ -404,15 +419,7 @@ def _to_response(
         claimed_amount=Decimal(claim.claimed_paise) / 100,
         currency=claim.currency,
         lifecycle_status=claim.lifecycle.value,
-        progress=ProgressResponse(
-            current_stage=claim.lifecycle.value,
-            is_terminal=claim.lifecycle
-            in {
-                ClaimLifecycle.ACTION_REQUIRED,
-                ClaimLifecycle.DECIDED,
-                ClaimLifecycle.PROCESSING_FAILED,
-            },
-        ),
+        progress=progress or project_claim_progress(claim.lifecycle, ()),
         adjudication=(
             None
             if claim.adjudication is None
@@ -643,6 +650,54 @@ async def _fetch_explainability(
                     field_type=row.field_type,
                 )
         return rule_traces, ocr_observations
+
+
+async def _fetch_progress(
+    session_factory: Any,
+    claim_id: UUID,
+    claim_version: int,
+    lifecycle: ClaimLifecycle,
+) -> ProgressResponse:
+    if session_factory is None:
+        return project_claim_progress(lifecycle, ())
+    async with session_factory() as session:
+        workflow_run = await session.scalar(
+            select(WorkflowRunRow)
+            .where(
+                WorkflowRunRow.claim_id == claim_id,
+                WorkflowRunRow.claim_version == claim_version,
+            )
+            .order_by(WorkflowRunRow.created_at.desc())
+        )
+        if workflow_run is None:
+            return project_claim_progress(lifecycle, ())
+        rows = (
+            await session.scalars(
+                select(WorkflowEventRow)
+                .where(WorkflowEventRow.workflow_run_id == workflow_run.id)
+                .order_by(WorkflowEventRow.sequence)
+            )
+        ).all()
+    return project_claim_progress(
+        lifecycle,
+        tuple(
+            WorkflowEvent(
+                id=row.id,
+                workflow_run_id=row.workflow_run_id,
+                sequence=row.sequence,
+                node_name=row.node_name,
+                event_type=row.event_type,
+                attempt_number=row.attempt_number,
+                duration_ms=row.duration_ms,
+                outcome=row.outcome,
+                trace_id=row.trace_id,
+                span_id=row.span_id,
+                error_type=row.error_type,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ),
+    )
 
 
 def _json(value: object) -> str:

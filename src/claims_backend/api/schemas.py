@@ -43,7 +43,22 @@ class ClaimMetadataRequest(BaseModel):
 
 class ProgressResponse(BaseModel):
     current_stage: str
+    label: str
+    percent: int = Field(ge=0, le=100)
     is_terminal: bool
+    events: list["ProgressEventResponse"] = Field(default_factory=list)
+
+
+class ProgressEventResponse(BaseModel):
+    """A frontend-safe projection of one durable workflow stage."""
+
+    stage: str
+    label: str
+    status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
+    summary: str
+    attempt_number: int | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+    completed_at: datetime | None = None
 
 
 class ClaimReceiptResponse(BaseModel):

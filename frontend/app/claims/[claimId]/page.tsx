@@ -192,6 +192,9 @@ export default function ClaimStatusPage({ params }: ClaimStatusPageProps) {
               status={claim.lifecycle_status}
               currentStage={claim.progress?.current_stage || ""}
               isTerminal={claim.progress?.is_terminal || false}
+              label={claim.progress?.label}
+              percent={claim.progress?.percent}
+              events={claim.progress?.events}
             />
 
             {/* Primary Page Composition: Left Status / Right Decision & Evidence */}

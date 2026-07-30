@@ -186,8 +186,13 @@ async def test_public_claim_processes_without_processing_fixture_seed(
         )
 
     assert projection.status_code == 200
-    assert projection.json()["lifecycle_status"] == "ACTION_REQUIRED"
-    assert projection.json()["action"]["code"] == "MISSING_REQUIRED_DOCUMENT"
+    body = projection.json()
+    assert body["lifecycle_status"] == "ACTION_REQUIRED"
+    assert body["action"]["code"] == "MISSING_REQUIRED_DOCUMENT"
+    assert body["progress"]["current_stage"] == "finalize_claim"
+    assert body["progress"]["percent"] == 100
+    assert body["progress"]["is_terminal"] is True
+    assert body["progress"]["events"][-1]["status"] == "COMPLETED"
     assert (tmp_path / "logs" / "worker.jsonl").exists()
     assert (tmp_path / "logs" / "worker.jsonl").read_text().strip()
 
@@ -709,7 +714,10 @@ async def test_assignment_tc009_routes_same_day_velocity_to_review_without_fixtu
     body = projection.json()
     assert body["lifecycle_status"] == "IN_REVIEW"
     assert body["handling_status"] == "MANUAL_REVIEW"
-    assert body["progress"] == {"current_stage": "IN_REVIEW", "is_terminal": False}
+    assert body["progress"]["current_stage"] == "finalize_claim"
+    assert body["progress"]["percent"] == 100
+    assert body["progress"]["is_terminal"] is False
+    assert body["progress"]["events"][-1]["status"] == "COMPLETED"
     assert "adjudication" not in body
     assert tasks.status_code == 200
     assert len(tasks.json()) == 1
@@ -960,8 +968,13 @@ async def test_public_claim_decides_without_processing_fixture_seed(
         )
 
     assert projection.status_code == 200
-    assert projection.json()["lifecycle_status"] == "DECIDED"
-    assert projection.json()["adjudication"]["approved_amount"] == "1350.00"
+    body = projection.json()
+    assert body["lifecycle_status"] == "DECIDED"
+    assert body["adjudication"]["approved_amount"] == "1350.00"
+    assert body["progress"]["current_stage"] == "finalize_claim"
+    assert body["progress"]["percent"] == 100
+    assert body["progress"]["is_terminal"] is True
+    assert body["progress"]["events"][-1]["status"] == "COMPLETED"
     async with app.state.session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ProcessingFixtureRow)) == 0
         triage = (

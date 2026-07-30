@@ -75,10 +75,11 @@ from `QUEUED` to one of `ACTION_REQUIRED`, `IN_REVIEW`, `DECIDED`, or `PROCESSIN
 
 Poll the returned `status_url` every 1–2 seconds while `progress.is_terminal` is `false`; back
 off to 10–15 seconds after the first few polls. Stop polling when it is `true`, when the tab is
-hidden, or after a UI-level timeout. `PROCESSING_FAILED` is terminal and is a safe processing
-result, not a rejection; show `processing_failure.retry_guidance` rather than a coverage decision.
-`ACTION_REQUIRED` means the member should follow the `action` payload and submit a replacement
-document.
+hidden, or after a UI-level timeout. Render the server-provided `progress.percent`,
+`progress.current_stage`, and ordered `progress.events`; do not infer workflow order from the
+lifecycle. `PROCESSING_FAILED` is terminal and is a safe processing result, not a rejection; show
+`processing_failure.retry_guidance` rather than a coverage decision. `ACTION_REQUIRED` means the
+member should follow the `action` payload and submit a replacement document.
 
 Use `GET /health/live` for a process check and `GET /health/ready` before accepting local UI work.
 Readiness returns `503` when PostgreSQL is unavailable. Neither endpoint invokes OCR or model
@@ -367,8 +368,26 @@ export interface Claim {
   currency: string
   lifecycle_status: ClaimLifecycle
   progress: {
-    current_stage: string
+    current_stage:
+      | 'ingest_claim'
+      | 'classify_documents'
+      | 'render_documents'
+      | 'read_documents'
+      | 'extract_evidence'
+      | 'check_policy'
+      | 'finalize_claim'
+    label: string
+    percent: number
     is_terminal: boolean
+    events: Array<{
+      stage: string
+      label: string
+      status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+      summary: string
+      attempt_number?: number
+      duration_ms?: number
+      completed_at?: IsoDateTime
+    }>
   }
   adjudication?: {
     recommendation: string
@@ -584,8 +603,10 @@ Use the lifecycle to select the screen:
 | `PROCESSING_FAILED` | Terminal safe processing failure | Stop polling; show retry guidance, not a coverage result |
 
 `progress.is_terminal` is `true` for terminal public states, including `DECIDED` and
-`PROCESSING_FAILED`. Keep a UI-level timeout and manual refresh control. Do not infer progress
-percentages from `current_stage`.
+`PROCESSING_FAILED`. Keep a UI-level timeout and manual refresh control. Use the backend's
+progress percentage and ordered stage events directly. The events are a frontend-safe projection:
+they intentionally exclude Phoenix trace payloads, OCR text, and model input/output. Use the
+existing terminal `ocr_observations` and `rule_traces` fields for the detailed evidence screens.
 
 ### Replace a document
 

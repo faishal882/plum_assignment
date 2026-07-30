@@ -210,10 +210,11 @@ async def test_tc009_routes_pinned_history_signal_through_durable_review(
     member = member_projection.json()
     assert member["lifecycle_status"] == "IN_REVIEW"
     assert member["handling_status"] == "MANUAL_REVIEW"
-    assert member["progress"] == {
-        "current_stage": "IN_REVIEW",
-        "is_terminal": False,
-    }
+    assert member["progress"]["current_stage"] == "finalize_claim"
+    assert member["progress"]["label"] == "Finalizing outcome"
+    assert member["progress"]["percent"] == 100
+    assert member["progress"]["is_terminal"] is False
+    assert member["progress"]["events"][-1]["status"] == "COMPLETED"
     assert "adjudication" not in member
     member_json = json.dumps(member).casefold()
     assert "city clinic" not in member_json

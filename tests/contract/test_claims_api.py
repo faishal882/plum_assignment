@@ -280,7 +280,57 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
         )
 
     assert retrieved.status_code == 200
-    assert retrieved.json() == {
+    body = retrieved.json()
+    assert body["progress"] == {
+        "current_stage": "ingest_claim",
+        "label": "Ingesting claim",
+        "percent": 0,
+        "is_terminal": False,
+        "events": [
+            {
+                "stage": "ingest_claim",
+                "label": "Ingesting claim",
+                "status": "PENDING",
+                "summary": "Waiting for a worker to start processing.",
+            },
+            *[
+                {
+                    "stage": stage,
+                    "label": label,
+                    "status": "PENDING",
+                    "summary": summary,
+                }
+                for stage, label, summary in (
+                    (
+                        "classify_documents",
+                        "Identifying documents",
+                        "Waiting to identify document types.",
+                    ),
+                    (
+                        "render_documents",
+                        "Rendering documents",
+                        "Waiting to render document pages.",
+                    ),
+                    ("read_documents", "Reading document text", "Waiting to read document text."),
+                    (
+                        "extract_evidence",
+                        "Extracting evidence",
+                        "Waiting to extract claim evidence.",
+                    ),
+                    ("check_policy", "Checking policy", "Waiting to apply policy rules."),
+                    (
+                        "finalize_claim",
+                        "Finalizing outcome",
+                        "Waiting to finalize the claim outcome.",
+                    ),
+                )
+            ],
+        ],
+    }
+    body["progress"] = {
+        "current_stage": "<projected>",
+    }
+    assert body == {
         "claim_id": receipt["claim_id"],
         "version": 1,
         "member_id": "EMP001",
@@ -291,11 +341,10 @@ async def test_member_can_submit_and_retrieve_a_queued_claim(
         "currency": "INR",
         "lifecycle_status": "QUEUED",
         "progress": {
-            "current_stage": "QUEUED",
-            "is_terminal": False,
+            "current_stage": "<projected>",
         },
-        "created_at": retrieved.json()["created_at"],
-        "updated_at": retrieved.json()["updated_at"],
+        "created_at": body["created_at"],
+        "updated_at": body["updated_at"],
     }
 
     await app.state.engine.dispose()

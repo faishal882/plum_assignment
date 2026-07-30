@@ -111,7 +111,10 @@ async def test_tc004_structured_fixture_commits_exact_member_decision(
     assert projection.status_code == 200
     body = projection.json()
     assert body["lifecycle_status"] == "DECIDED"
-    assert body["progress"] == {"current_stage": "DECIDED", "is_terminal": True}
+    assert body["progress"]["current_stage"] == "finalize_claim"
+    assert body["progress"]["percent"] == 100
+    assert body["progress"]["is_terminal"] is True
+    assert body["progress"]["events"][-1]["status"] == "COMPLETED"
     assert body["adjudication"] == {
         "recommendation": "APPROVED",
         "approved_amount": "1350.00",

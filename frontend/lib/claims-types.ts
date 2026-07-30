@@ -52,7 +52,10 @@ export interface Claim {
   lifecycle_status: ClaimLifecycle;
   progress: {
     current_stage: string;
+    label?: string;
+    percent?: number;
     is_terminal: boolean;
+    events?: ProgressEvent[];
   };
   adjudication?: {
     recommendation: string;
@@ -133,6 +136,16 @@ export interface ReviewTaskSummary {
   resolved_at: IsoDateTime | null;
 }
 
+export interface ProgressEvent {
+  stage: string;
+  label: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  summary: string;
+  attempt_number?: number | null;
+  duration_ms?: number | null;
+  completed_at?: IsoDateTime | null;
+}
+
 export interface RuleTrace {
   sequence?: number;
   rule_id?: string;
@@ -141,6 +154,9 @@ export interface RuleTrace {
   policy_path?: string;
   evidence_refs?: string[];
   inputs?: Record<string, unknown>;
+  amount_before?: string;
+  adjustment?: string;
+  amount_after?: string;
   amount_before_paise?: number;
   adjustment_paise?: number;
   amount_after_paise?: number;
