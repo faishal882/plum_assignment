@@ -7,6 +7,8 @@ import { ClaimStageBadge } from "@/components/ClaimStageBadge";
 import { ActionRequiredPanel } from "@/components/ActionRequiredPanel";
 import { DecisionSummary } from "@/components/DecisionSummary";
 import { ProcessingFailedPanel } from "@/components/ProcessingFailedPanel";
+import { AmountProgressPanel } from "@/components/AmountProgressPanel";
+import { WorkflowEvidencePanel } from "@/components/WorkflowEvidencePanel";
 import { ErrorCallout } from "@/components/ErrorCallout";
 import { JsonDisclosure } from "@/components/JsonDisclosure";
 import { Claim, ApiErrorResponse } from "@/lib/claims-types";
@@ -225,6 +227,9 @@ export default function ClaimStatusPage({ params }: ClaimStatusPageProps) {
                     </div>
                   </div>
                 </div>
+
+                <AmountProgressPanel claim={claim} />
+                <WorkflowEvidencePanel claim={claim} />
 
                 {/* Raw Claim JSON Disclosure */}
                 <JsonDisclosure title="Raw Claim Object" data={claim} />
