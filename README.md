@@ -1,156 +1,203 @@
-# Plum Claims Backend
+# Plum Claims Processing System
 
-An explainable, backend-first health-claim processing system. It accepts claim documents, turns
-them into evidence, applies a versioned policy deterministically, and preserves enough durable
-state to reconstruct why a claim reached its outcome.
+Plum Claims is an explainable health-insurance claim-processing system built for the Plum AI Engineer assignment. It accepts claim documents, extracts OCR-backed evidence, reconciles that evidence against member and policy data, then applies deterministic policy rules to decide whether a claim is approved, rejected, sent to review, or returned to the member for corrected documents.
 
-The safety boundary is deliberate: **Textract and Bedrock produce evidence; deterministic policy
-code determines money and claim outcomes; reviewers resolve ambiguity.** A model cannot approve a
-payment directly.
+The core safety boundary is intentional:
 
-## What is implemented
-
-- Multipart claim submission, member-scoped claim reads, document replacement, and reviewer
-  commands through FastAPI.
-- A standalone `claims-worker` that leases durable PostgreSQL work and runs a checkpointed
-  LangGraph workflow.
-- Local content-addressed document storage; no S3 is required for local development.
-- Recorded local intelligence by default, with explicit opt-in AWS Textract and Bedrock routes.
-- Versioned policy import, compilation, activation, and deterministic integer-paise adjudication.
-- Durable evidence, workflow events, effects, decisions, rule results, failures, review tasks,
-  and audit events in PostgreSQL.
-- Privacy-safe JSONL logs plus optional local Phoenix/OpenTelemetry traces.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    U[Member or frontend BFF] -->|multipart claim + idempotency key| API[FastAPI]
-    API --> DB[(PostgreSQL)]
-    API --> FS[Local content-addressed documents]
-    API --> WQ[claim_work_items]
-
-    Worker[claims-worker] -->|lease + heartbeat| WQ
-    Worker --> LG[LangGraph durable workflow]
-    LG --> Render[Render and inspect pages]
-    Render --> OCR{Execution profile}
-    OCR -->|RECORDED_LOCAL| Recorded[Recorded OCR and model adapters]
-    OCR -->|LIVE_INTELLIGENCE| Textract[Amazon Textract]
-    Textract --> Bedrock[Amazon Bedrock / configured model]
-    Recorded --> Evidence[Evidence and casefile]
-    Bedrock --> Evidence
-    Evidence --> Policy[Compiled policy adjudicator]
-    Policy --> DB
-    Policy --> Review{Automatic or review?}
-    Review -->|review| Queue[Review task]
-    Review -->|terminal| Result[Member-safe claim projection]
-
-    API -. sanitized spans .-> Phoenix[Local Phoenix]
-    Worker -. JSONL + sanitized spans .-> Phoenix
+```text
+OCR/model providers extract and classify evidence.
+Backend validation owns provenance and canonical facts.
+Deterministic policy code owns claim outcomes and money.
+Reviewers resolve ambiguity.
 ```
 
-### Processing lifecycle
+A model can never directly approve a payment. Model output is treated as untrusted until it cites persisted OCR observation IDs that the backend can verify.
 
-```mermaid
-stateDiagram-v2
-    [*] --> QUEUED: claim accepted
-    QUEUED --> PROCESSING: worker leases work
-    PROCESSING --> ACTION_REQUIRED: evidence is missing, unreadable, or conflicting
-    PROCESSING --> IN_REVIEW: deterministic review signal
-    PROCESSING --> DECIDED: deterministic policy outcome
-    PROCESSING --> PROCESSING_FAILED: non-retryable or exhausted safe failure
-    ACTION_REQUIRED --> QUEUED: member replaces requested document
-    IN_REVIEW --> DECIDED: reviewer command
-    DECIDED --> [*]
-    PROCESSING_FAILED --> [*]
-```
+## What this project does
 
-### Runtime composition
-
-| Layer | Responsibility |
-|---|---|
-| `api/` | HTTP schemas, upload validation, identity dependency, claim and review routes, health checks |
-| `application/` | Use cases: claims, documents, intelligence, casefiles, work, review, policy administration |
-| `domain/` | Immutable business concepts, lifecycle rules, policy/evidence models, reconstruction contracts |
-| `policy/` | Policy compilation, deterministic adjudication, and member-facing explanations |
-| `infrastructure/` | PostgreSQL repositories, local storage/rendering, LangGraph, recorded adapters, Textract, Bedrock |
-| `runtime/` | Dependency composition and profile-specific provider selection |
-| `worker/` | Worker command and durable lease-processing loop |
-| `observability.py` | Full-content Phoenix spans, correlated JSONL engineering logs, and trace utilities |
-
-PostgreSQL is the reconstruction authority. Phoenix and JSONL are diagnostic views, not the source
-of truth. A reconstruction joins the claim/version, policy, work item, workflow run/events/effects,
-document triage and its OCR references, casefile, evidence references, extraction envelope,
-decision, rule results, failures, member actions, review task, and review resolutions.
-
-### Model and provenance ownership
-
-Bedrock performs semantic work but never creates provenance. Fast triage uses
-`fast-triage-prompt-v2` with `triage-output-v3`; the model returns document roles, readability
-labels, patient-name values, and exact references to supplied OCR observation IDs. It cannot return
-hashes, page numbers, regions, render metadata, document-version identifiers, or OCR confidence.
-
-```mermaid
-flowchart LR
-    OCR[Persisted OCR observations] -->|text + opaque observation_id| Model[Bedrock semantic triage]
-    Model -->|role, readability, value, references| Resolver[Deterministic triage resolver]
-    OCR --> Resolver
-    Pages[Persisted page artifacts] --> Resolver
-    Resolver -->|backend hashes + page + region + confidence| Triage[(Grounded triage records)]
-    Triage --> Reconcile[Identity and evidence reconciliation]
-```
-
-The resolver rejects missing, duplicated, or cross-document references. It computes source-text
-SHA-256 values from persisted OCR text, copies page/region/confidence from the referenced
-observation, and copies preview hashes and render versions from page artifacts. A document with no
-OCR observations becomes a deterministic `UNKNOWN`/`UNREADABLE` triage result instead of causing an
-unhandled workflow invariant failure.
-
-## Documentation
-
-| Document | Purpose |
-|---|---|
-| [Architecture](docs/architecture.md) | Detailed design decisions, components, workflow, evaluation, and Mermaid diagrams |
-| [Project context](CONTEXT.md) | Canonical domain terms and PRD context |
-| [Frontend integration](docs/frontend-integration.md) | API contract, local identities, polling, BFF guidance, and response shapes |
-| [Backend v1 completion](docs/validation/backend-v1-completion.md) | Current acceptance evidence, test results, and known limits |
-| [Backend v1 acceptance audit](docs/validation/backend-v1-acceptance-audit.md) | Phase-by-phase proof index |
-| [Acceptance artifacts](artifacts/backend-v1/) | Sanitized test, evaluation, manifest, privacy, and live-E2E evidence |
-
-## Prerequisites
-
-- Python 3.12
-- [uv](https://docs.astral.sh/uv/)
-- Docker and Docker Compose
-- AWS credentials through the standard AWS SDK credential chain only when using
-  `LIVE_INTELLIGENCE`; do not put AWS access keys in `.env`.
+- Submits health claims with PDFs/images through FastAPI and a Next.js frontend.
+- Stores every claim, document version, OCR observation, model extraction, workflow event, rule result, review task, and audit event in PostgreSQL.
+- Runs asynchronous processing through a durable worker and LangGraph workflow.
+- Supports local/no-cost recorded intelligence by default.
+- Optionally runs live Amazon Textract OCR and Amazon Bedrock structured extraction.
+- Uses a compiled, versioned Plum policy and deterministic integer-paise adjudication.
+- Provides SQLAdmin back-office views for all PostgreSQL tables.
+- Shows frontend evidence views: workflow progress, amount trail, OCR registry, rule trace, and evidence JSON.
+- Includes an evaluation workbench for the supplied assignment cases.
 
 ## Quick start
 
-### 1. Configure and initialize local services
+Choose one path:
+
+1. [Manual with `uv`](#manual-setup-with-uv)
+2. [NPM workspace commands](#npm-workspace-setup)
+3. [Docker Compose](#docker-compose-setup)
+
+### Manual setup with `uv`
+
+Use this if you want explicit control over every service.
+
+#### 1. Configure environment
 
 ```bash
 cp .env.example .env
+```
+
+For safe local development, keep:
+
+```dotenv
+CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL
+CLAIMS_RUN_LIVE_AWS=0
+CLAIMS_OBSERVABILITY_ENABLED=0
+```
+
+#### 2. Install dependencies
+
+Backend:
+
+```bash
+uv sync --all-groups
+```
+
+Frontend:
+
+```bash
+cd frontend
 npm ci
+cd ..
+```
+
+#### 3. Start PostgreSQL
+
+```bash
+docker compose up -d postgres
+```
+
+#### 4. Apply migrations
+
+```bash
+uv run alembic upgrade head
+```
+
+#### 5. Import members/policy, compile, and activate policy
+
+Import policy/member setup data:
+
+```bash
+uv run claimsctl setup import --policy problem_statement/policy_terms.json
+```
+
+Copy `policy_source_sha256` from that JSON output, then compile:
+
+```bash
+uv run claimsctl policy compile \
+  --source-sha <policy_source_sha256> \
+  --overlay config/policy/assignment-overlay-v1.json
+```
+
+Copy `policy_version_id` from the compile output, then activate:
+
+```bash
+uv run claimsctl policy activate \
+  --policy-version-id <policy_version_id> \
+  --actor operator.local
+```
+
+#### 6. Start services in separate terminals
+
+Phoenix tracing UI:
+
+```bash
+uv run phoenix serve --host 127.0.0.1 --port 6006
+```
+
+FastAPI backend:
+
+```bash
+uv run uvicorn claims_backend.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Claims worker:
+
+```bash
+uv run claims-worker run-loop
+```
+
+Next.js frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open:
+
+```text
+Frontend: http://127.0.0.1:3000
+API docs: http://127.0.0.1:8000/docs
+SQLAdmin: http://127.0.0.1:8000/admin  (if enabled)
+Phoenix:  http://127.0.0.1:6006
+```
+
+### NPM workspace setup
+
+Use this for local development with shorter commands.
+
+#### 1. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+#### 2. Install backend and frontend requirements
+
+```bash
+npm ci
+```
+
+The root `postinstall` runs:
+
+```text
+uv sync --all-groups
+npm ci --prefix frontend
+```
+
+So one command installs both backend Python dependencies and frontend Node dependencies.
+
+#### 3. Bootstrap the database
+
+```bash
 npm run dev:bootstrap
 ```
 
-`npm ci` installs the root workspace helpers, syncs backend Python dependencies with `uv`,
-and installs the frontend dependencies under `frontend/`.
+This starts Postgres, applies migrations, imports setup data, compiles the overlay, and activates `PLUM_GHI_2024` if no active policy exists.
 
-Useful npm commands:
+#### 4. Run each service
+
+Use separate terminals:
 
 ```bash
-npm run api       # FastAPI backend on 127.0.0.1:8000
-npm run worker    # durable claims worker loop
-npm run phoenix   # Phoenix tracing UI on 127.0.0.1:6006
-npm run frontend  # Next.js frontend on localhost:3000
-npm run stop      # stop local API/worker/Phoenix/Next dev processes
+npm run phoenix
+npm run api
+npm run worker
+npm run frontend
 ```
 
-### Docker quick start
+Other useful commands:
 
-To run the full stack in containers:
+```bash
+npm run setup:data    # idempotent policy/member setup + activation
+npm run db:up         # start only postgres
+npm run db:migrate    # run alembic migrations
+npm run stop          # stop local API/worker/Phoenix/Next dev processes
+npm run lint          # frontend typecheck
+npm run lint:backend  # ruff over backend/tests
+npm test              # pytest
+```
+
+### Docker Compose setup
+
+Use this if you want a full containerized stack.
 
 ```bash
 docker compose up --build
@@ -159,7 +206,7 @@ docker compose up --build
 This starts:
 
 - PostgreSQL on `127.0.0.1:55432`
-- one-shot setup service that runs migrations and activates `PLUM_GHI_2024`
+- one-shot `setup` service that runs migrations and activates `PLUM_GHI_2024`
 - FastAPI on `http://127.0.0.1:8000`
 - claims worker
 - Phoenix on `http://127.0.0.1:6006`
@@ -177,87 +224,333 @@ Reset all Docker-managed data:
 docker compose down -v
 ```
 
-For normal development, keep these values in `.env`:
+The Docker path defaults to `RECORDED_LOCAL`. To run live AWS in Docker, pass explicit env vars, for example:
+
+```bash
+CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
+CLAIMS_RUN_LIVE_AWS=1 \
+CLAIMS_OBSERVABILITY_ENABLED=1 \
+AWS_PROFILE=your-profile \
+docker compose up --build
+```
+
+Depending on your Docker/AWS setup, you may need to mount or export AWS credentials into the containers. Do not commit credentials.
+
+## Environment variables
+
+The project reads `.env` through `claims_backend.config.Settings`. Start from:
+
+```bash
+cp .env.example .env
+```
+
+### PostgreSQL
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_DB` | Database created by the Postgres container. Default: `claims`. |
+| `POSTGRES_USER` | Postgres user. Default: `claims`. |
+| `POSTGRES_PASSWORD` | Postgres password. Default: `claims`. |
+| `POSTGRES_PORT` | Host port mapped to container port `5432`. Default: `55432`. |
+| `CLAIMS_DATABASE_URL` | SQLAlchemy URL for the application database. |
+| `CLAIMS_TEST_DATABASE_URL` | SQLAlchemy URL for integration tests. Use a separate DB. |
+| `CLAIMS_ALLOW_DESTRUCTIVE_TEST_DATABASE` | Set `1` only if you intentionally allow destructive tests against a DB. |
+
+### Upload, rendering, and local storage
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_DATA_ROOT` | Local content-addressed document storage root. |
+| `CLAIMS_MAX_DOCUMENTS` | Max files per claim. |
+| `CLAIMS_MAX_FILE_BYTES` | Max size per uploaded file. |
+| `CLAIMS_MAX_CLAIM_BYTES` | Max aggregate multipart claim size. |
+| `CLAIMS_MAX_DOCUMENT_PAGES` | Max rendered/OCR pages per document. |
+| `CLAIMS_UPLOAD_CHUNK_BYTES` | Streaming chunk size for upload persistence. |
+| `CLAIMS_PAGE_RENDER_DPI` | PDF render DPI used before OCR. |
+| `CLAIMS_MAX_TEXTRACT_PAGE_BYTES` | Max rendered page bytes sent to Textract. |
+
+### Execution profile and provider gates
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_EXECUTION_PROFILE` | Runtime profile. Use `RECORDED_LOCAL` for safe local runs, `LIVE_INTELLIGENCE` for AWS. |
+| `CLAIMS_RUN_LIVE_AWS` | Required second gate for live AWS. `LIVE_INTELLIGENCE` fails unless this is `1`. |
+| `CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE` | Local-only synthetic failure injection for resilience tests. Keep `0` normally. |
+
+Safe local default:
 
 ```dotenv
 CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL
 CLAIMS_RUN_LIVE_AWS=0
+CLAIMS_OBSERVABILITY_ENABLED=0
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0
 ```
 
-`RECORDED_LOCAL` is the default no-cost path. Environment variables supplied to a command override
-`.env`, which makes paid AWS runs explicit.
+Live synthetic/debug profile:
 
-### 2. Import and activate policy data
+```dotenv
+CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE
+CLAIMS_RUN_LIVE_AWS=1
+CLAIMS_OBSERVABILITY_ENABLED=1
+CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0
+```
 
-A fresh database needs immutable setup data and an active compiled policy.
+### Amazon Textract setup
+
+Textract is used only on the live path.
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_AWS_REGION` | Region for Textract, usually `ap-south-1`. |
+| `CLAIMS_TEXTRACT_TIMEOUT_SECONDS` | Per-request timeout. |
+| `CLAIMS_TEXTRACT_CONCURRENCY_LIMIT` | Worker-side concurrency cap. |
+
+Use the standard AWS SDK credential chain. Recommended local setup:
 
 ```bash
-npm run setup:data
+aws configure sso
+# or configure a local profile with access to Textract + Bedrock
+export AWS_PROFILE=your-profile-name
+aws sts get-caller-identity
 ```
 
-This command is idempotent. If you prefer the manual CLI flow, run:
+Required AWS permissions include Textract document text/expense analysis operations used by the configured adapter.
+
+### Amazon Bedrock setup
+
+Bedrock is used for live document triage/extraction.
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_BEDROCK_REGION` | Bedrock Runtime region. Default example: `us-west-2`. |
+| `CLAIMS_BEDROCK_MODEL_ID` | Model ID used by the structured model adapter. |
+| `CLAIMS_BEDROCK_TIMEOUT_SECONDS` | Per-request timeout. |
+| `CLAIMS_BEDROCK_CONCURRENCY_LIMIT` | Worker-side concurrency cap. |
+| `CLAIMS_PROVIDER_MAX_ATTEMPTS` | Provider attempts before durable workflow failure; capped at 3. |
+| `CLAIMS_RETRY_BASE_SECONDS` | Durable retry backoff base. |
+| `CLAIMS_RETRY_MAX_SECONDS` | Durable retry max delay. |
+| `CLAIMS_RETRY_JITTER_RATIO` | Jitter ratio for retries. |
+
+Before running live claims:
+
+1. Enable the target Bedrock model in the AWS console for `CLAIMS_BEDROCK_REGION`.
+2. Ensure your principal can call Bedrock Runtime converse/invoke APIs.
+3. Verify credentials:
 
 ```bash
-uv run claimsctl setup import --policy problem_statement/policy_terms.json
+AWS_PROFILE=your-profile aws sts get-caller-identity
 ```
 
-Copy `policy_source_sha256` from the JSON output, then compile and activate it:
+Live mode may incur AWS charges. Use only synthetic/de-identified documents.
+
+### Observability and Phoenix
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_OBSERVABILITY_ENABLED` | Enables OpenTelemetry export and engineering logs. |
+| `CLAIMS_PHOENIX_ENDPOINT` | OTLP HTTP endpoint, e.g. `http://127.0.0.1:6006/v1/traces`. |
+| `CLAIMS_PHOENIX_PROJECT` | Phoenix project name. |
+| `CLAIMS_LOG_ROOT` | JSONL engineering log directory. |
+| `CLAIMS_LOG_MAX_BYTES` | Rotating log max bytes. |
+| `CLAIMS_LOG_BACKUP_COUNT` | Rotating log backup count. |
+
+Start Phoenix locally:
 
 ```bash
-uv run claimsctl policy compile \
-  --source-sha <policy_source_sha256> \
-  --overlay config/policy/assignment-overlay-v1.json
-
-uv run claimsctl policy activate \
-  --policy-version-id <policy_version_id> \
-  --actor operator.local
+npm run phoenix
 ```
 
-### 3. Start the API and worker
-
-Use separate terminals:
+or:
 
 ```bash
-uv run uvicorn claims_backend.api.app:app --reload
+uv run phoenix serve --host 127.0.0.1 --port 6006
 ```
 
-```bash
-uv run claims-worker run-loop
+### Worker
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_WORKER_ID` | Lease owner identifier for this worker process. |
+| `CLAIMS_WORKER_POLL_SECONDS` | Poll interval for new work. |
+| `CLAIMS_WORKER_LEASE_SECONDS` | Work lease duration. |
+| `CLAIMS_WORKER_SHUTDOWN_SECONDS` | Graceful shutdown timeout. |
+
+### SQLAdmin
+
+SQLAdmin is a local/private admin UI at `/admin`.
+
+| Variable | Purpose |
+|---|---|
+| `CLAIMS_SQLADMIN_ENABLED` | `1` enables SQLAdmin. Disabled by default. |
+| `CLAIMS_SQLADMIN_USERNAME` | Admin username. |
+| `CLAIMS_SQLADMIN_PASSWORD` | Admin password; must be at least 12 characters. |
+| `CLAIMS_SQLADMIN_SECRET_KEY` | Session signing key; must be at least 32 characters. |
+
+Example local values:
+
+```dotenv
+CLAIMS_SQLADMIN_ENABLED=1
+CLAIMS_SQLADMIN_USERNAME=admin
+CLAIMS_SQLADMIN_PASSWORD=admin-password-local
+CLAIMS_SQLADMIN_SECRET_KEY=sqladmin-local-secret-with-at-least-32-chars
 ```
 
-The API only accepts/reads requests. The worker leases `claim_work_items`, runs the workflow, and
-advances claims. For one bounded pass, use:
+Do not expose SQLAdmin publicly.
 
-```bash
-uv run claims-worker run-once
+## Architecture
+
+### System overview
+
+```mermaid
+flowchart LR
+    Browser[Browser] -->|Next.js UI| BFF[Next.js route handlers / BFF]
+    BFF -->|HTTP + X-Dev-Username| API[FastAPI]
+    API --> DB[(PostgreSQL)]
+    API --> Store[Local document store]
+    API --> Work[claim_work_items]
+
+    Worker[claims-worker] -->|lease/fence/retry| Work
+    Worker --> Graph[LangGraph workflow]
+    Graph --> Render[Render pages]
+    Graph --> Discover[Discovery OCR]
+    Discover --> Triage[LLM document triage]
+    Graph --> OCR[Role-aware OCR]
+    OCR --> Extract[LLM evidence extraction]
+    Extract --> Reconcile[Evidence + identity reconciliation]
+    Reconcile --> Casefile[(Frozen casefile)]
+    Casefile --> Policy[Deterministic policy adjudicator]
+    Policy --> Decision[(Decision + rule results)]
+    Policy --> Action[(Member action / review task)]
+
+    API --> Admin[SQLAdmin]
+    API -. traces/logs .-> Phoenix[Phoenix]
+    Worker -. traces/logs .-> Phoenix
 ```
 
-### 4. Verify the runtime
+The browser never calls FastAPI directly in the frontend app. It calls Next.js route handlers, which proxy to FastAPI as a BFF.
 
-```bash
-curl --fail http://127.0.0.1:8000/health/live
-curl --fail http://127.0.0.1:8000/health/ready
+### Workflow lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> RECEIVED: API validates upload
+    RECEIVED --> QUEUED: work item created
+    QUEUED --> PROCESSING: worker lease acquired
+    PROCESSING --> ACTION_REQUIRED: missing/wrong/conflicting evidence
+    PROCESSING --> IN_REVIEW: deterministic review signal
+    PROCESSING --> DECIDED: deterministic rule outcome
+    PROCESSING --> PROCESSING_FAILED: unrecovered system/provider failure
+    ACTION_REQUIRED --> QUEUED: member uploads replacement document
+    IN_REVIEW --> DECIDED: reviewer command
+    DECIDED --> [*]
+    PROCESSING_FAILED --> [*]
 ```
 
-- API reference: http://127.0.0.1:8000/docs
-- OpenAPI JSON: http://127.0.0.1:8000/openapi.json
+### LangGraph processing nodes
+
+```mermaid
+flowchart TD
+    A[load_claim] --> B[media_inspect]
+    B --> C{needs documents?}
+    C -->|no| F[freeze_casefile]
+    C -->|yes| R[render_documents]
+    R --> D[discover_documents]
+    D --> T[triage_documents]
+    T --> G{required docs / identity ok?}
+    G -->|member action| M[commit_member_action]
+    G -->|continue| O[ocr_documents]
+    O --> E[extract_evidence]
+    E --> X[reconcile_casefile]
+    X --> Y{safe casefile?}
+    Y -->|member action| M
+    Y -->|safe| J[adjudicate]
+    F --> J
+    J --> K[commit_decision]
+```
+
+Node meanings:
+
+| Node | What happens |
+|---|---|
+| `load_claim` | Loads claim/version/work context and records workflow start. |
+| `media_inspect` | Determines whether documents need rendering/OCR/model processing. |
+| `render_documents` | Converts PDFs/images into auditable page artifacts. |
+| `discover_documents` | Runs discovery OCR and stores observations. |
+| `triage_documents` | Classifies document role/readability/patient names from OCR observations. |
+| `ocr_documents` | Runs role-aware OCR after document triage. |
+| `extract_evidence` | Extracts structured facts like `billing.total` and `clinical.condition`. |
+| `reconcile_casefile` | Normalizes, deduplicates, validates, and freezes evidence into a casefile. |
+| `adjudicate` | Applies deterministic policy rules. No LLM is used here. |
+| `commit_decision` | Atomically commits decision/rule results/work completion. |
+| `commit_member_action` | Atomically records action-required branch and work completion. |
+
+### Evidence and provenance model
+
+```mermaid
+flowchart LR
+    Doc[Uploaded document] --> Page[Rendered page artifact]
+    Page --> OCR[OCR observation]
+    OCR -->|observation_id + text| LLM[LLM triage/extraction]
+    LLM --> Candidate[Evidence candidate]
+    Candidate -->|evidence_refs| OCR
+    Candidate --> Reconcile[Normalizer/reconciler]
+    Reconcile --> Fact[Casefile fact]
+    Fact --> Rule[Policy rule]
+    Rule --> Decision[Claim outcome]
+```
+
+Example chain:
+
+```text
+OCR observation:
+  observation_id = abc123
+  text = "Total Bill Amount: INR 1,350.00"
+
+Evidence candidate:
+  fact_path = billing.total
+  value = 1350.00
+  evidence_refs = [abc123]
+
+Casefile fact:
+  billing.total = 135000 paise
+
+Rule result:
+  amount.consultation.category_limit uses billing.total evidence refs
+```
+
+The backend rejects model output if it references an OCR observation ID that was not supplied to the model.
+
+### Important directories
+
+```text
+src/claims_backend/api/                 FastAPI routes, schemas, SQLAdmin, progress projection
+src/claims_backend/application/         Use-case layer
+src/claims_backend/domain/              Domain models and invariants
+src/claims_backend/infrastructure/      PostgreSQL, local storage, AWS, LangGraph adapters
+src/claims_backend/model/               Prompt/schema validation and model boundary
+src/claims_backend/policy/              Policy compiler and deterministic adjudicator
+src/claims_backend/worker/              Worker loop and CLI
+frontend/                               Next.js frontend and BFF route handlers
+evaluation_workbench/                   Offline evaluation dataset/scoring helpers
+problem_statement/                      Assignment policy/test-case sources
+synthetic_uploads/                      Safe synthetic local test documents
+```
 
 ## Submit a claim
 
-Claims use multipart form data. The `documents[].upload_index` sequence must match repeated
-`files` parts. Use synthetic or de-identified documents only while testing.
+Claims use multipart form data. The `documents[].upload_index` sequence must match the repeated `files` parts.
 
 ```bash
 curl --fail-with-body \
   -X POST http://127.0.0.1:8000/v1/claims \
   -H 'X-Dev-Username: member.emp001' \
   -H 'Idempotency-Key: local-smoke-001' \
-  -F 'metadata={"member_id":"EMP001","policy_id":"PLUM_GHI_2024","claim_category":"PHARMACY","treatment_date":"2024-11-01","claimed_amount":"1500.00","currency":"INR","documents":[{"upload_index":0,"client_document_id":"bill-001"}]}' \
-  -F 'files=@/absolute/path/to/synthetic-bill.pdf'
+  -F 'metadata={"member_id":"EMP001","policy_id":"PLUM_GHI_2024","claim_category":"CONSULTATION","treatment_date":"2024-11-01","claimed_amount":"1500.00","currency":"INR","documents":[{"upload_index":0,"client_document_id":"rx-001"},{"upload_index":1,"client_document_id":"bill-001"}]}' \
+  -F 'files=@synthetic_uploads/debug_docs/success_consultation_prescription_rajesh.jpg' \
+  -F 'files=@synthetic_uploads/debug_docs/success_consultation_bill_rajesh.jpg'
 ```
 
-The response is `202 Accepted` and contains `claim_id`, `version`, lifecycle `QUEUED`, and a
-relative `status_url`. Poll it as the same member:
+Poll status:
 
 ```bash
 curl --fail-with-body \
@@ -265,241 +558,154 @@ curl --fail-with-body \
   http://127.0.0.1:8000/v1/claims/<claim_id>
 ```
 
-Seeded local identities are `member.emp001` through `member.emp010`, `reviewer.local`, and
-`operator.local`. `X-Dev-Username` is a replaceable local identity adapter, not authentication.
-
-### Optional SQLAdmin identity administration
-
-An authenticated SQLAdmin UI can manage local users, roles, and member links and inspect the
-policy-member identifiers used by those links. It is disabled by default. Configure a unique
-username, a password of at least 12 characters, and a random secret key of at least 32 characters:
-
-```dotenv
-CLAIMS_SQLADMIN_ENABLED=1
-CLAIMS_SQLADMIN_USERNAME=claims-admin
-CLAIMS_SQLADMIN_PASSWORD=replace-with-a-long-random-password
-CLAIMS_SQLADMIN_SECRET_KEY=replace-with-at-least-32-random-characters
-```
-
-After restarting the API, open `http://127.0.0.1:8000/admin`. Do not expose this local operational
-UI to the public internet. User deletion is intentionally disabled because claim ownership,
-idempotency, review resolutions, and audit history retain immutable user references.
-
-## HTTP surface
-
-| Method | Path | Actor | Purpose |
-|---|---|---|---|
-| `GET` | `/health/live` | any local caller | Process liveness only |
-| `GET` | `/health/ready` | any local caller | Local configuration and PostgreSQL readiness |
-| `POST` | `/v1/claims` | member | Submit one claim with documents |
-| `GET` | `/v1/claims/{claim_id}` | owning member | Read member-safe claim state |
-| `POST` | `/v1/claims/{claim_id}/actions` | owning member | Replace a requested document |
-| `GET` | `/v1/review-tasks` | reviewer | List review tasks |
-| `GET` | `/v1/review-tasks/{task_id}` | reviewer | Read reviewer evidence and trace |
-| `POST` | `/v1/review-tasks/{task_id}/commands` | reviewer | Resolve an open review task |
-
-Every mutating route requires an `Idempotency-Key`: 1–128 characters, beginning with an
-alphanumeric character and otherwise limited to letters, numbers, `.`, `_`, `:`, and `-`.
-
-## Execution profiles
-
-| Profile | OCR/model adapters | Network | Use |
-|---|---|---|---|
-| `RECORDED_LOCAL` | Versioned recorded adapters | No | Default development and deterministic tests |
-| `LIVE_INTELLIGENCE` | Amazon Textract + configured Bedrock model | Yes | Explicit synthetic AWS checks only |
-| `RENDERED_RECORDED` | Recorded rendered-document adapters | No | Twelve-case rendered acceptance gate |
-
-To run a live synthetic gate, opt in per command:
-
-```bash
-CLAIMS_RUN_LIVE_AWS=1 \
-CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
-  uv run pytest tests/live/test_live_worker_tc004.py -q
-```
-
-The full test suite is intentionally able to skip live checks when
-`CLAIMS_RUN_LIVE_AWS=0`. Never interpret the passing TC004 synthetic route as proof that arbitrary
-real-world documents will succeed; live provider output can safely fail schema validation.
-
-## Observability and decision reconstruction
-
-Start Phoenix locally when you want trace exploration:
-
-```bash
-uv sync --group observability
-uv run --group observability phoenix serve
-```
-
-Phoenix is then available at http://127.0.0.1:6006 and accepts OTLP traces at the configured
-`CLAIMS_PHOENIX_ENDPOINT`. API and worker JSONL logs are written to:
+Local identities are resolved through:
 
 ```text
-data/logs/api.jsonl
-data/logs/worker.jsonl
-data/logs/evaluation.jsonl
+X-Dev-Username -> PostgresIdentityProvider -> Principal
 ```
 
-Phoenix is configured as a full-content local debugging surface. There is no content-capture or
-synthetic-only privacy gate. Claim-submission, workflow, and node spans populate OpenInference
-`input.value` and `output.value`; Bedrock spans include prompts, response schema, parsed and raw
-provider output, model/route/prompt/schema metadata, stop reason, latency, request ID, and
-prompt/completion/total tokens. Textract spans include the rendered page bytes as base64, page
-metadata, raw provider response, and every normalized OCR observation including text, confidence,
-page, and region. Exceptions include their messages and stack traces. The claim ID remains the
-Phoenix `session.id`.
+The frontend also includes a local demo identity selector/creator backed by the existing user/member tables.
 
-> **Debug-data warning:** Phoenix now contains complete uploaded document and model/OCR content,
-> including patient data. Use only assignment/synthetic data, keep Phoenix local, and delete its
-> local data before sharing the workspace. PostgreSQL remains the authoritative decision record;
-> Phoenix is the correlated debugging view.
+## Evaluation
 
-### Lease recovery traces
+The assignment evaluation assets live under:
 
-Workflow ownership is deliberately runtime-only: LangGraph checkpoints retain business progress,
-not a worker's lease. On every new or resumed invocation, the worker supplies a fresh PostgreSQL
-lease. Terminal member-action and decision writes are fenced in the same transaction by the active
-owner, token, and expiry.
+```text
+problem_statement/policy_terms.json
+problem_statement/test_cases.json
+problem_statement/sample_documents_guide.md
+```
 
-Phoenix workflow and node spans, plus the corresponding workflow JSONL records, expose these flat
-fields for recovery debugging:
+The evaluation workbench under `evaluation_workbench/` is intentionally outside the backend runtime. It loads the assignment oracle inputs and scores outputs, but the API/worker never receives expected answers.
 
-| Field | Meaning |
-|---|---|
-| `work.attempt` | The active scheduler attempt, including reclaim/resume attempts. |
-| `work.lease_id.sha256` | A deterministic hash for correlating one lease without emitting its token. |
-| `lease.validation.outcome` | `ACCEPTED`, `REJECTED_STALE`, or `NOT_EVALUATED`. |
-| `terminal.commit.outcome` | `COMMITTED` or `NOT_COMMITTED`. |
-
-To find a stale-worker terminal attempt in Phoenix, filter on
-`lease.validation.outcome = "REJECTED_STALE"`. Raw fencing tokens are intentionally absent from
-spans, JSONL, and public API responses.
-
-## Testing and quality gates
-
-### Evaluation data
-
-The evaluation corpus is version-controlled under `problem_statement/`:
-
-| Source | Used for | Runtime authority |
-|---|---|---|
-| `assignment.md` | Assignment scope and acceptance context | No |
-| `policy_terms.json` | Policy source and member/setup facts | Yes, after compilation |
-| `test_cases.json` | Twelve synthetic claim submissions and the privileged expected-outcome oracle | Inputs only during execution; oracle only after actuals are frozen |
-| `sample_documents_guide.md` | Document-format/extraction guidance | No |
-| `config/policy/assignment-overlay-v1.json` | Reviewed clarification for policy contradictions | Yes, as part of the compiled policy version |
-
-The evaluation workbench is intentionally outside `src/claims_backend/`. The backend cannot import
-the scorer or accept expected decisions through the API. `load_evaluation_inputs()` extracts only
-`case_id`, name, description, and the case `input`; it drops every `expected` field. The runner
-then records immutable actual lifecycle, adjudication, amount, reason codes, provenance, failures,
-and trace-completeness results. Only after all actuals are finalized and hashed does `OracleScorer`
-open `test_cases.json` to compare them with the privileged expected outcomes.
+### How evaluation works
 
 ```mermaid
 flowchart LR
-    Data[test_cases.json] --> Public[Public case inputs only]
-    Public --> API[FastAPI submission]
-    API --> Worker[Normal composed worker]
-    Worker --> Actual[Freeze actual result + SHA-256]
-    Data --> Oracle[Expected outcomes]
-    Actual --> Score[Oracle scorer]
-    Oracle --> Score
-    Score --> Report[Pass/fail report and sanitized evidence]
+    Cases[test_cases.json] --> Dataset[Evaluation dataset loader]
+    Dataset --> Runner[Recorded/rendered workflow tests]
+    Policy[policy_terms.json + overlay] --> Runner
+    SyntheticDocs[synthetic/rendered docs] --> Runner
+    Runner --> Backend[API + worker + repositories]
+    Backend --> Results[Claim outcomes + rule traces]
+    Results --> Scorer[Oracle scorer]
+    Scorer --> Report[Evaluation report/artifacts]
 ```
 
-### Evaluation modes
+There are three useful levels:
 
-| Gate | Providers | Cases | Purpose | AWS cost |
-|---|---|---:|---|---|
-| OCR-bypassed structured | Recorded structured components | 12 | Isolate policy/evidence behavior | No |
-| Rendered recorded | Generated rendered documents + recorded OCR/model adapters | 12 | Primary end-to-end correctness gate through FastAPI and worker | No |
-| Live provider smokes | Textract and Bedrock | targeted | Check provider connectivity and structured contract | Yes, explicit opt-in |
-| Live TC004 | Generated synthetic TC004 document, Textract, Bedrock, FastAPI, worker | 1 | Bounded live end-to-end proof | Yes, explicit opt-in |
+1. **Unit/contract tests** verify schema, model-boundary, policy, and API behavior quickly.
+2. **Recorded rendered evaluation** runs the worker path with deterministic recorded intelligence and rendered documents.
+3. **Live AWS tests** explicitly call Textract/Bedrock and may incur cost.
 
-The rendered recorded gate is the v1 acceptance gate. It creates fresh test data, runs each case
-through normal workflow composition and verifies PostgreSQL reconstruction plus complete workflow
-traces. It does not call AWS.
+### Run evaluation/tests
 
-### Run evaluation
-
-Run the fast diagnostic control when investigating deterministic policy or evidence behavior:
+Fast core checks:
 
 ```bash
-CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
-CLAIMS_RUN_LIVE_AWS=0 \
-CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-  uv run pytest \
-  tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_ocr_bypassed_structured_gate \
-  -q
+uv run pytest tests/unit tests/contract -q
 ```
 
-Run the primary twelve-case acceptance gate:
+Integration suite:
 
 ```bash
-CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
-CLAIMS_RUN_LIVE_AWS=0 \
-CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-  uv run pytest \
+uv run pytest tests/integration -q
+```
+
+Recorded rendered assignment gate:
+
+```bash
+uv run pytest \
   tests/integration/test_rendered_evaluation_gate.py::test_all_twelve_cases_pass_the_recorded_rendered_evaluation_gate \
   -q
 ```
 
-Run the full suite without AWS cost. Pytest uses the separate `CLAIMS_TEST_DATABASE_URL` and
-refuses to target the application database unless a destructive override is explicitly supplied:
+Full default suite, excluding live AWS unless explicitly enabled:
 
 ```bash
-CLAIMS_EXECUTION_PROFILE=RECORDED_LOCAL \
-CLAIMS_RUN_LIVE_AWS=0 \
-CLAIMS_INJECT_ANOMALY_ENRICHMENT_FAILURE=0 \
-  uv run pytest -q
+uv run pytest -q
 ```
 
-Run the explicitly paid, synthetic live worker tracer only when AWS credentials are available:
+Live AWS smoke tests:
 
 ```bash
-CLAIMS_RUN_LIVE_AWS=1 \
 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE \
-  uv run pytest tests/live/test_live_worker_tc004.py -q
+CLAIMS_RUN_LIVE_AWS=1 \
+uv run pytest tests/live -q
 ```
 
-Current sanitized outcomes, source hashes, and privacy checks are committed under
-[`artifacts/backend-v1/`](artifacts/backend-v1/). They contain no raw documents, OCR text,
-prompts, model responses, or trace identifiers.
+Use only synthetic/de-identified documents for live tests.
 
-### Static quality checks
+## Limitations
 
-Run static and migration checks:
+### Input limitations
+
+- Supported uploads are PDFs and common image formats accepted by the backend validators/renderers.
+- Default max documents per claim: `CLAIMS_MAX_DOCUMENTS=10`.
+- Default max file size: `CLAIMS_MAX_FILE_BYTES=20971520` bytes.
+- Default max total claim upload size: `CLAIMS_MAX_CLAIM_BYTES=52428800` bytes.
+- Default max pages per document: `CLAIMS_MAX_DOCUMENT_PAGES=10`.
+- Very long/noisy OCR output is bounded before model extraction; not every OCR token is sent to the LLM.
+- Local document storage is filesystem-backed, not S3.
+
+### Product limitations
+
+- This is not a full auth product. It intentionally uses local/dev identity headers plus DB-backed demo identities.
+- SQLAdmin is a local/private back-office tool, not a public admin product.
+- It is focused on OPD-style assignment categories and the supplied Plum policy shape.
+- It is not a complete insurer claims platform, provider network integration, payment system, or member portal.
+- Reviewer/operator/admin role management is intentionally back-office controlled.
+
+### Model/provider limitations
+
+- Live Bedrock output can vary. Backend validation may reject outputs that cite invalid OCR references.
+- `RECORDED_LOCAL` is the primary deterministic correctness proof; live AWS is optional evidence of provider integration.
+- The LLM does not decide claim outcomes and cannot be trusted for provenance.
+- Bedrock model access depends on your AWS account, region, model enablement, quotas, and billing/payment status.
+- Textract/Bedrock live runs may incur charges.
+
+### Policy/adjudication limitations
+
+- Deterministic adjudication currently reflects the implemented assignment slice and overlay.
+- Some edge-case financial semantics may need further hardening, for example claimed-vs-billed payable-base ordering.
+- Repeated same-day/history review paths require appropriate seeded member history data.
+
+## Troubleshooting
+
+### API health
 
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy
-uv run alembic check
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
 ```
 
-The latest evidence is in [the Backend v1 completion report](docs/validation/backend-v1-completion.md)
-and [`artifacts/backend-v1/`](artifacts/backend-v1/).
+### Reset local Docker DB
 
-## Repository layout
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+### Stop local npm/manual processes
+
+```bash
+npm run stop
+```
+
+### Open SQLAdmin
+
+Set SQLAdmin env vars, start the API, then open:
 
 ```text
-src/claims_backend/       FastAPI, workflow, domain, policy, providers, persistence, worker
-tests/                    unit, contract, integration, and explicit live-AWS tests
-migrations/               Alembic database migrations
-config/policy/            approved policy overlays
-problem_statement/        assignment sources and evaluation cases
-evaluation_workbench/     isolated evaluation harness and scorers
-artifacts/backend-v1/     sanitized acceptance evidence
-docs/                     architecture, domain, frontend, and validation documentation
-plans/ and prds/          historical planning and product requirements
-data/                     ignored local documents and rotating JSONL logs
+http://127.0.0.1:8000/admin
 ```
 
-## Known limits
+### Phoenix trace lookup
 
-- This is a local operational backend, not a deployed production service.
-- JWT/OAuth, CORS, member claim listing, document download, pagination, and event streaming are
-  intentionally not implemented yet.
-- Recorded rendered evaluation is the primary twelve-case correctness gate. The live TC004 route
-  is bounded synthetic proof, not broad real-document accuracy validation.
-- No model-produced text is allowed to authorize payment or replace deterministic policy logic.
+```bash
+px span list \
+  --endpoint http://127.0.0.1:6006 \
+  --project plum-claims-local \
+  --trace-id <trace_id> \
+  --format pretty
+```
