@@ -64,6 +64,15 @@ async def test_sqladmin_requires_login_and_lists_identity_views_after_authentica
         )
         dashboard = await client.get("/admin/", follow_redirects=False)
         users = await client.get("/admin/user-row/list", follow_redirects=False)
+        claims = await client.get("/admin/claim-row/list", follow_redirects=False)
+        ocr_observations = await client.get(
+            "/admin/ocr-observation-row/list", follow_redirects=False
+        )
+        decision_records = await client.get(
+            "/admin/decision-record-row/list", follow_redirects=False
+        )
+        workflow_runs = await client.get("/admin/workflow-run-row/list", follow_redirects=False)
+        policy_versions = await client.get("/admin/policy-version-row/list", follow_redirects=False)
         logged_out = await client.get("/admin/logout", follow_redirects=False)
         protected_again = await client.get("/admin/", follow_redirects=False)
 
@@ -77,7 +86,17 @@ async def test_sqladmin_requires_login_and_lists_identity_views_after_authentica
     assert "User Roles" in dashboard.text
     assert "Member Links" in dashboard.text
     assert "Policy Members" in dashboard.text
+    assert "Claims" in dashboard.text
+    assert "OCR Observations" in dashboard.text
+    assert "Decision Records" in dashboard.text
+    assert "Workflow Runs" in dashboard.text
+    assert "Policy Versions" in dashboard.text
     assert users.status_code == 200
+    assert claims.status_code == 200
+    assert ocr_observations.status_code == 200
+    assert decision_records.status_code == 200
+    assert workflow_runs.status_code == 200
+    assert policy_versions.status_code == 200
     assert "member.emp001" in users.text
     assert logged_out.status_code == 302
     assert protected_again.status_code == 302
