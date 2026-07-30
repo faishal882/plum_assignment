@@ -1,7 +1,27 @@
 import { RuleTrace, OcrObservation } from "@/lib/claims-types";
 import { AmountTrace } from "./AmountTrace";
 import { resolvePolicyPath, resolveFactRefLabel } from "@/lib/policy-dictionary";
-import { CheckCircle, XCircle, AlertCircle, ArrowRight, Shield, FileText, Sparkles, ScrollText, Bookmark } from "lucide-react";
+import { Shield, FileText, Sparkles, ScrollText, Bookmark, ChevronRight, Code } from "lucide-react";
+
+interface InlineEvidenceJsonProps {
+  title: string;
+  data: unknown;
+}
+
+function InlineEvidenceJson({ title, data }: InlineEvidenceJsonProps) {
+  return (
+    <details className="group rounded-control border border-hairline bg-white/60 overflow-hidden">
+      <summary className="cursor-pointer select-none px-2.5 py-2 flex items-center gap-2 text-[10px] font-semibold text-copy hover:text-violet hover:bg-violet-pale/30 transition-colors">
+        <ChevronRight className="w-3.5 h-3.5 text-violet transition-transform group-open:rotate-90" />
+        <Code className="w-3.5 h-3.5" />
+        {title}
+      </summary>
+      <pre className="max-h-72 overflow-auto border-t border-hairline bg-darkContrast p-3 text-[10px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words font-mono">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    </details>
+  );
+}
 
 interface RuleTraceListProps {
   rules: RuleTrace[];
@@ -108,11 +128,26 @@ export function RuleTraceList({ rules, ocrObservations }: RuleTraceListProps) {
 
                       if (!obs) {
                         const factInfo = resolveFactRefLabel(ref);
+                        const evidenceJson = {
+                          reference: ref,
+                          resolved_label: factInfo.label,
+                          resolved_details: factInfo.details ?? null,
+                          reference_type: factInfo.iconType,
+                          rule: {
+                            sequence: rule.sequence ?? idx + 1,
+                            rule_id: rule.rule_id ?? null,
+                            status,
+                            reason_code: rule.reason_code ?? null,
+                            policy_path: rule.policy_path ?? null,
+                            inputs: rule.inputs ?? {},
+                            evidence_refs: rule.evidence_refs ?? [],
+                          },
+                        };
 
                         return (
                           <div
                             key={rIdx}
-                            className="p-3 rounded-card bg-teal/10 border border-teal/30 text-teal-950 text-xs neu-inset-sm space-y-1"
+                            className="p-3 rounded-card bg-teal/10 border border-teal/30 text-teal-950 text-xs neu-inset-sm space-y-2"
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-semibold text-teal-900 flex items-center gap-1.5">
@@ -131,6 +166,7 @@ export function RuleTraceList({ rules, ocrObservations }: RuleTraceListProps) {
                             <div className="text-[10px] text-teal-800/70 font-mono truncate pt-0.5 border-t border-teal/20">
                               Ref: <code>{ref}</code>
                             </div>
+                            <InlineEvidenceJson title="Evidence JSON" data={evidenceJson} />
                           </div>
                         );
                       }
@@ -178,6 +214,22 @@ export function RuleTraceList({ rules, ocrObservations }: RuleTraceListProps) {
                               </span>
                             )}
                           </div>
+                          <InlineEvidenceJson
+                            title="OCR Evidence JSON"
+                            data={{
+                              reference: ref,
+                              observation: obs,
+                              rule: {
+                                sequence: rule.sequence ?? idx + 1,
+                                rule_id: rule.rule_id ?? null,
+                                status,
+                                reason_code: rule.reason_code ?? null,
+                                policy_path: rule.policy_path ?? null,
+                                inputs: rule.inputs ?? {},
+                                evidence_refs: rule.evidence_refs ?? [],
+                              },
+                            }}
+                          />
                         </div>
                       );
                     })}
