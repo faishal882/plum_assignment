@@ -1,0 +1,1260 @@
+{
+  "artifact_schema": "claims-live-12-evaluation-report-v1",
+  "case_count": 12,
+  "cases": [
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "233b8e383283299deb44a9ce487e7f6faaa759c619703e841e42972ecf1e01a3",
+          "F001",
+          "F002",
+          "aefe57ad3c05d495240a666e793444fafca2eacabe5634b8e6614c892d1c2a7c"
+        ],
+        "reason_codes": [
+          "MISSING_REQUIRED_DOCUMENT"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC001",
+      "case_name": "Wrong Document Uploaded",
+      "expected": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "F001",
+          "F002"
+        ],
+        "reason_codes": [
+          "MISSING_REQUIRED_DOCUMENT"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [],
+      "passed": true
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "13f06653064f4d3628ae2b92e67b4d8578ce7caedaf92ffac01f03958c38b06a",
+          "73f3bef38d7775116a39a85c063e5ae92170f46bbf7a1f5aab6c7ffe553117ac",
+          "F003",
+          "F004"
+        ],
+        "reason_codes": [
+          "UNREADABLE_DOCUMENT"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC002",
+      "case_name": "Unreadable Document",
+      "expected": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "F003",
+          "F004"
+        ],
+        "reason_codes": [
+          "UNREADABLE_DOCUMENT"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [],
+      "passed": true
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "547992ec97af8760a1bdec8b83a59d8c3f799b9dc9bf6cb6bcae1f8b1e7cf749",
+          "87c84d087f1feb1176d5eb06193d1099c375963b560678c365e23c0c608fe054",
+          "9c23e6c91455779bb75382a40183100cfcb01cefcaed98a6ef184a7e39b5cb53",
+          "F005",
+          "F006",
+          "d8c5a429900c51f26a73f3243d402deef2210a4b5100c54dc86846dda2814d3f"
+        ],
+        "reason_codes": [
+          "PATIENT_IDENTITY_CONFLICT"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC003",
+      "case_name": "Documents Belong to Different Patients",
+      "expected": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "F005",
+          "F006"
+        ],
+        "reason_codes": [
+          "PATIENT_IDENTITY_CONFLICT"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [],
+      "passed": true
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "0d1d360687d37e2cc88cd3c0818193923fa33924e42901365cc49caf88d2ad3a",
+          "1534b8fba79e20ca9d49e898d765105f6da4f3d7144e0214b00e6c297031fe84",
+          "2eb940b288bd3475869e111ce94e4b8fde578e1bc37cb61f7086a1d95f0d8e63",
+          "4f3a1cb7fdc8f1ffbf2dfc3de1ffade1503ae6c5a9440c439453d354681821db",
+          "66688974654c06758b3a6569f447e0fb2b7ec5947642416069bf60023c22a4e9",
+          "6b2c49c07e3080b46aaca1a1488eeb2cb0a3b2f9a58d8dc573a13014f1dda2ba",
+          "7ee42e461bc744e34d001a4f19abbc114168e35783158a52d4f46c286aacf4f6",
+          "81d1af9f89c0c182bd4b312ce14cc25477015006311b062e776c710236f352de",
+          "82cd57866e4f425ed384190e51dd68a83ed0056b0eab2cb0e1fde01c722e368b",
+          "F007",
+          "F008",
+          "aadd32cc01fbc061fa7122176164e3b9de3df876d988ebfafe1ea5edd701ba02",
+          "c6a709e538d557aeb26d93285d421abc5229b4f9814814b9504ec2ce0247e2cb",
+          "c92fc307fca42e2555c0cc16426e4eb00a209984bd21efa4b5bba9337281c402",
+          "c9abaff22bc1fdb46f816f0378438b8e2b9ccfeea1d642fcbfdedbd0df1a4857",
+          "e17cd337242956cd8dfd7d4f79750bb6aa09d8cf58f78a0825f9eede2c5a5dcf"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC004",
+      "case_name": "Clean Consultation \u2014 Full Approval",
+      "expected": {
+        "adjudication": "APPROVED",
+        "approved_paise": 135000,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F007",
+          "F008"
+        ],
+        "reason_codes": [
+          "CATEGORY_COPAY_APPLIED"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "0511f7437edf7bd684dfaf39aa28f311bcba85960abaab603d8a27c657e87d54",
+          "1d5b0611c198b0fef9037781bca91da4ec6e63ae55c012387ff6fab904479c5d",
+          "1f78684cb83208ffc77844070629237d8accc4e1d888be5ad8bd17f15fc0d4aa",
+          "4301886f8d0037af1c1532cbce4dc806bd18c5602d2f4f75f252bc50ee6c7260",
+          "4fec01674fc081293a5aada92af08e9a756e09d32701457c319ce83d53e530c3",
+          "6e949031743c7bb4257bee9e7e3705db2f66091b7d41b92d40ce769f84daf815",
+          "895cfd3551b6881021106825e7f1134dfc0bbdb390510ff6cdb6ad2ef80d6bee",
+          "9e9a4e82b717c7c79f616c638d65b363b1c53c40b6333afee3232dd740e6cd2f",
+          "F009",
+          "F010",
+          "ab448739c2f39c237337721ac522a20e2e461253e9564f1fd2c5440dd0a867a8",
+          "c4cae1a0a7bed5e66a293a0adff2d1917218a66fdb28257b8850e3eac42f6f40",
+          "ec5be79ce0c53b73ec47f6ad253d87ac40c10f7b8ba418bd28881841ee3600cd"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC005",
+      "case_name": "Waiting Period \u2014 Diabetes",
+      "expected": {
+        "adjudication": "REJECTED",
+        "approved_paise": 0,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F009",
+          "F010"
+        ],
+        "reason_codes": [
+          "WAITING_PERIOD"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "3de360e158db7599ec0d20adf2a1f39a5bdf3284e69e4c5ec3475a9d535005b0",
+          "879395cf570317dcdac5e33e0460a5b35f57b2b4620db3e4eed4280ab220cd42",
+          "9a0fb143dc88b9b5a6da4eacfaa326dceb32a47bfca607df3830514b54f1c3df",
+          "F011",
+          "d54a9fc124f281b6ef0bd33cda122b819a6a9f7294164c0a536c4f16b1358ac0",
+          "daf4343e3dbb75bde3eee562294f0848e5208df10deec35a33f88d067939c6a4",
+          "db4f0e6b284c5a8069a5b12acc2a562be4deb3e7deaea46e4b9657873f6f946a"
+        ],
+        "reason_codes": [
+          "DENTAL_PROCEDURE_EVIDENCE_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC006",
+      "case_name": "Dental Partial Approval \u2014 Cosmetic Exclusion",
+      "expected": {
+        "adjudication": "PARTIAL",
+        "approved_paise": 800000,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F011"
+        ],
+        "reason_codes": [
+          "DENTAL_LINE_ITEM_EXCLUDED"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "1f81a44eeaa8a58014d918fcce11a8a3ae51e97fad4c15b4c3249480db5a5008",
+          "2261177cc42e39621bc2273eb68b5d99462b29bbe23fec72930df06782b90968",
+          "287902d762c8908e975f705b38be91af5fd9dc14be19b7b9803b6798e319637d",
+          "2e894115c72ec8fca2880c1cff2c3f14e77849a09f6a2fb44eda27ee784cd6cb",
+          "2fe897b03dfdc7b66f1db41f6263be460286bb207484d31e4cf1d86d928c1f6e",
+          "3a2bdaca66e3466106b72a8daea3136a312b203d15d87b23236ced75d89c0e59",
+          "4e7d3f352b2e0b52b72645d04e91c7af0181dadcfab2d167f4f086640044786f",
+          "69dfd0ea178f70828fb070888e7acfa486b836c13f674ca0aac49b28c0f52704",
+          "79d3471bbe7d7b500d6e04547e342c3eafbcfdb872fa53860ebaec42976d5371",
+          "7a4608e1d96ba0ee8e7c76c6fbe66b392da37df68ab33c432e9abdae78b27dba",
+          "7f18c8a6019b1656dbe29f499303a827ad064d303ba9a08745fb1d68a0c118df",
+          "F012",
+          "F013",
+          "F014",
+          "b0d9ff57db7cd12f1a0281e99b3694710cfa0caec5eeed81b3069838fe98e1ff",
+          "faf2a78e13352c0823a2a0b10a4fda49518d9d768e4278e24bce17b2973f46a0"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC007",
+      "case_name": "MRI Without Pre-Authorization",
+      "expected": {
+        "adjudication": "REJECTED",
+        "approved_paise": 0,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F012",
+          "F013",
+          "F014"
+        ],
+        "reason_codes": [
+          "PRE_AUTH_MISSING"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "06e290abe0c9e75ede922abdc92b75a7af2a764c8b3c0c9f0d023b38db166651",
+          "3189d0475046b30a52fbdfd12ce46e16c0d0f1e3d681dc5bca45b9990e66777f",
+          "4cff3826b7890b668cbd6c4fefd7903177d87d943be3ca9e15257d0acbdfd133",
+          "6979a16464a942c159a97cf304068c18d0ad23289dcb44ac2ae1d8bf1dde4207",
+          "769c545e8eeba4332635bf28756dd34234adaaf7cd21f119719375bafdf59dda",
+          "8b21d6497bd6388918d65bcfeaf6907cc9eee2d16140ba07048b7f762374e236",
+          "9018ff28ae135a1c7afa9c1290863bf377c0ecff46f98fcfc1cd7b89497309d6",
+          "91766417f73ebd2f83db88f53d582973c2c2e9c971c87439c6b3827255906bc3",
+          "F015",
+          "F016",
+          "c12c367e97927d044d23f2f3d41aa9652c00e7b4e30d720306849cb8fe5060d8",
+          "c1cd32e9dfde7ba38f97774cce2140ecdcf69515ac131b689d466a63df644cef"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC008",
+      "case_name": "Per-Claim Limit Exceeded",
+      "expected": {
+        "adjudication": "REJECTED",
+        "approved_paise": 0,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F015",
+          "F016"
+        ],
+        "reason_codes": [
+          "PER_CLAIM_EXCEEDED"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "2c3931a2c9323eea06ae9af9866c097fb99b362fc244e06fa0d955b7cfdc64bb",
+          "597ff193ebf23469befb9eacc9986934c134c7cba0f8a09606e46138ee0f31cc",
+          "604d7d176a9fdcb2e2ed82af5f7038a49619ffa522ad7cb0856c19b89f8d8383",
+          "8c98291b734d130aa910c53d9c3ac5fb81fdf263802ca57bd338611ed6fdecf4",
+          "9ab355cc6e32a3345e1768a80ad15092c199e40575bb3f2f169f40f18370d55f",
+          "F017",
+          "F018",
+          "a20816765b43f0dcd31bef294e376aaabf4205fb8299b9b3c9ccfccf92a1531e",
+          "c42198f97cc076847aa8936008a23c593959eea734c067b0ee082abeff873c0f",
+          "ee5325e605c97635324b374e1b790240aa13d503cdf7f1e25c7dfa31fb9b61eb"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC009",
+      "case_name": "Fraud Signal \u2014 Multiple Same-Day Claims",
+      "expected": {
+        "adjudication": "MANUAL_REVIEW",
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "IN_REVIEW",
+        "provenance": [
+          "F017",
+          "F018"
+        ],
+        "reason_codes": [
+          "SAME_DAY_CLAIM_VELOCITY"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "0c9bce486511ef362c7670bca9ab3d048384796f7b58b6f2500ee0e2d2a9b9e1",
+          "10eabd7dda1700dabf02f950a5d4495ae008cef33f42f6a4160facd6f62655ef",
+          "1708bf13a82128326f1bfdc74a564ada6aeb3fcc856dcc051ac91e6247db4a89",
+          "18906ef88f3e4c8674c66edd0b09e6c244774bb5c8305500309138622985023a",
+          "3425f28629bdbb22d0a595b9ce18ac475e0fabc3bd9e2038f596acf591ef1a60",
+          "4685d39c828d3aa9a1b4c29dd483ad0b3176fdd36e9abdf81a2f04316739b494",
+          "5aaf4b8bce5e6ce5eb0f2f39333995ce1c6e5da5c78c54aa07d8f09af1ade1c2",
+          "80e0a5738507447dab47840df63e10178c467bd623823ce16a6e98398a50a798",
+          "F019",
+          "F020",
+          "afe22690155f1783de841fb16c2b7b9a854b81abef2506ebc15fcd25849f6e96",
+          "cc0fb5f1967ebf4179bc55674edd457e7ac062da37e8a99996e5f976522503fe",
+          "e09f14e7e3ba147ae21785d51be592d07c5eac2abcad775f24dfa9a786bef21e",
+          "f727e2d4da2b15da8f330e7dc1a5ec983bcb3e109432c02b1317dab5f44063f4"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC010",
+      "case_name": "Network Hospital \u2014 Discount Applied",
+      "expected": {
+        "adjudication": "APPROVED",
+        "approved_paise": 324000,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F019",
+          "F020"
+        ],
+        "reason_codes": [
+          "NETWORK_DISCOUNT_APPLIED",
+          "CATEGORY_COPAY_APPLIED"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": "APPROVED",
+        "approved_paise": 400000,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "028d693daf8e77db474ac18b210fb1937e34d170f56d04f6ec87583e956267a3",
+          "0df0526c08e4303a9a1b53634133701293466c77ecc0ddbfad0d9264ed8c23ef",
+          "1128009d902fc6f18cdba456fbe70ceb53c77aa30587263e04d8ab5115f521c3",
+          "12376a91fd7974d0c4589a3439e632b048033c22bfbc6c387820b32846575066",
+          "17e74666f0835bacad06cafffc06d277ce640f119a368f626cc4f4581b10325c",
+          "20d0aaeb0820ee79134055787e6e3ba3981bf0a7683468b60e75232ee66c25f2",
+          "5523cc3118b19c9bd0938a4bdbf4b0ef3640c9f1d0b95814673faea0d3e4f96e",
+          "5e37ee907bdf53a7ddf97bad04cf841feecb0150acc2e7550e857f6e2a0e2897",
+          "65a9f39b1498f3a4f3f97aaf27c322e8e87e7cd8fceef73b926c75e74785df1b",
+          "66e5bf8dd51712cc638db204b4f4443cdeee0a90546c6c0d62e6dffc3166606a",
+          "9e28f8f077871cf0bcb55a081406e3aab9ac11cc9e9c92df12838103db967f35",
+          "F021",
+          "F022",
+          "a575f5a75232534832f22fabbe90cb19c3375f27b3844bc66f8e86a268c393f3",
+          "a84e794415803f47487ef29d2afcd5c85890997c4e53efefdc2b0e10a95820aa",
+          "aed831e365359c419799aa239cd9ca83a19fb865b70bce885c5a72f3c6a4e420",
+          "b8b50a88d522798596890bb56cad47b03ed67db0ff391ae61fa0a028edd4eb44",
+          "dee22da8b03c2a7504e6d0183cfc653cb9345ac5a800e603aa924a54c29fe9d0",
+          "document-triage:20c025e4-f96d-41e3-94d6-6f64a12eb85e",
+          "document-triage:43c08a28-5b10-41fe-8e3b-b95ef546ad9f",
+          "e679df469bd315f3bf3399eb722368590331d4392c64626ea5787c47180f7128",
+          "f5c4fc857a835e973a371fc0d5770715c7ded9c8869c801da97c3b1bbca37919",
+          "fc3459d928a33359e5da04e0249e7f11e23cf1027de728553ea02601f53d3451",
+          "member-version:b2fc81fb-a5b3-4b2f-acac-0d5e76bd82c5",
+          "utilization:e8cad256-bc57-452f-950e-acc2b494fdab"
+        ],
+        "reason_codes": [
+          "CATEGORY_COPAY_APPLIED",
+          "FINAL_APPROVED",
+          "MEMBER_ELIGIBLE",
+          "REQUIRED_DOCUMENTS_PRESENT",
+          "WAITING_PERIOD_SATISFIED",
+          "WITHIN_ANNUAL_OPD_REMAINING",
+          "WITHIN_CATEGORY_LIMIT"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC011",
+      "case_name": "Component Failure \u2014 Graceful Degradation",
+      "expected": {
+        "adjudication": "APPROVED",
+        "approved_paise": 400000,
+        "assumptions": [],
+        "failures": [
+          "ANOMALY_ENRICHMENT"
+        ],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F021",
+          "F022"
+        ],
+        "reason_codes": [],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "failures"
+      ],
+      "passed": false
+    },
+    {
+      "actual": {
+        "adjudication": null,
+        "approved_paise": null,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "ACTION_REQUIRED",
+        "provenance": [
+          "472261a9811a216eeb24a50a8191799ba26d417de6e906a76ff2d85080c22860",
+          "5262f4cdcb6e9620820675b4d6710355c373db6fe466ef854cf3e9f2d7dfd9ac",
+          "5474169494aa310da977dee01edf4c6445bf3bc3ff7e1267819808aa4426ee96",
+          "5de7891c42226f2be6d0c2ee2f81c48cf7b39e08f752e0b730678efc5e31dad3",
+          "81d4e56e4b0ed1adb360dc6f8cc5671ec0580c13d279633ee0c2d22550d44c15",
+          "8351035f3ae629e9ac3f87aaba2f60428e1b65f8516c6fbd83ab6d667e804f28",
+          "F023",
+          "F024",
+          "b2633c95af8d287b81590ac162e97c16e0f9c974338e8b2ce64122a6b56d8617",
+          "be7017bd4560350d33cec115bfdeffa502885cccafe35e796780f50ca8f1007c",
+          "c47018aab272cd4f0d82cd8d62c4231b8d608596f83f8755f49e8489517a95a2",
+          "df3d5f8fe920ef9880d461e78bcf831608710b3ba75caa77dab85220e59b93d0"
+        ],
+        "reason_codes": [
+          "EVIDENCE_RECONCILIATION_REQUIRED"
+        ],
+        "trace_complete": true
+      },
+      "case_id": "TC012",
+      "case_name": "Excluded Treatment",
+      "expected": {
+        "adjudication": "REJECTED",
+        "approved_paise": 0,
+        "assumptions": [],
+        "failures": [],
+        "lifecycle": "DECIDED",
+        "provenance": [
+          "F023",
+          "F024"
+        ],
+        "reason_codes": [
+          "EXCLUDED_CONDITION"
+        ],
+        "trace_complete": true
+      },
+      "mismatches": [
+        "lifecycle",
+        "adjudication",
+        "approved_paise",
+        "reason_codes"
+      ],
+      "passed": false
+    }
+  ],
+  "command": "CLAIMS_RUN_LIVE_AWS=1 CLAIMS_EXECUTION_PROFILE=LIVE_INTELLIGENCE uv run pytest tests/live/test_live_evaluation_gate.py -q",
+  "execution": [
+    {
+      "actual": {
+        "case_id": "TC001",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "233b8e383283299deb44a9ce487e7f6faaa759c619703e841e42972ecf1e01a3",
+            "F001",
+            "F002",
+            "aefe57ad3c05d495240a666e793444fafca2eacabe5634b8e6614c892d1c2a7c"
+          ],
+          "reason_codes": [
+            "MISSING_REQUIRED_DOCUMENT"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC001",
+      "claim_id": "798b22e7-07b5-4d4b-97e1-e515957e971a",
+      "duration_seconds": 10.32,
+      "error": null,
+      "trace": {
+        "span_count": 8,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "50bcda1873aff669e367e25a5ae52bf2",
+          "f0f8cde58c5f2beed6012f8974c65d6e"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC002",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "13f06653064f4d3628ae2b92e67b4d8578ce7caedaf92ffac01f03958c38b06a",
+            "73f3bef38d7775116a39a85c063e5ae92170f46bbf7a1f5aab6c7ffe553117ac",
+            "F003",
+            "F004"
+          ],
+          "reason_codes": [
+            "UNREADABLE_DOCUMENT"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC002",
+      "claim_id": "e67cf299-7deb-4bf8-8a64-698965f96d0e",
+      "duration_seconds": 11.29,
+      "error": null,
+      "trace": {
+        "span_count": 8,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "1eccd27d4752a7050ab25ccd57c4a949",
+          "f82cf2aa17f2a8c76421bbf55124f608"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC003",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "547992ec97af8760a1bdec8b83a59d8c3f799b9dc9bf6cb6bcae1f8b1e7cf749",
+            "87c84d087f1feb1176d5eb06193d1099c375963b560678c365e23c0c608fe054",
+            "9c23e6c91455779bb75382a40183100cfcb01cefcaed98a6ef184a7e39b5cb53",
+            "F005",
+            "F006",
+            "d8c5a429900c51f26a73f3243d402deef2210a4b5100c54dc86846dda2814d3f"
+          ],
+          "reason_codes": [
+            "PATIENT_IDENTITY_CONFLICT"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC003",
+      "claim_id": "2d0e9c02-8ee9-4f58-afa9-e37be2e4f78b",
+      "duration_seconds": 9.34,
+      "error": null,
+      "trace": {
+        "span_count": 8,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "5dc0d828e670ffc972e86c9557407bc3",
+          "8c6c85d334282e92191b05cc47524a57"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC004",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "0d1d360687d37e2cc88cd3c0818193923fa33924e42901365cc49caf88d2ad3a",
+            "1534b8fba79e20ca9d49e898d765105f6da4f3d7144e0214b00e6c297031fe84",
+            "2eb940b288bd3475869e111ce94e4b8fde578e1bc37cb61f7086a1d95f0d8e63",
+            "4f3a1cb7fdc8f1ffbf2dfc3de1ffade1503ae6c5a9440c439453d354681821db",
+            "66688974654c06758b3a6569f447e0fb2b7ec5947642416069bf60023c22a4e9",
+            "6b2c49c07e3080b46aaca1a1488eeb2cb0a3b2f9a58d8dc573a13014f1dda2ba",
+            "7ee42e461bc744e34d001a4f19abbc114168e35783158a52d4f46c286aacf4f6",
+            "81d1af9f89c0c182bd4b312ce14cc25477015006311b062e776c710236f352de",
+            "82cd57866e4f425ed384190e51dd68a83ed0056b0eab2cb0e1fde01c722e368b",
+            "F007",
+            "F008",
+            "aadd32cc01fbc061fa7122176164e3b9de3df876d988ebfafe1ea5edd701ba02",
+            "c6a709e538d557aeb26d93285d421abc5229b4f9814814b9504ec2ce0247e2cb",
+            "c92fc307fca42e2555c0cc16426e4eb00a209984bd21efa4b5bba9337281c402",
+            "c9abaff22bc1fdb46f816f0378438b8e2b9ccfeea1d642fcbfdedbd0df1a4857",
+            "e17cd337242956cd8dfd7d4f79750bb6aa09d8cf58f78a0825f9eede2c5a5dcf"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC004",
+      "claim_id": "61792fdc-3c75-4d16-89bb-f11a50518317",
+      "duration_seconds": 49.98,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "b6dccd70b1d8ebab70841be8ad211ef6",
+          "e59c26573520d583aea110cf4d9de5df"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC005",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "0511f7437edf7bd684dfaf39aa28f311bcba85960abaab603d8a27c657e87d54",
+            "1d5b0611c198b0fef9037781bca91da4ec6e63ae55c012387ff6fab904479c5d",
+            "1f78684cb83208ffc77844070629237d8accc4e1d888be5ad8bd17f15fc0d4aa",
+            "4301886f8d0037af1c1532cbce4dc806bd18c5602d2f4f75f252bc50ee6c7260",
+            "4fec01674fc081293a5aada92af08e9a756e09d32701457c319ce83d53e530c3",
+            "6e949031743c7bb4257bee9e7e3705db2f66091b7d41b92d40ce769f84daf815",
+            "895cfd3551b6881021106825e7f1134dfc0bbdb390510ff6cdb6ad2ef80d6bee",
+            "9e9a4e82b717c7c79f616c638d65b363b1c53c40b6333afee3232dd740e6cd2f",
+            "F009",
+            "F010",
+            "ab448739c2f39c237337721ac522a20e2e461253e9564f1fd2c5440dd0a867a8",
+            "c4cae1a0a7bed5e66a293a0adff2d1917218a66fdb28257b8850e3eac42f6f40",
+            "ec5be79ce0c53b73ec47f6ad253d87ac40c10f7b8ba418bd28881841ee3600cd"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC005",
+      "claim_id": "dbe48723-c619-4273-af12-d1b61cfa2232",
+      "duration_seconds": 42.48,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "3310fec8901ff33088a04e2eaa49b061",
+          "8149bb670c3aedf5ca74bd5086b42127"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC006",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "3de360e158db7599ec0d20adf2a1f39a5bdf3284e69e4c5ec3475a9d535005b0",
+            "879395cf570317dcdac5e33e0460a5b35f57b2b4620db3e4eed4280ab220cd42",
+            "9a0fb143dc88b9b5a6da4eacfaa326dceb32a47bfca607df3830514b54f1c3df",
+            "F011",
+            "d54a9fc124f281b6ef0bd33cda122b819a6a9f7294164c0a536c4f16b1358ac0",
+            "daf4343e3dbb75bde3eee562294f0848e5208df10deec35a33f88d067939c6a4",
+            "db4f0e6b284c5a8069a5b12acc2a562be4deb3e7deaea46e4b9657873f6f946a"
+          ],
+          "reason_codes": [
+            "DENTAL_PROCEDURE_EVIDENCE_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC006",
+      "claim_id": "6e1de761-0f06-4871-b81d-28bae0fb95a6",
+      "duration_seconds": 19.75,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "ee1edea34bfccb529a6bb464dcde669b",
+          "eeb58ef85ffb8186cd43913a16561ee2"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC007",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "1f81a44eeaa8a58014d918fcce11a8a3ae51e97fad4c15b4c3249480db5a5008",
+            "2261177cc42e39621bc2273eb68b5d99462b29bbe23fec72930df06782b90968",
+            "287902d762c8908e975f705b38be91af5fd9dc14be19b7b9803b6798e319637d",
+            "2e894115c72ec8fca2880c1cff2c3f14e77849a09f6a2fb44eda27ee784cd6cb",
+            "2fe897b03dfdc7b66f1db41f6263be460286bb207484d31e4cf1d86d928c1f6e",
+            "3a2bdaca66e3466106b72a8daea3136a312b203d15d87b23236ced75d89c0e59",
+            "4e7d3f352b2e0b52b72645d04e91c7af0181dadcfab2d167f4f086640044786f",
+            "69dfd0ea178f70828fb070888e7acfa486b836c13f674ca0aac49b28c0f52704",
+            "79d3471bbe7d7b500d6e04547e342c3eafbcfdb872fa53860ebaec42976d5371",
+            "7a4608e1d96ba0ee8e7c76c6fbe66b392da37df68ab33c432e9abdae78b27dba",
+            "7f18c8a6019b1656dbe29f499303a827ad064d303ba9a08745fb1d68a0c118df",
+            "F012",
+            "F013",
+            "F014",
+            "b0d9ff57db7cd12f1a0281e99b3694710cfa0caec5eeed81b3069838fe98e1ff",
+            "faf2a78e13352c0823a2a0b10a4fda49518d9d768e4278e24bce17b2973f46a0"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC007",
+      "claim_id": "94976c71-94c7-41d4-9746-bde49dd4285f",
+      "duration_seconds": 54.95,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "889e01d457835e90b6f1fbafa066e942",
+          "f93a5456c257690474f472f6338af9b6"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC008",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "06e290abe0c9e75ede922abdc92b75a7af2a764c8b3c0c9f0d023b38db166651",
+            "3189d0475046b30a52fbdfd12ce46e16c0d0f1e3d681dc5bca45b9990e66777f",
+            "4cff3826b7890b668cbd6c4fefd7903177d87d943be3ca9e15257d0acbdfd133",
+            "6979a16464a942c159a97cf304068c18d0ad23289dcb44ac2ae1d8bf1dde4207",
+            "769c545e8eeba4332635bf28756dd34234adaaf7cd21f119719375bafdf59dda",
+            "8b21d6497bd6388918d65bcfeaf6907cc9eee2d16140ba07048b7f762374e236",
+            "9018ff28ae135a1c7afa9c1290863bf377c0ecff46f98fcfc1cd7b89497309d6",
+            "91766417f73ebd2f83db88f53d582973c2c2e9c971c87439c6b3827255906bc3",
+            "F015",
+            "F016",
+            "c12c367e97927d044d23f2f3d41aa9652c00e7b4e30d720306849cb8fe5060d8",
+            "c1cd32e9dfde7ba38f97774cce2140ecdcf69515ac131b689d466a63df644cef"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC008",
+      "claim_id": "e4735b81-c9b0-4ade-b123-6cfac512e073",
+      "duration_seconds": 36.8,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "96e1ae7afeb95a310dfc0c20f0425f89",
+          "b848668cb5bf1477b7977b4e6769a58f"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC009",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "2c3931a2c9323eea06ae9af9866c097fb99b362fc244e06fa0d955b7cfdc64bb",
+            "597ff193ebf23469befb9eacc9986934c134c7cba0f8a09606e46138ee0f31cc",
+            "604d7d176a9fdcb2e2ed82af5f7038a49619ffa522ad7cb0856c19b89f8d8383",
+            "8c98291b734d130aa910c53d9c3ac5fb81fdf263802ca57bd338611ed6fdecf4",
+            "9ab355cc6e32a3345e1768a80ad15092c199e40575bb3f2f169f40f18370d55f",
+            "F017",
+            "F018",
+            "a20816765b43f0dcd31bef294e376aaabf4205fb8299b9b3c9ccfccf92a1531e",
+            "c42198f97cc076847aa8936008a23c593959eea734c067b0ee082abeff873c0f",
+            "ee5325e605c97635324b374e1b790240aa13d503cdf7f1e25c7dfa31fb9b61eb"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC009",
+      "claim_id": "49ef5196-bc67-4e17-bdb8-eb39600863cb",
+      "duration_seconds": 31.18,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "bfab3d2d104897993ac3bd09d0dafb46",
+          "f26d5fd04cfdbef5d786927e1a47eafa"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC010",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "0c9bce486511ef362c7670bca9ab3d048384796f7b58b6f2500ee0e2d2a9b9e1",
+            "10eabd7dda1700dabf02f950a5d4495ae008cef33f42f6a4160facd6f62655ef",
+            "1708bf13a82128326f1bfdc74a564ada6aeb3fcc856dcc051ac91e6247db4a89",
+            "18906ef88f3e4c8674c66edd0b09e6c244774bb5c8305500309138622985023a",
+            "3425f28629bdbb22d0a595b9ce18ac475e0fabc3bd9e2038f596acf591ef1a60",
+            "4685d39c828d3aa9a1b4c29dd483ad0b3176fdd36e9abdf81a2f04316739b494",
+            "5aaf4b8bce5e6ce5eb0f2f39333995ce1c6e5da5c78c54aa07d8f09af1ade1c2",
+            "80e0a5738507447dab47840df63e10178c467bd623823ce16a6e98398a50a798",
+            "F019",
+            "F020",
+            "afe22690155f1783de841fb16c2b7b9a854b81abef2506ebc15fcd25849f6e96",
+            "cc0fb5f1967ebf4179bc55674edd457e7ac062da37e8a99996e5f976522503fe",
+            "e09f14e7e3ba147ae21785d51be592d07c5eac2abcad775f24dfa9a786bef21e",
+            "f727e2d4da2b15da8f330e7dc1a5ec983bcb3e109432c02b1317dab5f44063f4"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC010",
+      "claim_id": "8b828439-6bf2-43c2-8977-197ea179a32c",
+      "duration_seconds": 59.59,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "2d7bc02b253fb1e66db705cb463cadee",
+          "59b300dbc392da4e63864cce48fc95b0"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC011",
+        "outcome": {
+          "adjudication": "APPROVED",
+          "approved_paise": 400000,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "DECIDED",
+          "provenance": [
+            "028d693daf8e77db474ac18b210fb1937e34d170f56d04f6ec87583e956267a3",
+            "0df0526c08e4303a9a1b53634133701293466c77ecc0ddbfad0d9264ed8c23ef",
+            "1128009d902fc6f18cdba456fbe70ceb53c77aa30587263e04d8ab5115f521c3",
+            "12376a91fd7974d0c4589a3439e632b048033c22bfbc6c387820b32846575066",
+            "17e74666f0835bacad06cafffc06d277ce640f119a368f626cc4f4581b10325c",
+            "20d0aaeb0820ee79134055787e6e3ba3981bf0a7683468b60e75232ee66c25f2",
+            "5523cc3118b19c9bd0938a4bdbf4b0ef3640c9f1d0b95814673faea0d3e4f96e",
+            "5e37ee907bdf53a7ddf97bad04cf841feecb0150acc2e7550e857f6e2a0e2897",
+            "65a9f39b1498f3a4f3f97aaf27c322e8e87e7cd8fceef73b926c75e74785df1b",
+            "66e5bf8dd51712cc638db204b4f4443cdeee0a90546c6c0d62e6dffc3166606a",
+            "9e28f8f077871cf0bcb55a081406e3aab9ac11cc9e9c92df12838103db967f35",
+            "F021",
+            "F022",
+            "a575f5a75232534832f22fabbe90cb19c3375f27b3844bc66f8e86a268c393f3",
+            "a84e794415803f47487ef29d2afcd5c85890997c4e53efefdc2b0e10a95820aa",
+            "aed831e365359c419799aa239cd9ca83a19fb865b70bce885c5a72f3c6a4e420",
+            "b8b50a88d522798596890bb56cad47b03ed67db0ff391ae61fa0a028edd4eb44",
+            "dee22da8b03c2a7504e6d0183cfc653cb9345ac5a800e603aa924a54c29fe9d0",
+            "document-triage:20c025e4-f96d-41e3-94d6-6f64a12eb85e",
+            "document-triage:43c08a28-5b10-41fe-8e3b-b95ef546ad9f",
+            "e679df469bd315f3bf3399eb722368590331d4392c64626ea5787c47180f7128",
+            "f5c4fc857a835e973a371fc0d5770715c7ded9c8869c801da97c3b1bbca37919",
+            "fc3459d928a33359e5da04e0249e7f11e23cf1027de728553ea02601f53d3451",
+            "member-version:b2fc81fb-a5b3-4b2f-acac-0d5e76bd82c5",
+            "utilization:e8cad256-bc57-452f-950e-acc2b494fdab"
+          ],
+          "reason_codes": [
+            "CATEGORY_COPAY_APPLIED",
+            "FINAL_APPROVED",
+            "MEMBER_ELIGIBLE",
+            "REQUIRED_DOCUMENTS_PRESENT",
+            "WAITING_PERIOD_SATISFIED",
+            "WITHIN_ANNUAL_OPD_REMAINING",
+            "WITHIN_CATEGORY_LIMIT"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC011",
+      "claim_id": "96309534-83ff-48ba-bf59-4be0df0155a3",
+      "duration_seconds": 29.48,
+      "error": null,
+      "trace": {
+        "span_count": 13,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.adjudicate",
+          "claim.workflow.commit_decision",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "0d003c0cb96e45fb148f444a799c515e",
+          "a1adecfa450079132d3b20fac3ccf3e1"
+        ]
+      }
+    },
+    {
+      "actual": {
+        "case_id": "TC012",
+        "outcome": {
+          "adjudication": null,
+          "approved_paise": null,
+          "assumptions": [],
+          "failures": [],
+          "lifecycle": "ACTION_REQUIRED",
+          "provenance": [
+            "472261a9811a216eeb24a50a8191799ba26d417de6e906a76ff2d85080c22860",
+            "5262f4cdcb6e9620820675b4d6710355c373db6fe466ef854cf3e9f2d7dfd9ac",
+            "5474169494aa310da977dee01edf4c6445bf3bc3ff7e1267819808aa4426ee96",
+            "5de7891c42226f2be6d0c2ee2f81c48cf7b39e08f752e0b730678efc5e31dad3",
+            "81d4e56e4b0ed1adb360dc6f8cc5671ec0580c13d279633ee0c2d22550d44c15",
+            "8351035f3ae629e9ac3f87aaba2f60428e1b65f8516c6fbd83ab6d667e804f28",
+            "F023",
+            "F024",
+            "b2633c95af8d287b81590ac162e97c16e0f9c974338e8b2ce64122a6b56d8617",
+            "be7017bd4560350d33cec115bfdeffa502885cccafe35e796780f50ca8f1007c",
+            "c47018aab272cd4f0d82cd8d62c4231b8d608596f83f8755f49e8489517a95a2",
+            "df3d5f8fe920ef9880d461e78bcf831608710b3ba75caa77dab85220e59b93d0"
+          ],
+          "reason_codes": [
+            "EVIDENCE_RECONCILIATION_REQUIRED"
+          ],
+          "trace_complete": true
+        }
+      },
+      "case_id": "TC012",
+      "claim_id": "78beab47-c183-450c-bbd1-7b7abd9cf2be",
+      "duration_seconds": 43.8,
+      "error": null,
+      "trace": {
+        "span_count": 12,
+        "span_names": [
+          "api.claim_submitted",
+          "claim.workflow",
+          "claim.workflow.commit_member_action",
+          "claim.workflow.discover_documents",
+          "claim.workflow.extract_evidence",
+          "claim.workflow.load_claim",
+          "claim.workflow.media_inspect",
+          "claim.workflow.ocr_documents",
+          "claim.workflow.reconcile_casefile",
+          "claim.workflow.render_documents",
+          "claim.workflow.triage_documents"
+        ],
+        "trace_ids": [
+          "332e0d27eb0de9f5e55f1c1eadb319a3",
+          "6247f9ac208cc53c214f114b4354b635"
+        ]
+      }
+    }
+  ],
+  "failed_case_count": 9,
+  "generated_at": "2026-07-30T16:23:56.798280+00:00",
+  "limitations": [
+    "Live providers may produce variable output and safe failures.",
+    "Inputs are synthetic assignment documents; no production PHI was used.",
+    "This report is not the deterministic recorded acceptance gate."
+  ],
+  "model_id": "deepseek.v3.2",
+  "passed": false,
+  "passed_case_count": 3,
+  "provider_mode": "LIVE_INTELLIGENCE",
+  "providers": [
+    "AMAZON_TEXTRACT",
+    "AMAZON_BEDROCK"
+  ]
+}
