@@ -1,0 +1,2 @@
+class UnsafeCasefileError(ValueError):
+    pass
