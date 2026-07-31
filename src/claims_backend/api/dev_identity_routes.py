@@ -20,6 +20,7 @@ from claims_backend.infrastructure.postgres.models import (
     UserMemberLinkRow,
     UserRoleRow,
     UserRow,
+    UtilizationSnapshotRow,
 )
 from claims_backend.runtime.profiles import ExecutionProfile
 
@@ -125,13 +126,13 @@ async def create_dev_identity(
                     },
                 )
             member_id = await _next_employee_id(session)
-            policy_source_id = await session.scalar(
-                select(PolicyVersionRow.policy_source_id).where(
+            active_policy = await session.scalar(
+                select(PolicyVersionRow).where(
                     PolicyVersionRow.policy_id == "PLUM_GHI_2024",
                     PolicyVersionRow.status == "ACTIVE",
                 )
             )
-            if policy_source_id is None:
+            if active_policy is None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -181,7 +182,7 @@ async def create_dev_identity(
                 SetupImportRow(
                     id=import_id,
                     policy_id="PLUM_GHI_2024",
-                    policy_source_id=policy_source_id,
+                    policy_source_id=active_policy.policy_source_id,
                     member_data_source_name=f"local-demo-identity:{username}",
                     member_data_sha256=payload_sha,
                     member_data_bytes=payload_bytes,
@@ -211,6 +212,21 @@ async def create_dev_identity(
                     created_at=now,
                 )
             )
+            period_start, period_end = _policy_period(active_policy)
+            session.add(
+                UtilizationSnapshotRow(
+                    id=uuid4(),
+                    setup_import_id=import_id,
+                    member_id=member_row_id,
+                    period_start=period_start,
+                    period_end=period_end,
+                    used_paise=0,
+                    currency="INR",
+                    as_of_date=command.join_date,
+                    source_pointer="/local_demo_identity/utilization",
+                    created_at=now,
+                )
+            )
     except IntegrityError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -227,6 +243,17 @@ async def create_dev_identity(
         member_id=member_id,
         roles=[Role.MEMBER.value],
     )
+
+
+def _policy_period(active_policy: PolicyVersionRow) -> tuple[date, date]:
+    ir = active_policy.ir or {}
+    effective_from = ir.get("effective_from")
+    effective_to = ir.get("effective_to")
+    start = (
+        date.fromisoformat(effective_from) if isinstance(effective_from, str) else date(2024, 4, 1)
+    )
+    end = date.fromisoformat(effective_to) if isinstance(effective_to, str) else date(2025, 3, 31)
+    return start, end
 
 
 async def _next_employee_id(session: AsyncSession) -> str:

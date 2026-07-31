@@ -7,7 +7,12 @@ from sqlalchemy import select
 from claims_backend.api.app import create_app
 from claims_backend.config import Settings
 from claims_backend.infrastructure.postgres.identity import PostgresIdentityProvider
-from claims_backend.infrastructure.postgres.models import MemberRow, MemberVersionRow, UserRow
+from claims_backend.infrastructure.postgres.models import (
+    MemberRow,
+    MemberVersionRow,
+    UserRow,
+    UtilizationSnapshotRow,
+)
 from claims_backend.runtime.profiles import ExecutionProfile
 
 
@@ -83,10 +88,19 @@ async def test_dev_identity_creator_mints_claim_ready_member_identity(
                 select(MemberVersionRow).where(MemberVersionRow.member_id == member.id)
             )
         )
+        utilization = (
+            None
+            if member is None
+            else await session.scalar(
+                select(UtilizationSnapshotRow).where(UtilizationSnapshotRow.member_id == member.id)
+            )
+        )
         principal = await PostgresIdentityProvider(session).resolve(username)
     assert user is not None
     assert member is not None
     assert version is not None
+    assert utilization is not None
+    assert utilization.used_paise == 0
     assert version.name == "Demo Person"
     assert principal is not None
     assert principal.member_id == member_id

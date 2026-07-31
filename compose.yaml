@@ -52,7 +52,7 @@ services:
   setup:
     <<: *claims-backend
     command: >
-      sh -c "uv run alembic upgrade head &&
+      sh -c "uv run python -m alembic upgrade head &&
              uv run python scripts/setup_dev_data.py"
     depends_on:
       postgres:
