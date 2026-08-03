@@ -33,9 +33,14 @@ export default function ClaimStatusPage({ params }: ClaimStatusPageProps) {
 
   const [claim, setClaim] = useState<Claim | null>(null);
   const [loading, setLoading] = useState(true);
+  const [phoenixUrl, setPhoenixUrl] = useState("http://127.0.0.1:6006");
   const [error, setError] = useState<ApiErrorResponse | string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pollCount, setPollCount] = useState(0);
+
+  useEffect(() => {
+    setPhoenixUrl(`http://${window.location.hostname}:6006`);
+  }, []);
 
   const isMounted = useRef(true);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -158,7 +163,7 @@ export default function ClaimStatusPage({ params }: ClaimStatusPageProps) {
             </button>
 
             <a
-              href="http://127.0.0.1:6006"
+              href={phoenixUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-canvas hover:bg-violet-pale text-xs font-semibold text-ink neu-raised-sm border border-hairline transition-all"

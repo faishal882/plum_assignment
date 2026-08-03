@@ -2,26 +2,11 @@ x-claims-backend: &claims-backend
   build:
     context: .
     dockerfile: Dockerfile.backend
+  env_file:
+    - .env
   environment: &claims-env
-    CLAIMS_DATABASE_URL: postgresql+psycopg://claims:claims@postgres:5432/claims
-    CLAIMS_TEST_DATABASE_URL: postgresql+psycopg://claims:claims@postgres:5432/claims_test
-    CLAIMS_EXECUTION_PROFILE: ${CLAIMS_EXECUTION_PROFILE:-RECORDED_LOCAL}
-    CLAIMS_RUN_LIVE_AWS: ${CLAIMS_RUN_LIVE_AWS:-0}
-    CLAIMS_OBSERVABILITY_ENABLED: ${CLAIMS_OBSERVABILITY_ENABLED:-1}
-    CLAIMS_OBSERVABILITY_CAPTURE_CONTENT: ${CLAIMS_OBSERVABILITY_CAPTURE_CONTENT:-0}
-    CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY: ${CLAIMS_OBSERVABILITY_SYNTHETIC_ONLY:-0}
-    CLAIMS_PHOENIX_ENDPOINT: http://phoenix:6006/v1/traces
-    CLAIMS_PHOENIX_PROJECT: ${CLAIMS_PHOENIX_PROJECT:-plum-claims-local}
-    CLAIMS_AWS_REGION: ${CLAIMS_AWS_REGION:-ap-south-1}
-    CLAIMS_BEDROCK_REGION: ${CLAIMS_BEDROCK_REGION:-us-west-2}
-    CLAIMS_BEDROCK_MODEL_ID: ${CLAIMS_BEDROCK_MODEL_ID:-qwen.qwen3-235b-a22b-2507-v1:0}
     CLAIMS_DATA_ROOT: /app/data/documents
     CLAIMS_LOG_ROOT: /app/data/logs
-    CLAIMS_SQLADMIN_ENABLED: ${CLAIMS_SQLADMIN_ENABLED:-1}
-    CLAIMS_SQLADMIN_USERNAME: ${CLAIMS_SQLADMIN_USERNAME:-admin}
-    CLAIMS_SQLADMIN_PASSWORD: ${CLAIMS_SQLADMIN_PASSWORD:-admin-password-local}
-    CLAIMS_SQLADMIN_SECRET_KEY: ${CLAIMS_SQLADMIN_SECRET_KEY:-sqladmin-local-secret-with-at-least-32-chars}
-    AWS_REGION: ${AWS_REGION:-ap-south-1}
     AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
@@ -39,8 +24,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-claims}
       POSTGRES_USER: ${POSTGRES_USER:-claims}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claims}
-    ports:
-      - "${POSTGRES_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 2s
@@ -104,7 +87,8 @@ services:
       dockerfile: Dockerfile
     environment:
       CLAIMS_API_BASE_URL: http://api:8000
-      CLAIMS_DEV_USERNAME: ${CLAIMS_DEV_USERNAME:-member.emp001}
+      CLAIMS_DEV_USERNAME: ${CLAIMS_DEV_USERNAME}
+      CLAIMS_REVIEWER_USERNAME: ${CLAIMS_REVIEWER_USERNAME}
     ports:
       - "3000:3000"
     depends_on:
