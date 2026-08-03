@@ -17,6 +17,7 @@ import {
   DEV_IDENTITY_STORAGE_KEY,
   readStoredDevIdentity,
 } from "@/lib/dev-identities";
+import { createUuid } from "@/lib/ids";
 
 export function ClaimSubmitForm() {
   const router = useRouter();
@@ -67,7 +68,7 @@ export function ClaimSubmitForm() {
       if (manifest[index]) return { ...manifest[index], upload_index: index };
       return {
         upload_index: index,
-        client_document_id: `doc-${crypto.randomUUID().slice(0, 8)}`,
+        client_document_id: `doc-${createUuid().slice(0, 8)}`,
       };
     });
     setManifest(updatedManifest);
@@ -104,7 +105,7 @@ export function ClaimSubmitForm() {
       const res = await fetch("/api/claims", {
         method: "POST",
         headers: {
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": createUuid(),
           "X-Dev-Username": devUsername,
         },
         body: formData,

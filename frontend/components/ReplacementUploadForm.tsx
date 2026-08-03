@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ErrorCallout } from "./ErrorCallout";
 import { UploadCloud, RefreshCw, CheckCircle2, FileText } from "lucide-react";
 import { ApiErrorResponse } from "@/lib/claims-types";
+import { createUuid } from "@/lib/ids";
 
 interface ReplacementUploadFormProps {
   claimId: string;
@@ -48,7 +49,7 @@ export function ReplacementUploadForm({
       const res = await fetch(`/api/claims/${claimId}/actions`, {
         method: "POST",
         headers: {
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": createUuid(),
           "X-Dev-Username": devUsername,
         },
         body: formData,

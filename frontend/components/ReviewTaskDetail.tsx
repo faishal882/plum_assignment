@@ -12,6 +12,7 @@ import { ExtractedEvidenceChecklist } from "./ExtractedEvidenceChecklist";
 import { AllOcrObservationsRegistry } from "./AllOcrObservationsRegistry";
 import { JsonDisclosure } from "./JsonDisclosure";
 import { ErrorCallout } from "./ErrorCallout";
+import { createUuid } from "@/lib/ids";
 import {
   ShieldCheck,
   FileSearch,
@@ -94,7 +95,7 @@ export function ReviewTaskDetail({ taskDetail, onRefresh }: ReviewTaskDetailProp
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": createUuid(),
           "X-Dev-Username": devUsername,
         },
         body: JSON.stringify(payload),

@@ -1,6 +1,7 @@
 "use client";
 
 import { DocumentManifestItem } from "@/lib/claims-types";
+import { createUuid } from "@/lib/ids";
 import { FileCode2, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 
 interface DocumentManifestEditorProps {
@@ -26,7 +27,7 @@ export function DocumentManifestEditor({
     const updated = [...manifest];
     updated[index] = {
       ...updated[index],
-      client_document_id: `doc-${crypto.randomUUID().slice(0, 8)}`,
+      client_document_id: `doc-${createUuid().slice(0, 8)}`,
     };
     onManifestChange(updated);
   };
